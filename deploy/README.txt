@@ -324,28 +324,103 @@ Deux situations partagent une même IP, à surveiller (réponses 429) :
 9. SAUVEGARDES
 --------------
 
-À sauvegarder hors du serveur, et chiffré :
-  - /opt/betorun/secrets : sans lui, les données sont inutilisables ;
-  - Postgres, chaque jour (betorun, keycloak, temporal) :
+deploy/backup.sh, chaque nuit, vers un stockage objet S3 d'un AUTRE fournisseur que
+les serveurs (Backblaze B2 retenu). Tout est chiffré avec age avant de partir.
 
-    deploy/compose.sh exec -T k8sdb sh -c 'pg_dumpall -U "$POSTGRES_USER"' \
-      | gzip > /var/backups/betorun/pg-$(date +%F).sql.gz
+  Pièce                                  Fréquence    Objet
+  rôles Postgres                         chaque jour  pg-globals.sql.age
+  chaque base (betorun, keycloak,        chaque jour  pg-<base>.dump.age
+    temporal, temporal_visibility)
+  /opt/betorun/secrets (.env.prod...)    chaque jour  secrets.tgz.age
+  sites des clients (SeaweedFS)          chaque jour  volume-s3data.tgz.age
+  registre d'images                      dimanche     volume-registry-data.tgz.age
+  certificats de Caddy                   dimanche     volume-caddy-data.tgz.age
 
-  - le stockage objet (sites, archives) et le registre. Volumes à copier à froid :
-    arrêter le service, ou accepter une copie incohérente pour les fichiers en cours :
+Non sauvegardés : Redis (cache), Prometheus, Loki, Grafana. Les disques des
+conteneurs clients (PVC du serveur 2) NE SONT PAS sauvegardés.
 
-    deploy/compose.sh stop seaweedfs
-    docker run --rm -v betorun_s3data:/data:ro -v /var/backups/betorun:/out alpine:3.23.7 \
-      tar czf /out/s3-$(date +%F).tgz -C /data .
-    deploy/compose.sh start seaweedfs
+Rangement : daily/<horodatage>/ du lundi au samedi, weekly/<horodatage>/ le dimanche.
+C'est le bucket qui supprime, pas le serveur.
 
-    Même commande pour betorun_registry-data (images reconstructibles) et
-    betorun_caddy-data (certificats, pour éviter de les redemander).
+LES CLÉS
+  - Chiffrement : seule la clé PUBLIQUE age est sur le serveur. Il peut chiffrer,
+    jamais relire. La clé privée reste hors des serveurs (gestionnaire de mots de
+    passe et copie hors ligne) : sans elle, aucune restauration possible.
+  - Stockage : clé B2 limitée au bucket, en écriture seule (Write Only). Elle ne
+    peut ni lire ni supprimer. La clé maîtresse du compte ne va sur aucun serveur.
 
-Restauration, à répéter à blanc au moins une fois (jamais testée) : volume Postgres
-vide, puis psql -U "$POSTGRES_USER" -d postgres < sauvegarde ; volumes restaurés par
-tar ; mêmes fichiers de secrets. Le script d'initialisation ne rejoue pas sur un
-volume déjà rempli : changer un mot de passe de service demande un ALTER ROLE.
+PRÉPARER LE BUCKET (une fois, interface Backblaze)
+  - bucket privé, Object Lock activé ;
+  - Object Lock, rétention par défaut : Governance, 7 jours. Même avec toutes les
+    clés du serveur, une sauvegarde ne peut pas être effacée avant ;
+  - Lifecycle Settings, règles personnalisées :
+      préfixe daily/   masquer après 7 jours,  supprimer 1 jour après
+      préfixe weekly/  masquer après 28 jours, supprimer 1 jour après
+  - Application Keys : une clé Write Only limitée au bucket, pour le serveur.
+
+INSTALLER (serveur 1, en root)
+
+    docker build -t betorun-backup /opt/betorun/kubemanager/deploy/backup
+
+/opt/betorun/secrets/backup.env, droits 600 (copié dans la sauvegarde des secrets) :
+
+    BACKUP_BUCKET=betorun-backups
+    BACKUP_S3_ENDPOINT=s3.eu-central-003.backblazeb2.com
+    BACKUP_S3_REGION=eu-central-003
+    BACKUP_AGE_RECIPIENT=age1...        clé publique
+    B2_KEY_ID=...                       clé Write Only
+    B2_APPLICATION_KEY=...
+
+Premier essai à la main, puis cron :
+
+    /opt/betorun/kubemanager/deploy/backup.sh
+    17 3 * * * /opt/betorun/kubemanager/deploy/backup.sh >> /var/log/betorun-backup.log 2>&1
+
+Une pièce en échec : les autres partent quand même, le code de sortie est 1 et
+/var/lib/betorun-backup/last-success n'avance pas. Ce fichier (horodatage UTC) est
+celui que les alertes surveillent : plus de 26 heures, la sauvegarde est en panne.
+Un jeu incomplet peut contenir une pièce tronquée : age refuse de la déchiffrer.
+Restaurer depuis un jeu complet (présent dans le journal avec « terminée »).
+
+Pendant la copie des sites, SeaweedFS est figé (docker pause) : les sites
+répondent en retard le temps de copier le volume sur disque local, pas pendant
+l'envoi. Prévoir sur /var/lib/betorun-backup la place du volume s3data.
+
+RESTAURER (sur votre poste, jamais testé : à répéter à blanc avant d'en avoir besoin)
+Il faut : la clé privée age, une clé B2 Read Only limitée au bucket (à créer pour
+l'occasion, puis à supprimer), age, rclone, et Docker sur le serveur.
+
+  1. Lister et télécharger un jeu complet :
+
+    export RCLONE_S3_PROVIDER=Other RCLONE_S3_ENDPOINT=s3.eu-central-003.backblazeb2.com \
+      RCLONE_S3_REGION=eu-central-003 RCLONE_S3_ACCESS_KEY_ID=... RCLONE_S3_SECRET_ACCESS_KEY=...
+    rclone --config "" lsf :s3:betorun-backups/daily/
+    rclone --config "" copy :s3:betorun-backups/daily/<horodatage> ./restore
+
+  2. Déchiffrer :
+
+    for f in restore/*.age; do age -d -i betorun-backup.key -o "${f%.age}" "$f"; done
+
+  3. Secrets : remettre secrets.tgz dans /opt/betorun/secrets (mêmes mots de passe,
+     mêmes clés IAM : DÉFINITIFS, sans eux les données sont illisibles).
+  4. Postgres sur un volume VIDE : démarrer k8sdb seul. Le script d'initialisation
+     recrée rôles et bases à partir de .env.prod. Puis, pour chaque base :
+
+    deploy/compose.sh up -d k8sdb
+    deploy/compose.sh exec -T k8sdb sh -c 'pg_restore -U "$POSTGRES_USER" -d "$1" --clean --if-exists' sh <base> < pg-<base>.dump
+
+     pg-globals.sql ne sert que si les rôles diffèrent de ceux du script.
+  5. Volumes, AVANT de démarrer leur service (volume vide) :
+
+    docker run --rm -i -v betorun_s3data:/data alpine:3.23.7 tar -C /data -xzf - < volume-s3data.tgz
+
+     Même chose pour registry-data et caddy-data (jeu weekly).
+  6. deploy/compose.sh up -d, puis les vérifications de la section 7.
+
+Temporal restauré à une date passée : les workflows en cours depuis sont perdus,
+des déploiements peuvent rester à relancer depuis la console. Le script
+d'initialisation ne rejoue pas sur un volume déjà rempli : changer un mot de passe
+de service demande un ALTER ROLE.
 
 
 10. MISES À JOUR
