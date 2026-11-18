@@ -95,7 +95,11 @@ func (a *App) initDomainLayers() error {
 
 	rbacController := authCtrl.NewRBACController(rbacService)
 	apiKeyController := authCtrl.NewAPIKeyController(apiKeyService)
-	projectController := projectCtrl.NewProjectHandlers(projectService)
+	var projectAccess projectCtrl.ProjectAccess
+	if a.IAM != nil { // pas d'interface non nulle autour d'un *Engine nil
+		projectAccess = a.IAM
+	}
+	projectController := projectCtrl.NewProjectHandlers(projectService, projectAccess)
 	workloadController := workloadsCtrl.NewWorkloadHandler(workloadService)
 
 	realtimeController := realtimeCtrl.NewController(a.Config.Centrifugo, a.RealtimeSigner, a.IAM)

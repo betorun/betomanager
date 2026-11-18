@@ -48,3 +48,23 @@ type AssignRoleRequest struct {
 	ProjectID string `json:"project_id" validate:"required,uuid"`
 	RoleName  string `json:"role_name" validate:"required"`
 }
+
+// ProjectSummary : un projet dans une liste.
+type ProjectSummary struct {
+	ProjectID      string    `json:"project_id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	Status         string    `json:"status"`
+	OrganizationID string    `json:"organization_id"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// ListProjectsResponse : projets accessibles. Truncated : il y en a plus que
+// MaxListedProjects (la liste rend les plus récents).
+type ListProjectsResponse struct {
+	Projects  []ProjectSummary `json:"projects"`
+	Truncated bool             `json:"truncated"`
+}
+
+// MaxListedProjects : borne de GET /projects.
+const MaxListedProjects = 200

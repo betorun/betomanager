@@ -19,6 +19,9 @@ type ProjectRepository interface {
 	GetProjectByID(ctx context.Context, id string) (*dauth.Project, error)
 	// UpdateProjectStatus : statut de provisionnement (PENDING, READY, ERROR).
 	UpdateProjectStatus(ctx context.Context, id, status string) error
+	// ListProjects : projets de ids, ou des organisations orgIDs, les plus
+	// récents d'abord, au plus limit (+1 pour savoir s'il en reste).
+	ListProjects(ctx context.Context, orgIDs, ids []uuid.UUID, limit int) ([]dauth.Project, error)
 }
 
 type pgProjectRepo struct {
@@ -90,4 +93,22 @@ func (r *pgProjectRepo) GetProjectByID(ctx context.Context, id string) (*dauth.P
 func (r *pgProjectRepo) UpdateProjectStatus(ctx context.Context, id, status string) error {
 	return r.db.WithContext(ctx).Model(&dauth.Project{}).Where("id = ?", id).
 		Updates(map[string]any{"status": status, "updated_at": time.Now()}).Error
+}
+
+func (r *pgProjectRepo) ListProjects(ctx context.Context, orgIDs, ids []uuid.UUID, limit int) ([]dauth.Project, error) {
+	if len(orgIDs) == 0 && len(ids) == 0 {
+		return nil, nil
+	}
+	q := r.db.WithContext(ctx).Model(&dauth.Project{})
+	switch {
+	case len(orgIDs) > 0 && len(ids) > 0:
+		q = q.Where("organization_id IN ? OR id IN ?", orgIDs, ids)
+	case len(orgIDs) > 0:
+		q = q.Where("organization_id IN ?", orgIDs)
+	default:
+		q = q.Where("id IN ?", ids)
+	}
+	var out []dauth.Project
+	err := q.Order("created_at DESC, id").Limit(limit).Find(&out).Error
+	return out, err
 }

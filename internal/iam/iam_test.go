@@ -273,3 +273,36 @@ func TestValidateCondition(t *testing.T) {
 	assert.Error(t, ValidateCondition(&Condition{Expression: "request.time < timestamp('2027-01-01T00:00:00Z')"}), "titre requis")
 	assert.ErrorIs(t, ValidateCondition(&Condition{Title: "t", Expression: "true"}), ErrUnsupportedCondition)
 }
+
+func TestEngine_Holdings(t *testing.T) {
+	f := newFixture()
+	site := ProjectName(f.otherProject).Child("sites", uuid.New())
+	f.grant(OrganizationName(f.org), RoleViewer, f.alice)
+	f.grant(ProjectName(f.otherProject), RoleViewer, f.alice)
+	f.grant(site, RoleOwner, f.bob)               // droit sur un site seulement
+	f.grant(Platform, RolePlatformAdmin, f.staff) // staff : jamais « tous les projets »
+
+	h, err := f.engine.Holdings(context.Background(), f.alice, ProjectsGet)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []uuid.UUID{f.org}, h.Organizations)
+	assert.ElementsMatch(t, []uuid.UUID{f.otherProject}, h.Projects)
+
+	h, err = f.engine.Holdings(context.Background(), f.bob, ProjectsGet)
+	require.NoError(t, err)
+	assert.Empty(t, h.Organizations)
+	assert.Empty(t, h.Projects, "un droit sur un site ne donne pas le projet")
+
+	h, err = f.engine.Holdings(context.Background(), f.staff, ProjectsGet)
+	require.NoError(t, err)
+	assert.Empty(t, h.Projects)
+	assert.Empty(t, h.Organizations)
+
+	// Fraîcheur : un droit accordé (cache encore valide) apparaît tout de suite.
+	f.store.bindings = append(f.store.bindings, Binding{Resource: ProjectName(f.project), Role: RoleViewer, Principal: f.bob})
+	h, err = f.engine.Holdings(context.Background(), f.bob, ProjectsGet)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []uuid.UUID{f.project}, h.Projects)
+
+	_, err = f.engine.Holdings(context.Background(), f.alice, Permission("nope.nope.nope"))
+	assert.Error(t, err)
+}

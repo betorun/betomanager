@@ -158,5 +158,9 @@
  {
   "fr": "Limites de projet invalides : utilisez des quantités Kubernetes (ex. 2000m, 4Gi)",
   "en": "invalid project limits: use Kubernetes quantities (e.g. 2000m, 4Gi)"
+ },
+ {
+  "fr": "Liste des projets momentanément indisponible",
+  "en": "project listing unavailable"
  }
 ]

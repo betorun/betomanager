@@ -170,6 +170,11 @@ func addProjectRoutes(app *App) {
 
 	// Création dans l'organisation personnelle de l'appelant, qui en devient owner.
 	ProjectGroup.AddRoute("", http.MethodPost, "Créer un projet", Authenticated(), tonic.Handler(r.CreateProject, http.StatusCreated))
+	// Liste filtrée par l'IAM : resourcemanager.projects.get sur le projet ou
+	// sur son organisation (iam.Engine.Holdings). Pas de garde Perm : chaque
+	// appelant voit sa propre liste, éventuellement vide.
+	ProjectGroup.AddRoute("", http.MethodGet, "Projets accessibles (les 200 plus récents)",
+		Authenticated(), tonic.Handler(r.ListProjects, http.StatusOK))
 	ProjectGroup.AddRoute("/:id/status", http.MethodGet, "État d'un projet",
 		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectStatus, http.StatusOK))
 	ProjectGroup.AddRoute("/:id/metrics", http.MethodGet, "Métriques de consommation",

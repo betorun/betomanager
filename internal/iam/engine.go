@@ -308,3 +308,50 @@ func (e *Engine) InvalidateProject(projectID uuid.UUID) {
 	delete(e.orgs, projectID)
 	e.mu.Unlock()
 }
+
+// Holdings : ressources où un principal détient une permission par ses propres
+// bindings (lui-même, ses groupes, allUsers…). Sert aux listes filtrées par
+// l'IAM (« mes projets ») : un projet y figure s'il est accordé directement
+// ou si son organisation l'est.
+//
+// Platform n'est jamais rendu : un rôle du staff betorun ne transforme pas
+// une liste personnelle en liste de tous les projets (le staff passe par les
+// routes /admin). Les ressources filles (projects/{p}/sites/…) non plus : un
+// droit sur un site ne donne pas accès au projet.
+type Holdings struct {
+	Organizations []uuid.UUID
+	Projects      []uuid.UUID
+}
+
+// Holdings relit les bindings sans cache : une liste qui omet un projet est
+// un refus, et la règle de fraîcheur s'applique (voir NewEngine).
+func (e *Engine) Holdings(ctx context.Context, p Principal, perm Permission) (Holdings, error) {
+	var h Holdings
+	if !Known(perm) {
+		return h, fmt.Errorf("iam: unknown permission %q", perm)
+	}
+	if err := p.Validate(); err != nil {
+		return h, err
+	}
+	cached, _, err := e.principalBindings(ctx, p, true)
+	if err != nil {
+		return h, err
+	}
+	now := e.now()
+	for res := range cached.byResource {
+		if res == Platform {
+			continue
+		}
+		// decide sur la ressource seule : même règle que Check (rôle connu,
+		// rôle staff ignoré hors platform, condition d'expiration).
+		if !decide(cached, []ResourceName{res}, perm, now).Allowed {
+			continue
+		}
+		if id, ok := res.Organization(); ok && res == OrganizationName(id) {
+			h.Organizations = append(h.Organizations, id)
+		} else if id, ok := res.Project(); ok && res == ProjectName(id) {
+			h.Projects = append(h.Projects, id)
+		}
+	}
+	return h, nil
+}

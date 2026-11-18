@@ -1002,5 +1002,9 @@
  {
   "fr": "Chemin du Dockerfile",
   "en": "Dockerfile path"
+ },
+ {
+  "fr": "Projets accessibles (les 200 plus récents)",
+  "en": "Projects you can access (the 200 most recent)"
  }
 ]
