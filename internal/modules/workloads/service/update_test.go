@@ -876,3 +876,23 @@ func TestPatchVariables_LostRaceRestoresVariables(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrDeployInProgress)
 	assert.Equal(t, []int64{2}, vars.restored)
 }
+
+// Le disque persistant apparaît dans l'état, marqué non sauvegardé : la console
+// prévient le client tant que la sauvegarde des disques n'existe pas.
+func TestLiveStatus_DiskNotBackedUp(t *testing.T) {
+	notFound := `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`
+	id := uuid.New()
+	for _, persistent := range []bool{true, false} {
+		repo := &fakeRepo{w: domain.Workload{ID: id, Name: "web", Namespace: "km-x", PersistenceEnabled: persistent, StorageSize: "5Gi"}}
+		s := &WorkloadService{Repo: repo, K8sClient: fakeK8s(t, http.StatusNotFound, notFound)}
+		st, err := s.LiveStatus(context.Background(), id)
+		require.NoError(t, err)
+		if !persistent {
+			assert.Nil(t, st.Disk)
+			continue
+		}
+		require.NotNil(t, st.Disk)
+		assert.Equal(t, "5Gi", st.Disk.Size)
+		assert.False(t, st.Disk.BackedUp)
+	}
+}
