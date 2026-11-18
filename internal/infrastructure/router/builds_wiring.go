@@ -8,7 +8,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
 	buildsRepo "github.com/thekrauss/kubemanager/internal/modules/builds/repository"
 	buildsSvc "github.com/thekrauss/kubemanager/internal/modules/builds/service"
-	workloadActs "github.com/thekrauss/kubemanager/internal/modules/workloads/activities"
+	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
 )
 
 // minBuildSecretBytes : longueur minimale du secret du registre.
@@ -47,12 +47,20 @@ func (a *App) newBuildController() (*builds.Controller, error) {
 	}, nil
 }
 
-// registryPull : Secret de pull des conteneurs, côté worker.
-func (a *App) registryPull() *workloadActs.RegistryPull {
-	if !a.buildsEnabled() {
+// pullSecrets : Secret de pull des projets (registre de la plateforme si les
+// builds sont activés, et registres externes des projets).
+func (a *App) pullSecrets() *pull.Secrets {
+	if a.K8sProvider == nil || a.K8sProvider.Client == nil {
 		return nil
 	}
-	return &workloadActs.RegistryPull{Host: a.Config.Builds.RegistryHost, Creds: registry.Credentials{Secret: []byte(a.Config.Builds.Secret)}}
+	s := &pull.Secrets{K8s: a.K8sProvider.Client}
+	if a.Registries != nil {
+		s.External = a.Registries
+	}
+	if a.buildsEnabled() {
+		s.Platform = &pull.Platform{Host: a.Config.Builds.RegistryHost, Creds: registry.Credentials{Secret: []byte(a.Config.Builds.Secret)}}
+	}
+	return s
 }
 
 // buildActivities : étapes du workflow, côté worker.

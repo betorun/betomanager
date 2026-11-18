@@ -137,6 +137,8 @@ func (a *App) initDomainLayers() error {
 	}
 
 	a.GitHub = a.newGitHubService(buildController, workloadService)
+	workloadService.ExternalRegistries = a.Registries
+	registriesController := a.newRegistriesController()
 	a.WorkloadDeployer = workloadService
 
 	a.Services = &ServiceContainer{
@@ -150,18 +152,19 @@ func (a *App) initDomainLayers() error {
 	}
 
 	a.Controllers = &ControllerContainer{
-		Builds:   buildController,
-		GitHub:   a.newGitHubController(a.GitHub),
-		RBAC:     rbacController,
-		APIKey:   apiKeyController,
-		Project:  projectController,
-		Workload: workloadController,
-		Identity: identityController,
-		Auth:     authController,
-		Realtime: realtimeController,
-		Clusters: clustersController,
-		Site:     siteController,
-		IAM:      a.newIAMController(policies),
+		Builds:     buildController,
+		GitHub:     a.newGitHubController(a.GitHub),
+		Registries: registriesController,
+		RBAC:       rbacController,
+		APIKey:     apiKeyController,
+		Project:    projectController,
+		Workload:   workloadController,
+		Identity:   identityController,
+		Auth:       authController,
+		Realtime:   realtimeController,
+		Clusters:   clustersController,
+		Site:       siteController,
+		IAM:        a.newIAMController(policies),
 	}
 
 	a.Logger.Info("Domain layers successfully initialized.")

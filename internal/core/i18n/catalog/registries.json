@@ -1,0 +1,30 @@
+[
+ {
+  "fr": "Hôte de registre invalide : indiquez un nom d'hôte comme ghcr.io ou registry.gitlab.com, sans https:// ni chemin",
+  "en": "invalid registry host: give a host name such as ghcr.io or registry.gitlab.com, without https:// or path"
+ },
+ {
+  "fr": "Le registre de betorun n'a besoin d'aucun accès : les images construites par betorun sont toujours disponibles pour leur projet",
+  "en": "the betorun registry needs no access: images built by betorun are always available to their project"
+ },
+ {
+  "fr": "Utilisateur du registre invalide",
+  "en": "invalid registry username"
+ },
+ {
+  "fr": "Jeton du registre invalide : il ne doit pas être vide (4096 caractères au maximum)",
+  "en": "invalid registry token: it must not be empty (4096 characters maximum)"
+ },
+ {
+  "fr": "Aucun accès à ce registre dans ce projet",
+  "en": "no access to this registry in this project"
+ },
+ {
+  "fr": "Aucun accès registre pour ce projet",
+  "en": "no registry access for this project"
+ },
+ {
+  "fr": "Registres : connexion refusée vers une adresse privée",
+  "en": "registries: refusing to contact a private address"
+ }
+]

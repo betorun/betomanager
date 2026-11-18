@@ -53,7 +53,7 @@ func newRoot(name string) *cobra.Command {
 		}
 	}
 	inGroup(groupStart, newLogin(), newLogout(), newWhoami(), newToken())
-	inGroup(groupDeploy, newInit(), newDeploy(), newWorkloads(), newSites(), newBuilds())
+	inGroup(groupDeploy, newInit(), newDeploy(), newWorkloads(), newSites(), newBuilds(), newRegistries())
 	inGroup(groupAccess, newAccess())
 	inGroup(groupOther, newDocs(), newVersion())
 	setupHelp(root)

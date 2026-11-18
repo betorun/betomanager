@@ -1002,5 +1002,45 @@
  {
   "fr": "Chemin du Dockerfile",
   "en": "Dockerfile path"
+ },
+ {
+  "fr": "Registres d'images externes",
+  "en": "External image registries"
+ },
+ {
+  "fr": "Registres externes",
+  "en": "External registries"
+ },
+ {
+  "fr": "Déployer des images privées de Docker Hub, GitHub (ghcr.io), GitLab ou d'un autre registre : le jeton est chiffré et ne sert qu'à tirer les images du projet.",
+  "en": "Deploy private images from Docker Hub, GitHub (ghcr.io), GitLab or another registry: the token is encrypted and only used to pull the project's images."
+ },
+ {
+  "fr": "Registres auxquels le projet a accès (jamais le jeton)",
+  "en": "Registries the project has access to (never the token)"
+ },
+ {
+  "fr": "Créer ou remplacer l'accès à un registre (jeton en lecture seule conseillé)",
+  "en": "Create or replace access to a registry (a read-only token is recommended)"
+ },
+ {
+  "fr": "Retirer l'accès : il disparaît aussitôt du projet",
+  "en": "Remove access: it is withdrawn from the project immediately"
+ },
+ {
+  "fr": "Vérifier l'accès auprès du registre (ok, refusé ou injoignable)",
+  "en": "Check access with the registry (ok, denied or unreachable)"
+ },
+ {
+  "fr": "Hôte du registre (ghcr.io, docker.io, registry.gitlab.com…)",
+  "en": "Registry host (ghcr.io, docker.io, registry.gitlab.com…)"
+ },
+ {
+  "fr": "Utilisateur du registre",
+  "en": "Registry username"
+ },
+ {
+  "fr": "Jeton d'accès, en lecture seule de préférence. Jamais relisible ensuite",
+  "en": "Access token, preferably read-only. Never readable afterwards"
  }
 ]

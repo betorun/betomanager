@@ -426,3 +426,22 @@ func addIAMRoutes(app *App) {
 	sas.AddRoute("/:saID/apiKeys", http.MethodPost, "Créer une clé API (secret affiché une seule fois ; actAs requis)", g.Perm(iam.APIKeysCreate, sa), tonic.Handler(r.CreateAPIKey, http.StatusCreated))
 	sas.AddRoute("/:saID/apiKeys/:keyID", http.MethodDelete, "Révoquer une clé API (effet immédiat)", g.Perm(iam.APIKeysDelete, sa), tonic.Handler(r.RevokeAPIKey, http.StatusNoContent))
 }
+
+// addRegistriesRoutes : accès d'un projet à ses registres d'images externes.
+func addRegistriesRoutes(app *App) {
+	r := app.Controllers.Registries
+	if r == nil {
+		return
+	}
+	g := newGuards(app)
+	project := security.ProjectParam("id")
+	list := g.Perm(iam.RegistriesList, project)
+	manage := g.Perm(iam.RegistriesManage, project)
+
+	p := RootGroup.NewGroup("/projects/:id/registries", "Registres d'images externes").
+		Named("Registres externes", "Déployer des images privées de Docker Hub, GitHub (ghcr.io), GitLab ou d'un autre registre : le jeton est chiffré et ne sert qu'à tirer les images du projet.")
+	p.AddRoute("", http.MethodGet, "Registres auxquels le projet a accès (jamais le jeton)", list, tonic.Handler(r.List, http.StatusOK))
+	p.AddRoute("/:host", http.MethodPut, "Créer ou remplacer l'accès à un registre (jeton en lecture seule conseillé)", manage, tonic.Handler(r.Put, http.StatusOK))
+	p.AddRoute("/:host", http.MethodDelete, "Retirer l'accès : il disparaît aussitôt du projet", manage, tonic.Handler(r.Delete, http.StatusNoContent))
+	p.AddRoute("/:host/test", http.MethodPost, "Vérifier l'accès auprès du registre (ok, refusé ou injoignable)", manage, tonic.Handler(r.Test, http.StatusOK))
+}

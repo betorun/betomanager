@@ -11,6 +11,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/auth"
 	"github.com/thekrauss/kubemanager/internal/core/configs"
+	registriesDomain "github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
@@ -276,6 +277,13 @@ func (s *WorkloadService) inputFor(ctx context.Context, w *domain.Workload, spec
 		}
 		in.CustomDomains = hosts
 		in.CustomDomainTLS = s.DomainCfg != nil && s.DomainCfg.TLS
+	}
+	if s.ExternalRegistries != nil && !in.PlatformImage && w.Image != "" {
+		has, err := s.ExternalRegistries.Has(ctx, w.ProjectID, registriesDomain.ImageHost(w.Image))
+		if err != nil {
+			return in, err
+		}
+		in.ExternalPull = has
 	}
 	return in, nil
 }

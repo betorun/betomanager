@@ -40,6 +40,7 @@ var (
 	developerPerms = concat(viewerPerms, []Permission{
 		WorkloadsCreate, WorkloadsUpdate, WorkloadsStart, WorkloadsStop,
 		WorkloadsRestart, WorkloadsRollback, WorkloadVariablesUpdate, WorkloadDomainsUpdate, BuildsCreate, BuildsCancel,
+		RegistriesList,
 		SitesCreate, SitesUpdate, SiteDeploymentsCreate, SiteDeploymentsActive,
 		SiteDomainsCreate, SiteDomainsVerify,
 		ServiceAccountsActAs,
@@ -50,6 +51,8 @@ var (
 		WorkloadsDelete, SitesDelete, SiteDomainsDelete,
 		// Relier un compte GitHub ouvre au projet du code privé : pas un droit de développeur.
 		WorkloadsGitHubManage,
+		// Un jeton de registre ouvre les images privées de l'entreprise : même règle.
+		RegistriesManage,
 		ServiceAccountsCreate, ServiceAccountsUpdate, ServiceAccountsDelete,
 		ServiceAccountKeysCreate, ServiceAccountKeysDelete,
 		APIKeysCreate, APIKeysDelete,
@@ -88,7 +91,7 @@ var predefinedRoles = []Role{
 		Description: "Déploie et opère les conteneurs du projet.",
 		Permissions: []Permission{ProjectsGet, WorkloadsList, WorkloadsGet, WorkloadsCreate, WorkloadsUpdate,
 			WorkloadsStart, WorkloadsStop, WorkloadsRestart, WorkloadsRollback, WorkloadLogsRead, WorkloadMetrics,
-			WorkloadVariablesList, WorkloadVariablesUpdate, WorkloadDomainsList, WorkloadDomainsUpdate, BuildsList, BuildsGet, BuildsCreate, BuildsCancel, ServiceAccountsActAs}},
+			WorkloadVariablesList, WorkloadVariablesUpdate, WorkloadDomainsList, WorkloadDomainsUpdate, BuildsList, BuildsGet, BuildsCreate, BuildsCancel, RegistriesList, ServiceAccountsActAs}},
 	{Name: "roles/workloads.viewer", Title: "Lecteur conteneurs",
 		Description: "Consulte les conteneurs, leurs logs et leurs métriques.",
 		Permissions: []Permission{ProjectsGet, WorkloadsList, WorkloadsGet, WorkloadLogsRead, WorkloadMetrics, WorkloadVariablesList, WorkloadDomainsList, BuildsList, BuildsGet}},

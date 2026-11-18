@@ -27,6 +27,7 @@ import (
 	siteWorkflows "github.com/thekrauss/kubemanager/internal/modules/sites/workflows"
 	workloadActivities "github.com/thekrauss/kubemanager/internal/modules/workloads/activities"
 	workloadRepository "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
+	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
 	workloadWorkflows "github.com/thekrauss/kubemanager/internal/modules/workloads/workflows"
 )
 
@@ -42,7 +43,7 @@ type WorkerConfig struct {
 	Publisher    realtime.Publisher
 	ObjectStore  objectstore.Store                // nil si sites statiques désactivés
 	Builds       *buildActivities.Activities      // nil si builds désactivés
-	RegistryPull *workloadActivities.RegistryPull // nil si builds désactivés
+	Pull         *pull.Secrets                    // nil sans cluster
 	Variables    workloadRepository.VariableStore
 }
 
@@ -103,7 +104,7 @@ func (p *TemporalProcessor) Start() (<-chan error, error) {
 		K8sConfig:   p.cfg.K8sConfig,
 		K8sClient:   p.cfg.K8sClient,
 		Idempotency: p.cfg.Idempotency,
-		Registry:    p.cfg.RegistryPull,
+		Pull:        p.cfg.Pull,
 		Variables:   p.cfg.Variables,
 	}
 

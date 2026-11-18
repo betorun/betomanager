@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	"net/http"
 	"os"
@@ -69,6 +70,7 @@ type App struct {
 	RealtimeSigner      realtime.TokenSigner
 	ObjectStore         objectstore.Store // nil si sites désactivés
 	Variables           workloadsRepo.VariableStore
+	Registries          registriesRepo.Store
 	IAM                 *iam.Engine
 	ServiceAccounts     *iam.ServiceAccountService
 	ClusterAgents       *iam.ClusterAgents
@@ -122,19 +124,19 @@ func (a *App) RunWorker(ctx context.Context) error {
 	defer a.shutdownInfra()
 
 	processor := temporal.NewTemporalProcessor(temporal.WorkerConfig{
-		Client:       a.Temporal.Client,
-		Config:       a.Config,
-		Logger:       a.Logger,
-		K8sClient:    a.K8sProvider.Client,
-		K8sConfig:    a.K8sProvider.Config,
-		DB:           a.DB,
-		RBACSvc:      a.Services.RBAC,
-		Idempotency:  a.Idempotency,
-		Publisher:    a.Publisher,
-		ObjectStore:  a.ObjectStore,
-		Builds:       a.buildActivities(),
-		RegistryPull: a.registryPull(),
-		Variables:    a.Variables,
+		Client:      a.Temporal.Client,
+		Config:      a.Config,
+		Logger:      a.Logger,
+		K8sClient:   a.K8sProvider.Client,
+		K8sConfig:   a.K8sProvider.Config,
+		DB:          a.DB,
+		RBACSvc:     a.Services.RBAC,
+		Idempotency: a.Idempotency,
+		Publisher:   a.Publisher,
+		ObjectStore: a.ObjectStore,
+		Builds:      a.buildActivities(),
+		Pull:        a.pullSecrets(),
+		Variables:   a.Variables,
 	})
 
 	errCh, err := processor.Start()
