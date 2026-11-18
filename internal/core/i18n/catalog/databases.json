@@ -66,5 +66,21 @@
  {
   "fr": "Le plugin Barman Cloud n'est pas installé sur le cluster",
   "en": "the Barman Cloud plugin is not installed on the cluster"
+ },
+ {
+  "fr": "Les sauvegardes ne sont pas configurées sur cette plateforme",
+  "en": "backups are not configured on this platform"
+ },
+ {
+  "fr": "Permission refusée : databases.databases.get sur la base source",
+  "en": "permission denied: databases.databases.get on the source database"
+ },
+ {
+  "fr": "Cette base n'a aucune sauvegarde terminée à restaurer",
+  "en": "this database has no completed backup to restore from"
+ },
+ {
+  "fr": "L'instant à restaurer doit être dans le passé",
+  "en": "the restore time must be in the past"
  }
 ]

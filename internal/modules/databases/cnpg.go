@@ -66,7 +66,18 @@ type ClusterSpec struct {
 	DatabaseID string
 	ProjectID  string
 	Storage    string
+	// Restore : née des sauvegardes d'une autre base (nil : base vide).
+	Restore *RestoreSource
 }
+
+// RestoreSource : base dont on lit les sauvegardes, et jusqu'à quand.
+type RestoreSource struct {
+	Cluster    string     // Cluster source (son ObjectStore <cluster>-store)
+	TargetTime *time.Time // nil : le plus récent
+}
+
+// ErrBackupsDisabled : restauration impossible sans sauvegardes configurées.
+var ErrBackupsDisabled = errors.New("backups are not configured on this platform")
 
 // BackupTarget : destination S3 des sauvegardes (nil : pas de sauvegarde).
 type BackupTarget struct {
@@ -137,6 +148,21 @@ func (c *CNPG) clusterObject(ns string, spec ClusterSpec) *unstructured.Unstruct
 			"enableSuperuserAccess": false,
 		},
 	}}
+	if spec.Restore != nil {
+		// Restauration : base et propriétaire « app » recréés (nouveau mot de
+		// passe), données lues dans l'ObjectStore de la base source.
+		recovery := map[string]any{"source": "origin", "database": "app", "owner": "app"}
+		if t := spec.Restore.TargetTime; t != nil {
+			recovery["recoveryTarget"] = map[string]any{"targetTime": t.UTC().Format(time.RFC3339)}
+		}
+		_ = unstructured.SetNestedMap(obj.Object, map[string]any{"recovery": recovery}, "spec", "bootstrap")
+		_ = unstructured.SetNestedSlice(obj.Object, []any{map[string]any{
+			"name": "origin",
+			"plugin": map[string]any{"name": barmanPlugin, "parameters": map[string]any{
+				"barmanObjectName": storeName(spec.Restore.Cluster), "serverName": spec.Restore.Cluster,
+			}},
+		}}, "spec", "externalClusters")
+	}
 	if c.Backup != nil {
 		// Archivage continu du journal (WAL) : restauration à un instant donné.
 		_ = unstructured.SetNestedSlice(obj.Object, []any{map[string]any{
@@ -222,6 +248,9 @@ func networkPolicy(ns string, spec ClusterSpec) *networkingv1.NetworkPolicy {
 }
 
 func (c *CNPG) Create(ctx context.Context, ns string, spec ClusterSpec) error {
+	if spec.Restore != nil && c.Backup == nil {
+		return ErrBackupsDisabled
+	}
 	if _, err := c.Kube.NetworkingV1().NetworkPolicies(ns).Create(ctx, networkPolicy(ns, spec), metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("network policy: %w", err)
 	}

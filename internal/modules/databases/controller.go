@@ -39,6 +39,10 @@ func apiError(err error) error {
 		return betoerrors.New(betoerrors.CodeNotFound, "database not found")
 	case errors.Is(err, domain.ErrWorkloadNotFound):
 		return betoerrors.New(betoerrors.CodeNotFound, err.Error())
+	case errors.Is(err, domain.ErrInvalidTarget):
+		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
+	case errors.Is(err, domain.ErrNoBackup):
+		return betoerrors.New(betoerrors.CodeUnprocessable, err.Error())
 	case errors.Is(err, domain.ErrNotReady):
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
 	case errors.Is(err, domain.ErrNameTaken):
@@ -130,5 +134,27 @@ func (h *Controller) Attach(c *gin.Context, in *domain.AttachRequest) (*domain.A
 		return nil, betoerrors.New(betoerrors.CodeForbidden, "permission denied: workloads.variables.update on this container")
 	}
 	out, err := h.Service.Attach(c.Request.Context(), p, d, w, strings.TrimSpace(in.Variable))
+	return out, apiError(err)
+}
+
+// Restore : la route a vérifié databases.databases.create sur le projet ; il
+// faut AUSSI pouvoir lire la base source (la restauration en copie les données).
+func (h *Controller) Restore(c *gin.Context, in *domain.RestoreRequest) (*domain.DatabaseView, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	principal, ok := security.PrincipalFromContext(c)
+	if !ok || h.IAM == nil {
+		return nil, betoerrors.New(betoerrors.CodeForbidden, "permission denied")
+	}
+	dec, err := h.IAM.Check(c.Request.Context(), principal, iam.DatabasesGet, iam.ProjectName(p).Child("databases", d))
+	if err != nil && !errors.Is(err, iam.ErrResourceNotFound) {
+		return nil, err
+	}
+	if err != nil || !dec.Allowed {
+		return nil, betoerrors.New(betoerrors.CodeForbidden, "permission denied: databases.databases.get on the source database")
+	}
+	out, err := h.Service.Restore(c.Request.Context(), p, d, in.Name, in.TargetTime, string(principal))
 	return out, apiError(err)
 }

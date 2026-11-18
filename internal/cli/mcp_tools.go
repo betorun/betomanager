@@ -145,6 +145,12 @@ func (e mcpEnv) toolList() []mcp.Tool {
 			InputSchema: schema(`"database":{"type":"string","description":"Database ID or name"},"workload":{"type":"string","description":"Container ID or name"},`+projectProp+
 				`,"variable":{"type":"string","description":"Variable name (default DATABASE_URL)"}`, "database", "workload"),
 			Annotations: mcp.Annotations{Title: "Attach a database", IdempotentHint: true, OpenWorldHint: true}, Handler: e.attachDatabase},
+		{Name: "restore_database", Title: "Restore a database",
+			Description: "Restore a database into a NEW database from its backups (latest state, or target_time). The source is never changed; " +
+				"waits until the copy is ready. Then attach_database switches a container to it.",
+			InputSchema: schema(`"database":{"type":"string","description":"Source database ID or name"},"name":{"type":"string","description":"Name of the new database"},`+projectProp+
+				`,"target_time":{"type":"string","description":"Instant to restore, RFC 3339 (default: latest)"}`, "database", "name"),
+			Annotations: mcp.Annotations{Title: "Restore a database", OpenWorldHint: true}, Handler: e.restoreDatabase},
 		{Name: "restart_workload", Description: "Restart a container (rolling replacement, no downtime with several replicas).",
 			InputSchema: schema(`"workload":{"type":"string","description":"Container ID or name"},`+projectProp, "workload"),
 			Annotations: mcp.Annotations{Title: "Restart a container", IdempotentHint: true, OpenWorldHint: true}, Handler: e.restart},
@@ -813,4 +819,45 @@ func (e mcpEnv) attachDatabase(ctx context.Context, call mcp.Call) (mcp.Result, 
 		return mcp.Result{}, err
 	}
 	return mcp.Result{Text: msg}, nil
+}
+
+func (e mcpEnv) restoreDatabase(ctx context.Context, call mcp.Call) (mcp.Result, error) {
+	m, in, err := e.session(ctx, call.Arguments, true)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	src, err := m.database(ctx, str(in["database"]))
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	body := map[string]any{"name": str(in["name"])}
+	if t := str(in["target_time"]); t != "" {
+		if _, err := time.Parse(time.RFC3339, t); err != nil {
+			return mcp.Result{}, errors.New(`"target_time" must be RFC 3339, e.g. 2026-11-18T10:30:00Z`)
+		}
+		body["target_time"] = t
+	}
+	var db databaseView
+	if err := m.cl.Do(ctx, http.MethodPost, dbPath(m.project)+"/"+url.PathEscape(src.ID)+"/restore", body, &db); err != nil {
+		return mcp.Result{}, err
+	}
+	deadline := e.now().Add(e.buildTimeout) // une restauration peut rejouer beaucoup de journal
+	for db.Status != "READY" {
+		if db.Status == "FAILED" {
+			return mcp.Result{Text: "The restore failed (no usable backup for that time?).", Structured: db, IsError: true}, nil
+		}
+		if e.now().After(deadline) {
+			return mcp.Result{Text: "The restore is still running; call list_databases later.", Structured: db}, nil
+		}
+		call.Progress(0, 0, "restoring")
+		select {
+		case <-ctx.Done():
+			return mcp.Result{}, ctx.Err()
+		case <-time.After(e.poll):
+		}
+		if err := m.cl.Do(ctx, http.MethodGet, dbPath(m.project)+"/"+url.PathEscape(db.ID), nil, &db); err != nil {
+			return mcp.Result{}, err
+		}
+	}
+	return mcp.Result{Text: fmt.Sprintf("Database %q restored from %q and ready. Use attach_database to switch a container to it.", db.Name, src.Name), Structured: db}, nil
 }

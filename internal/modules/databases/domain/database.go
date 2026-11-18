@@ -56,8 +56,12 @@ type Database struct {
 	StorageSize string    `gorm:"not null"`
 	Status      string    `gorm:"not null"`
 	CreatedBy   string    `gorm:"not null"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// RestoredFrom / RestoreTarget : base née des sauvegardes d'une autre,
+	// à cet instant (nil : le plus récent possible).
+	RestoredFrom  *uuid.UUID `gorm:"type:uuid"`
+	RestoreTarget *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func (Database) TableName() string { return "databases" }
@@ -98,6 +102,9 @@ type DatabaseView struct {
 	User        string    `json:"user"`
 	CreatedAt   time.Time `json:"created_at"`
 	Backups     Backups   `json:"backups"`
+	// RestoredFrom : base source si celle-ci est une restauration.
+	RestoredFrom  string     `json:"restored_from,omitempty"`
+	RestoreTarget *time.Time `json:"restore_target,omitempty"`
 }
 
 // Backups : sauvegardes continues (journal) et complètes (chaque nuit).
@@ -136,4 +143,17 @@ type AttachResponse struct {
 	WorkloadID string `json:"workload_id"`
 	Variable   string `json:"variable"`
 	Redeploy   bool   `json:"redeploy"`
+}
+
+var (
+	ErrNoBackup      = errors.New("this database has no completed backup to restore from")
+	ErrInvalidTarget = errors.New("the restore time must be in the past")
+)
+
+// RestoreRequest : nouvelle base, née des sauvegardes de la base :databaseID.
+type RestoreRequest struct {
+	ProjectID  string     `path:"id" binding:"required" description:"ID du projet"`
+	DatabaseID string     `path:"databaseID" binding:"required" description:"ID de la base de données"`
+	Name       string     `json:"name" binding:"required" description:"Nom de la nouvelle base (la base source n'est jamais modifiée)"`
+	TargetTime *time.Time `json:"target_time" description:"Instant à restaurer, RFC 3339 (défaut : le plus récent)"`
 }

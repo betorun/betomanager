@@ -1158,5 +1158,21 @@
  {
   "fr": "Brancher la base sur un conteneur",
   "en": "Attach the database to a container"
+ },
+ {
+  "fr": "Nom de la nouvelle base (la base source n'est jamais modifiée)",
+  "en": "Name of the new database (the source database is never changed)"
+ },
+ {
+  "fr": "Instant à restaurer, RFC 3339 (défaut : le plus récent)",
+  "en": "Instant to restore, RFC 3339 (default: the latest)"
+ },
+ {
+  "fr": "Restaurer dans une nouvelle base (dernier état ou instant donné ; la source n'est pas modifiée)",
+  "en": "Restore into a new database (latest state or a given instant; the source is not changed)"
+ },
+ {
+  "fr": "Restaurer dans une nouvelle base",
+  "en": "Restore into a new database"
  }
 ]

@@ -382,3 +382,84 @@ func TestBackupTargetFrom(t *testing.T) {
 		}
 	}
 }
+
+func TestRestore(t *testing.T) {
+	ctx, p := context.Background(), uuid.New()
+	fc := &fakeClusters{}
+	s, repo := svc(fc)
+	src, _ := s.Create(ctx, p, domain.CreateDatabaseRequest{Name: "main", StorageSize: "5Gi"}, "u")
+	srcID := uuid.MustParse(src.ID)
+
+	if _, err := s.Restore(ctx, p, srcID, "main-copy", nil, "u"); !errors.Is(err, domain.ErrNoBackup) {
+		t.Fatalf("sans sauvegarde : %v", err)
+	}
+	fc.state = ClusterState{Exists: true, ReadyInstance: true, BackupsEnabled: true,
+		LastBackup: &BackupState{Phase: "completed", StoppedAt: time.Now().Add(-time.Hour)}}
+	future := time.Now().Add(time.Hour)
+	if _, err := s.Restore(ctx, p, srcID, "main-copy", &future, "u"); !errors.Is(err, domain.ErrInvalidTarget) {
+		t.Fatalf("instant futur : %v", err)
+	}
+	if _, err := s.Restore(ctx, p, srcID, "main", nil, "u"); !errors.Is(err, domain.ErrNameTaken) {
+		t.Fatalf("nom pris : %v", err)
+	}
+	at := time.Now().Add(-30 * time.Minute)
+	v, err := s.Restore(ctx, p, srcID, "main-copy", &at, "u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := fc.created[len(fc.created)-1]
+	if last.Restore == nil || last.Restore.Cluster != "db-main" || !last.Restore.TargetTime.Equal(at) || last.Storage != "5Gi" {
+		t.Fatalf("spec de restauration : %+v", last)
+	}
+	if v.RestoredFrom != src.ID || repo.rows[uuid.MustParse(v.ID)].RestoredFrom == nil {
+		t.Fatalf("origine non enregistrée : %+v", v)
+	}
+	if repo.rows[srcID].Status == domain.StatusDeleting {
+		t.Fatal("la source ne doit jamais être touchée")
+	}
+}
+
+func TestCNPGRestoreObjects(t *testing.T) {
+	ctx := context.Background()
+	dyn := dynfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds)
+	c := &CNPG{Dynamic: dyn, Kube: kubefake.NewClientset()}
+	at := time.Date(2026, 11, 18, 10, 30, 0, 0, time.UTC)
+	spec := ClusterSpec{Name: "db-copy", DatabaseID: "d2", ProjectID: "p1", Storage: "1Gi",
+		Restore: &RestoreSource{Cluster: "db-main", TargetTime: &at}}
+	if err := c.Create(ctx, "km-demo", spec); !errors.Is(err, ErrBackupsDisabled) {
+		t.Fatalf("restauration sans sauvegardes configurées : %v", err)
+	}
+	c.Backup = &BackupTarget{Endpoint: "https://s3.example", Bucket: "db-backups", AccessKey: "a", SecretKey: "s", Retention: "7d", Schedule: "0 0 3 * * *"}
+	if err := c.Create(ctx, "km-demo", spec); err != nil {
+		t.Fatal(err)
+	}
+	obj, _ := dyn.Resource(ClusterGVR).Namespace("km-demo").Get(ctx, "db-copy", metav1.GetOptions{})
+	source, _, _ := unstructured.NestedString(obj.Object, "spec", "bootstrap", "recovery", "source")
+	target, _, _ := unstructured.NestedString(obj.Object, "spec", "bootstrap", "recovery", "recoveryTarget", "targetTime")
+	_, hasInitdb, _ := unstructured.NestedMap(obj.Object, "spec", "bootstrap", "initdb")
+	ext, _, _ := unstructured.NestedSlice(obj.Object, "spec", "externalClusters")
+	plugins, _, _ := unstructured.NestedSlice(obj.Object, "spec", "plugins")
+	if source != "origin" || target != "2026-11-18T10:30:00Z" || hasInitdb {
+		t.Fatalf("bootstrap : source=%q target=%q initdb=%v", source, target, hasInitdb)
+	}
+	params := ext[0].(map[string]any)["plugin"].(map[string]any)["parameters"].(map[string]any)
+	if params["barmanObjectName"] != "db-main-store" || params["serverName"] != "db-main" {
+		t.Fatalf("source des sauvegardes : %v", params)
+	}
+	own := plugins[0].(map[string]any)["parameters"].(map[string]any)["barmanObjectName"]
+	if own != "db-copy-store" {
+		t.Fatalf("la copie doit archiver dans son propre dépôt, pas dans celui de la source : %v", own)
+	}
+}
+
+func TestImageVersion(t *testing.T) {
+	for in, want := range map[string]string{
+		"ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie": "18.6",
+		"ghcr.io/cloudnative-pg/postgresql:17.6":               "17.6",
+		"localhost:5000/pg": "", "": "",
+	} {
+		if got := imageVersion(in); got != want {
+			t.Errorf("%q → %q, attendu %q", in, got, want)
+		}
+	}
+}

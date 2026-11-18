@@ -73,16 +73,58 @@ func (s *Service) Create(ctx context.Context, projectID uuid.UUID, in domain.Cre
 	if err := s.available(); err != nil {
 		return nil, err
 	}
-	name := strings.TrimSpace(in.Name)
-	if !domain.ValidName(name) {
-		return nil, domain.ErrInvalidName
-	}
 	size := strings.TrimSpace(in.StorageSize)
 	if size == "" {
 		size = domain.DefaultStorage
 	}
 	if !domain.AllowedStorage[size] {
 		return nil, domain.ErrInvalidStorage
+	}
+	return s.provision(ctx, projectID, strings.TrimSpace(in.Name), size, creator, nil, nil)
+}
+
+// Restore : NOUVELLE base née des sauvegardes de la base id, jusqu'à
+// target (nil : le plus récent). La source n'est jamais modifiée ; on
+// bascule ensuite les conteneurs avec Attach.
+func (s *Service) Restore(ctx context.Context, projectID, id uuid.UUID, name string, target *time.Time, creator string) (*domain.DatabaseView, error) {
+	if err := s.available(); err != nil {
+		return nil, err
+	}
+	if target != nil && target.After(time.Now()) {
+		return nil, domain.ErrInvalidTarget
+	}
+	src, err := s.Repo.Get(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	ns, err := s.namespace(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	st, err := s.Clusters.State(ctx, ns, src.ClusterName())
+	if err != nil {
+		return nil, err
+	}
+	if !st.BackupsEnabled || st.LastBackup == nil || !strings.EqualFold(st.LastBackup.Phase, "completed") {
+		return nil, domain.ErrNoBackup
+	}
+	if target != nil && !st.LastBackup.StoppedAt.IsZero() && target.Before(st.LastBackup.StoppedAt.Add(-retentionGuard)) {
+		// Antérieur à toute sauvegarde conservée probable : CloudNativePG
+		// échouerait plus tard, sans message clair. On ne bloque pas
+		// (des sauvegardes plus anciennes peuvent exister), on journalise.
+		s.Logger.Infow("database: restore target older than the last backup", "database", id, "target", target)
+	}
+	from := src.ID
+	return s.provision(ctx, projectID, strings.TrimSpace(name), src.StorageSize, creator,
+		&RestoreSource{Cluster: src.ClusterName(), TargetTime: target}, &from)
+}
+
+// retentionGuard : seuil du journal ci-dessus (indicatif).
+const retentionGuard = 7 * 24 * time.Hour
+
+func (s *Service) provision(ctx context.Context, projectID uuid.UUID, name, size, creator string, restore *RestoreSource, from *uuid.UUID) (*domain.DatabaseView, error) {
+	if !domain.ValidName(name) {
+		return nil, domain.ErrInvalidName
 	}
 	existing, err := s.Repo.List(ctx, projectID)
 	if err != nil {
@@ -101,14 +143,18 @@ func (s *Service) Create(ctx context.Context, projectID uuid.UUID, in domain.Cre
 		return nil, err
 	}
 	d := &domain.Database{ID: uuid.New(), ProjectID: projectID, Name: name, Engine: domain.EnginePostgres,
-		StorageSize: size, Status: domain.StatusProvisioning, CreatedBy: creator}
+		StorageSize: size, Status: domain.StatusProvisioning, CreatedBy: creator, RestoredFrom: from}
+	if restore != nil {
+		d.RestoreTarget = restore.TargetTime
+	}
 	if err := s.Repo.Create(ctx, d); err != nil {
 		return nil, err
 	}
-	if err := s.Clusters.Create(ctx, ns, ClusterSpec{Name: d.ClusterName(), DatabaseID: d.ID.String(), ProjectID: projectID.String(), Storage: size}); err != nil {
+	spec := ClusterSpec{Name: d.ClusterName(), DatabaseID: d.ID.String(), ProjectID: projectID.String(), Storage: size, Restore: restore}
+	if err := s.Clusters.Create(ctx, ns, spec); err != nil {
 		s.Logger.Errorw("database: cluster creation failed", "database", d.ID, "error", err)
 		_ = s.Repo.SetStatus(context.WithoutCancel(ctx), d.ID, domain.StatusFailed)
-		if errors.Is(err, ErrOperatorMissing) || errors.Is(err, ErrBackupPluginMissing) {
+		if errors.Is(err, ErrOperatorMissing) || errors.Is(err, ErrBackupPluginMissing) || errors.Is(err, ErrBackupsDisabled) {
 			return nil, domain.ErrUnavailable
 		}
 		return nil, fmt.Errorf("the database could not be created: %w", err)
@@ -250,13 +296,18 @@ func (s *Service) Attach(ctx context.Context, projectID, id, workloadID uuid.UUI
 }
 
 func view(d domain.Database, ns string, st ClusterState) domain.DatabaseView {
-	return domain.DatabaseView{
+	v := domain.DatabaseView{
 		ID: d.ID.String(), Name: d.Name, Engine: d.Engine, Version: imageVersion(st.Image),
 		StorageSize: d.StorageSize, Status: d.Status, Phase: st.Phase,
 		Host: d.ClusterName() + "-rw." + ns + ".svc", Port: domain.Port,
 		Database: domain.DatabaseName, User: domain.UserName, CreatedAt: d.CreatedAt,
 		Backups: backupsView(st),
 	}
+	if d.RestoredFrom != nil {
+		v.RestoredFrom = d.RestoredFrom.String()
+		v.RestoreTarget = d.RestoreTarget
+	}
+	return v
 }
 
 func backupsView(st ClusterState) domain.Backups {
@@ -271,12 +322,17 @@ func backupsView(st ClusterState) domain.Backups {
 	return b
 }
 
-// imageVersion : « ghcr.io/cloudnative-pg/postgresql:17.6 » → « 17.6 ».
+// imageVersion : « ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie » → « 18.6 ».
 func imageVersion(image string) string {
-	if i := strings.LastIndexByte(image, ':'); i >= 0 && !strings.Contains(image[i:], "/") {
-		return image[i+1:]
+	i := strings.LastIndexByte(image, ':')
+	if i < 0 || strings.Contains(image[i:], "/") {
+		return ""
 	}
-	return ""
+	tag := image[i+1:]
+	if j := strings.IndexByte(tag, '-'); j > 0 {
+		tag = tag[:j]
+	}
+	return tag
 }
 
 // ── Postgres ───────────────────────────────────────────────────────────────

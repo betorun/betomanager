@@ -96,6 +96,12 @@ func addDatabaseRoutes(app *App) {
 		g.Perm(iam.DatabasesConnect, db), tonic.Handler(r.Attach, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "attach_database", Write: true, Risk: tools.RiskMedium,
 			Hint: "Sets the connection URI (password included) as a SECRET variable of the container, DATABASE_URL by default, and redeploys it. The URI never goes through you."})
+	// Restauration : nouvelle base née des sauvegardes de :databaseID (create
+	// sur le projet ; le contrôleur vérifie aussi get sur la source).
+	dbs.AddRoute("/:databaseID/restore", http.MethodPost, "Restaurer dans une nouvelle base (dernier état ou instant donné ; la source n'est pas modifiée)",
+		g.Perm(iam.DatabasesCreate, project), tonic.Handler(r.Restore, http.StatusCreated)).
+		ForCopilot(CopilotTool{Name: "restore_database", Write: true, Risk: tools.RiskLow,
+			Hint: "Creates a NEW database from the backups of this one (latest state, or target_time in RFC 3339). The source is never changed. Then attach_database switches a container to the copy."})
 	dbs.AddRoute("/:databaseID", http.MethodDelete, "Supprimer une base (ses données sont perdues)", g.Perm(iam.DatabasesDelete, db),
 		tonic.Handler(r.Delete, http.StatusNoContent))
 }
