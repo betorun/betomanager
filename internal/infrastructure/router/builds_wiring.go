@@ -2,6 +2,11 @@ package router
 
 import (
 	"errors"
+	"fmt"
+
+	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/thekrauss/kubemanager/internal/modules/builds/images"
 
 	"github.com/thekrauss/kubemanager/internal/modules/builds"
 	buildActs "github.com/thekrauss/kubemanager/internal/modules/builds/activities"
@@ -31,6 +36,10 @@ func (a *App) newBuildController() (*builds.Controller, error) {
 	if err != nil {
 		return nil, err
 	}
+	keeper, err := a.imageKeeper(issuer)
+	if err != nil {
+		return nil, err
+	}
 	return &builds.Controller{
 		Service: &buildsSvc.Service{
 			Repo:        buildsRepo.New(a.DB),
@@ -39,6 +48,7 @@ func (a *App) newBuildController() (*builds.Controller, error) {
 			K8s:         a.K8sProvider.Client,
 			Creds:       registry.Credentials{Secret: []byte(c.Secret)},
 			Issuer:      issuer,
+			Images:      keeper,
 			Cfg: buildsSvc.Config{Namespace: c.Namespace, RegistryHost: c.RegistryHost,
 				MaxArchiveBytes: c.MaxArchiveBytes, MaxConcurrent: c.MaxConcurrent, Deadline: c.Timeout},
 			Logger: a.Logger,
@@ -92,8 +102,39 @@ func (a *App) buildActivities() *buildActs.Activities {
 	if n := a.alertNotifier(); n != nil {
 		acts.Alerts = n
 	}
+	if issuer, err := registry.NewIssuer(c.TokenIssuer, c.RegistryService, c.TokenCertFile, c.TokenKeyFile); err != nil {
+		a.Logger.Warnw("image pruning disabled: registry token key unavailable", "error", err)
+	} else if keeper, err := a.imageKeeper(issuer); err != nil {
+		a.Logger.Warnw("image pruning disabled", "error", err)
+	} else {
+		acts.Images = keeper
+	}
 	if a.GitHub.Enabled() {
 		acts.Git = a.GitHub
 	}
 	return acts
+}
+
+// imageKeeper : taille, ménage et quota des images du registre de la plateforme.
+func (a *App) imageKeeper(issuer *registry.Issuer) (*images.Keeper, error) {
+	c := a.Config.Builds.WithDefaults()
+	quota := images.DefaultQuota
+	if c.ProjectImageQuota != "" {
+		q, err := resource.ParseQuantity(c.ProjectImageQuota)
+		if err != nil {
+			return nil, fmt.Errorf("builds.project_image_quota: %w", err)
+		}
+		quota = q.Value()
+		if quota == 0 {
+			quota = -1 // "0" : sans quota
+		}
+	}
+	return &images.Keeper{
+		Store:    buildsRepo.NewImageStore(a.DB),
+		Registry: &registry.Client{BaseURL: c.RegistryAPIURL, Issuer: issuer},
+		Host:     c.RegistryHost,
+		Keep:     c.KeepImages,
+		Quota:    quota,
+		Logger:   a.Logger.With("component", "images"),
+	}, nil
 }

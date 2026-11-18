@@ -145,9 +145,17 @@ type BuildsConfig struct {
 	// RegistryHost : registre vu par les Jobs et les nœuds (ex. registry.betorun.app).
 	RegistryHost string `mapstructure:"registry_host"`
 	// RegistryInsecure : registre en HTTP, développement uniquement.
-	RegistryInsecure bool   `mapstructure:"registry_insecure"`
-	RegistryService  string `mapstructure:"registry_service"`
-	TokenIssuer      string `mapstructure:"token_issuer"`
+	RegistryInsecure bool `mapstructure:"registry_insecure"`
+	// RegistryAPIURL : registre vu par l'API et le worker (taille et ménage des
+	// images) ; défaut : https://<registry_host> (http si registry_insecure).
+	RegistryAPIURL string `mapstructure:"registry_api_url"`
+	// KeepImages : images gardées par dépôt, en plus de celles en ligne (défaut 5).
+	KeepImages int `mapstructure:"keep_images"`
+	// ProjectImageQuota : espace d'images par projet, quantité Kubernetes
+	// (défaut 5Gi ; "0" : sans quota).
+	ProjectImageQuota string `mapstructure:"project_image_quota"`
+	RegistryService   string `mapstructure:"registry_service"`
+	TokenIssuer       string `mapstructure:"token_issuer"`
 	// Certificat et clé ECDSA P-256 des jetons du registre (rootcertbundle
 	// du registre = ce certificat).
 	TokenCertFile string `mapstructure:"token_cert_file"`
@@ -194,6 +202,13 @@ func (c BuildsConfig) WithDefaults() BuildsConfig {
 	}
 	if c.MaxConcurrent == 0 {
 		c.MaxConcurrent = 2
+	}
+	if c.RegistryAPIURL == "" && c.RegistryHost != "" {
+		scheme := "https://"
+		if c.RegistryInsecure {
+			scheme = "http://"
+		}
+		c.RegistryAPIURL = scheme + c.RegistryHost
 	}
 	if c.Timeout == 0 {
 		c.Timeout = 30 * time.Minute
@@ -279,13 +294,13 @@ type ServerConfig struct {
 }
 
 type DBConfig struct {
-	Driver         string `mapstructure:"driver"`
-	Host           string `mapstructure:"host"`
-	Port           int    `mapstructure:"port"`
-	User           string `mapstructure:"user"`
-	Password       string `mapstructure:"password"`
-	Name           string `mapstructure:"name"`
-	SSLMode        string `mapstructure:"sslmode"`
+	Driver   string `mapstructure:"driver"`
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Name     string `mapstructure:"name"`
+	SSLMode  string `mapstructure:"sslmode"`
 	// Pool par processus (0 : défauts de database.PoolDefaults). La somme des
 	// processus doit rester sous max_connections de Postgres.
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`

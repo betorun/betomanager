@@ -33,6 +33,8 @@ const (
 	FailureGitAccess = "GIT_ACCESS_LOST"
 	// FailureTooMany : trop de builds en cours quand le push est arrivé.
 	FailureTooMany = "TOO_MANY_BUILDS"
+	// FailureImageQuota : quota d'images du projet atteint quand le push est arrivé.
+	FailureImageQuota = "IMAGE_QUOTA"
 	// FailureSuperseded : annulé au profit d'un commit plus récent de la branche.
 	FailureSuperseded = "SUPERSEDED"
 )
@@ -84,6 +86,10 @@ type Build struct {
 	Failure    string    `gorm:"not null" json:"failure,omitempty"`
 	Image      string    `gorm:"not null" json:"image"`
 	Digest     string    `gorm:"not null" json:"digest,omitempty"`
+	// ImageSize : taille compressée de l'image dans le registre (octets).
+	ImageSize int64 `gorm:"not null;default:0" json:"image_size,omitempty"`
+	// ImagePrunedAt : image retirée du registre (ménage des anciennes versions).
+	ImagePrunedAt *time.Time `json:"image_pruned_at,omitempty"`
 	// Detected : type de projet détecté sans Dockerfile (next, node, fastapi…).
 	Detected string `gorm:"not null" json:"detected,omitempty"`
 	// GitCommit : commit exact construit (voie GitHub).
@@ -173,6 +179,7 @@ var (
 	ErrInvalidPath       = errors.New("invalid path: it must stay inside the source")
 	ErrInvalidArchive    = errors.New("the archive must be a .tar.gz file")
 	ErrTooManyBuilds     = errors.New("too many builds in progress for this project: wait for one to finish")
+	ErrImageQuota        = errors.New("the images of this project use all of its image storage, even keeping only the latest version of each: reduce the size of your images")
 	ErrBuildNotFound     = errors.New("build not found")
 	ErrBuildFinished     = errors.New("this build is already finished")
 	ErrBuildsDisabled    = errors.New("builds are not enabled on this platform")
@@ -195,6 +202,12 @@ var (
 )
 
 // ValidCommit : empreinte SHA-1 complète d'un commit Git.
+// Rejected : build refusé à la soumission (trop de builds en cours, quota
+// d'images atteint).
+func Rejected(err error) bool {
+	return errors.Is(err, ErrTooManyBuilds) || errors.Is(err, ErrImageQuota)
+}
+
 func ValidCommit(sha string) bool { return shaRe.MatchString(sha) }
 
 // ValidateName : devient un segment du nom de l'image.

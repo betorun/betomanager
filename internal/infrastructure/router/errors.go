@@ -113,6 +113,7 @@ var sentinelErrors = []sentinelMapping{
 	{buildsDomain.ErrInvalidGitRef, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{buildsDomain.ErrInvalidPath, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{buildsDomain.ErrTooManyBuilds, http.StatusTooManyRequests, "TOO_MANY_BUILDS", false},
+	{buildsDomain.ErrImageQuota, http.StatusConflict, "IMAGE_QUOTA", false},
 	{buildsDomain.ErrBuildNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{buildsDomain.ErrBuildFinished, http.StatusConflict, "BUILD_FINISHED", false},
 	{buildsDomain.ErrForeignImage, http.StatusForbidden, "FOREIGN_IMAGE", false},

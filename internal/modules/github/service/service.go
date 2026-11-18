@@ -437,7 +437,7 @@ func (s *Service) CreateWorkload(ctx context.Context, caller iam.Principal, proj
 		return nil, err
 	}
 	build, err := s.startBuild(ctx, w, link, commit, buildsDomain.TriggerManual, by, true)
-	if errors.Is(err, buildsDomain.ErrTooManyBuilds) && build != nil {
+	if buildsDomain.Rejected(err) && build != nil {
 		// Trace visible, le conteneur n'attend plus rien : même état qu'un échec.
 		if err := s.Workloads.MarkBuildFailed(ctx, project, w.ID); err != nil {
 			s.Logger.Warnw("github workload not marked as failed", "workload", w.ID, "error", err)
@@ -731,7 +731,7 @@ func (s *Service) buildForPush(ctx context.Context, link *domain.Link, commit st
 		s.Logger.Errorw("github push: container not updated", "workload", link.WorkloadID, "error", err)
 	}
 	if _, err := s.startBuild(ctx, w, link, commit, buildsDomain.TriggerPush, nil, true); err != nil {
-		if errors.Is(err, buildsDomain.ErrTooManyBuilds) {
+		if buildsDomain.Rejected(err) {
 			if markErr := s.Workloads.MarkBuildFailed(ctx, link.ProjectID, w.ID); markErr != nil {
 				s.Logger.Warnw("github workload not marked as failed", "workload", w.ID, "error", markErr)
 			}
