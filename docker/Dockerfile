@@ -4,7 +4,7 @@
 #
 # Sur une petite machine, borner la compilation :
 #   docker build --build-arg GOMAXPROCS=3 --build-arg GOMEMLIMIT=3GiB --build-arg GOFLAGS=-p=3 ...
-FROM golang:1.27.3-alpine3.23 AS build
+FROM golang:1.27.4-alpine3.23 AS build
 ARG GOMAXPROCS=
 ARG GOMEMLIMIT=
 ARG GOFLAGS=
