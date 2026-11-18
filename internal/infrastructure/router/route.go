@@ -197,7 +197,10 @@ func addWorkloadRoutes(app *App) {
 	on := func(p iam.Permission) Access { return g.Perm(p, workload) }
 
 	WorkloadGroup.AddRoute("", http.MethodPost, "Déployer un nouveau conteneur",
-		g.Perm(iam.WorkloadsCreate, security.ProjectJSONBody("project_id")), tonic.Handler(r.CreateWorkload, http.StatusAccepted))
+		g.Perm(iam.WorkloadsCreate, security.ProjectJSONBody("project_id")), tonic.Handler(r.CreateWorkload, http.StatusAccepted)).
+		ForCopilot(CopilotTool{Name: "create_workload", Write: true, Risk: tools.RiskLow,
+			Only: []string{"project_id", "name", "image", "target_port", "env_vars", "replicas", "health_path"},
+			Hint: "Deploys a new container from an image. For an image built by betorun, use the build's image field and target_port 8080 (betorun builds listen on 8080). Secrets are set by the person in the console."})
 	WorkloadGroup.AddRoute("", http.MethodGet, "Lister les conteneurs d'un projet",
 		g.Perm(iam.WorkloadsList, security.ProjectQuery("project_id")), tonic.Handler(r.ListWorkloads, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "list_workloads", Hint: "project_id is required (see list_projects)."})
@@ -307,7 +310,9 @@ func addBuildRoutes(app *App) {
 
 	b.AddRoute("", http.MethodGet, "Lister les builds récents", g.Perm(iam.BuildsList, project), tonic.Handler(r.List, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "list_builds"})
-	b.AddRoute("", http.MethodPost, "Construire depuis un dépôt Git public", g.Perm(iam.BuildsCreate, project), tonic.Handler(r.CreateFromGit, http.StatusAccepted))
+	b.AddRoute("", http.MethodPost, "Construire depuis un dépôt Git public", g.Perm(iam.BuildsCreate, project), tonic.Handler(r.CreateFromGit, http.StatusAccepted)).
+		ForCopilot(CopilotTool{Name: "build_from_git", Write: true, Risk: tools.RiskLow,
+			Hint: "Public HTTPS repository. No Dockerfile needed for Next.js, Vite/React/Vue/Angular/Astro, Node, Django, FastAPI, Flask, Streamlit or static sites (detected automatically). Once validated, the console follows the build live and tells you how it ended."})
 	// Upload multipart (champs archive, name, dockerfile) : hors tonic.
 	b.AddRoute("/upload", http.MethodPost, "Construire depuis une archive .tar.gz (multipart : archive, name, dockerfile)", g.Perm(iam.BuildsCreate, project), wrapRawHandler(r.Upload)).
 		Documented(RawDoc{Input: buildsDomain.UploadPath{}, Status: http.StatusAccepted, Produces: MIMEJSON, Output: buildsDomain.Build{},

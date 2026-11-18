@@ -32,6 +32,8 @@ type CopilotTool struct {
 	Risk  tools.Risk
 	// Omit : champs du corps cachés au modèle (ex. secrets).
 	Omit []string
+	// Only : seuls champs du corps exposés (prioritaire sur Omit).
+	Only []string
 	// Undo : outil inverse (mêmes paramètres de chemin).
 	Undo string
 }
@@ -57,7 +59,7 @@ func CopilotRoutes(groups []*RouteGroup) []tools.Route {
 			out = append(out, tools.Route{
 				Name: r.Copilot.Name, Method: r.Method, Path: buildFullPath(absPath, r.Path),
 				Fixed: r.Copilot.Fixed, Max: r.Copilot.Max, Hint: r.Copilot.Hint,
-				Write: r.Copilot.Write, Risk: r.Copilot.Risk, Omit: r.Copilot.Omit, Undo: r.Copilot.Undo,
+				Write: r.Copilot.Write, Risk: r.Copilot.Risk, Omit: r.Copilot.Omit, Only: r.Copilot.Only, Undo: r.Copilot.Undo,
 				Sensitive: info.Sensitive,
 			})
 		}

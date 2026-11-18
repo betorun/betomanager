@@ -205,6 +205,9 @@ func TestApproveOnceWithWriteTokenThenUndo(t *testing.T) {
 	if m.scopes[len(m.scopes)-1] != sts.ScopeWrite {
 		t.Fatal("jeton d'écriture attendu à la validation")
 	}
+	if string(out.Result) != `{"status":"ok"}` {
+		t.Fatalf("résultat de la route : %s", out.Result)
+	}
 	if out.Undo == nil || out.Undo.Tool != "start_workload" || !out.Undo.Undo {
 		t.Fatalf("carte d'annulation : %+v", out.Undo)
 	}

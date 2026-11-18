@@ -52,7 +52,7 @@ func TestCopilotToolsReadsAndWrites(t *testing.T) {
 		require.False(t, r.Sensitive, r.Name)
 		require.NotEmpty(t, r.Risk, r.Name)
 	}
-	require.GreaterOrEqual(t, writes, 8)
+	require.GreaterOrEqual(t, writes, 10)
 
 	spec, err := publicSpec(documentedAPI(t).Generator().API(), i18n.EN)
 	require.NoError(t, err)
@@ -62,4 +62,17 @@ func TestCopilotToolsReadsAndWrites(t *testing.T) {
 	require.True(t, ok)
 	require.NotContains(t, string(vars.Schema), "secrets", "valeur secrète jamais confiée au modèle")
 	require.Contains(t, string(vars.Schema), `"env"`)
+
+	// Création de conteneur : liste blanche (ni secret_data, ni compte de
+	// service, ni stockage, ni exécution en root).
+	create, ok := cat.Lookup("create_workload")
+	require.True(t, ok)
+	for _, hidden := range []string{"secret_data", "service_account", "run_as_user", "persistence_enabled", "service_type"} {
+		require.NotContains(t, string(create.Schema), `"`+hidden+`"`, hidden)
+	}
+	for _, shown := range []string{"project_id", "name", "image", "target_port", "env_vars"} {
+		require.Contains(t, string(create.Schema), `"`+shown+`"`, shown)
+	}
+	_, ok = cat.Lookup("build_from_git")
+	require.True(t, ok)
 }

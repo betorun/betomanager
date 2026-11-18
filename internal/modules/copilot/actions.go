@@ -73,6 +73,11 @@ func (r *boundRunner) target(ctx context.Context, t *tools.Tool, p *tools.Prepar
 	case strings.Contains(t.Path, ":buildID"):
 		tool, args["id"], args["buildID"] = "get_build", p.Args["id"], p.Args["buildID"]
 	default:
+		// Création (build, conteneur) : la ressource n'existe pas encore ; son
+		// nom suffit, la route vérifiera les droits sur le projet.
+		if name := scalarString(p.Args["name"]); name != "" {
+			return name, nil
+		}
 		return "", nil
 	}
 	raw, _ := json.Marshal(args)
@@ -122,6 +127,9 @@ type ActionResult struct {
 	Message    string `json:"message,omitempty"`
 	// Undo : carte inverse, prête à être validée (ex. redémarrer après un arrêt).
 	Undo *View `json:"undo,omitempty"`
+	// Result : réponse JSON de la route en cas de succès (ex. le build lancé,
+	// que la console suit en direct), bornée.
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 // actionError : refus avant exécution (introuvable, déjà traitée…).
@@ -213,11 +221,16 @@ func (h *Controller) Approve(c *gin.Context) {
 	if res.IsError {
 		out.Status, outcome = "failed", "failed"
 		out.Message = errorMessage(res.Content)
+	} else if len(res.Content) <= resultLimit && json.Valid([]byte(res.Content)) {
+		out.Result = json.RawMessage(res.Content)
 	}
 	actionsTotal.WithLabelValues(p.Request.Tool, outcome).Inc()
 
-	s.note(context.WithoutCancel(ctx), userID, p.ConversationID,
-		fmt.Sprintf("[The person validated the action %s on %q: %s (HTTP %d).]", p.Request.Tool, p.Target, out.Status, res.Status))
+	note := fmt.Sprintf("[The person validated the action %s on %q: %s (HTTP %d)", p.Request.Tool, p.Target, out.Status, res.Status)
+	if id := resultID(out.Result); id != "" {
+		note += ", resource id " + id // pour les outils de lecture du tour suivant
+	}
+	s.note(context.WithoutCancel(ctx), userID, p.ConversationID, note+".]")
 
 	if !res.IsError {
 		if inverse := cat.Inverse(&p.Request); inverse != nil {
@@ -271,6 +284,24 @@ func (h *Controller) Reject(c *gin.Context) {
 	c.JSON(http.StatusOK, ActionResult{Status: "rejected"})
 }
 
+// resultLimit : au-delà, la réponse n'est pas renvoyée à la console.
+const resultLimit = 8 << 10
+
+// resultID : identifiant de la ressource créée (build, conteneur), s'il y en a un.
+func resultID(raw json.RawMessage) string {
+	var v struct {
+		ID         string `json:"id"`
+		WorkloadID string `json:"workload_id"`
+	}
+	if json.Unmarshal(raw, &v) != nil {
+		return ""
+	}
+	if v.ID != "" {
+		return v.ID
+	}
+	return v.WorkloadID
+}
+
 func errorMessage(content string) string {
 	var e struct {
 		Message string `json:"message"`
@@ -281,4 +312,9 @@ func errorMessage(content string) string {
 		return e.Message
 	}
 	return e.Code
+}
+
+func scalarString(v any) string {
+	s, _ := v.(string)
+	return strings.TrimSpace(s)
 }

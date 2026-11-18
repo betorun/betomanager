@@ -55,6 +55,10 @@ type Route struct {
 	// Omit : champs du corps retirés du schéma (ex. « secrets » : une valeur
 	// secrète ne transite jamais par le modèle).
 	Omit []string
+	// Only : liste blanche des champs du corps exposés (prioritaire sur Omit).
+	// Pour les créations : le modèle ne règle que l'essentiel, le reste garde
+	// les valeurs par défaut de l'API.
+	Only []string
 	// Undo : outil inverse, rejoué avec les mêmes paramètres de chemin
 	// (ex. stop_workload ↔ start_workload).
 	Undo string
@@ -321,6 +325,20 @@ func addBody(t *Tool, op specOperation, components map[string]json.RawMessage, p
 	omit := map[string]bool{}
 	for _, o := range t.Omit {
 		omit[o] = true
+	}
+	if len(t.Only) > 0 {
+		only := map[string]bool{}
+		for _, o := range t.Only {
+			only[o] = true
+			if _, ok := body.Properties[o]; !ok {
+				return fmt.Errorf("copilot: outil %q : champ %q absent du corps", t.Name, o)
+			}
+		}
+		for name := range body.Properties {
+			if !only[name] {
+				omit[name] = true
+			}
+		}
 	}
 	for name, s := range body.Properties {
 		if omit[name] {
