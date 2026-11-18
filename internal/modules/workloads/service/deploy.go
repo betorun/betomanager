@@ -478,22 +478,26 @@ func (s *WorkloadService) Update(ctx context.Context, id string, req domain.Upda
 		current.StorageSize, spec.StorageSize = req.StorageSize, req.StorageSize
 	}
 
-	if current.EnvRevision, _, err = s.applyVariables(ctx, current, variables); err != nil {
-		return err
-	}
-
 	raw, err := json.Marshal(spec)
 	if err != nil {
 		return err
 	}
-	in, err := s.inputFor(ctx, current, spec)
+	edit, err := s.applyVariables(ctx, current, variables)
 	if err != nil {
 		return err
 	}
-	// Le workflow d'abord : si un autre déploiement a pris la place ou si
-	// Temporal est indisponible, la base ne doit pas annoncer une version qui ne
-	// sera jamais déployée.
-	if err := s.startDeploy(ctx, current, in); err != nil {
+	current.EnvRevision = edit.revision
+	in, err := s.inputFor(ctx, current, spec)
+	if err == nil {
+		// Le workflow d'abord : si un autre déploiement a pris la place ou si
+		// Temporal est indisponible, la base ne doit pas annoncer une version
+		// qui ne sera jamais déployée.
+		err = s.startDeploy(ctx, current, in)
+	}
+	if err != nil {
+		// Refusée : les variables ne doivent pas survivre à la requête (le
+		// déploiement gagnant les aurait lues et déployées).
+		s.undoVariables(ctx, current.ID, edit)
 		return err
 	}
 	// Lancé : la nouvelle version est enregistrée même si la requête s'interrompt.
@@ -530,19 +534,52 @@ func (s *WorkloadService) ensureNoDeployRunning(ctx context.Context, id uuid.UUI
 	return nil
 }
 
+// variableEdit : modification appliquée, et de quoi l'annuler.
+type variableEdit struct {
+	before   domain.VariableSnapshot
+	revision int64
+	changed  bool
+}
+
 // applyVariables : importe au besoin les variables d'un conteneur antérieur,
-// puis applique la modification. Renvoie la révision à déployer.
-func (s *WorkloadService) applyVariables(ctx context.Context, w *domain.Workload, change domain.VariableChange) (int64, bool, error) {
+// puis applique la modification si personne n'a écrit depuis la lecture : de
+// deux requêtes concurrentes, la seconde est refusée sans rien écrire.
+func (s *WorkloadService) applyVariables(ctx context.Context, w *domain.Workload, change domain.VariableChange) (variableEdit, error) {
 	if w.EnvRevision == 0 {
 		legacy, err := s.currentEnv(ctx, w)
 		if err != nil {
-			return 0, false, err
+			return variableEdit{}, err
 		}
 		if _, err := s.Variables.Import(ctx, w.ID, legacy); err != nil {
-			return 0, false, err
+			return variableEdit{}, err
 		}
 	}
-	return s.Variables.Apply(ctx, w.ID, change)
+	before, err := s.Variables.Snapshot(ctx, w.ID)
+	if err != nil {
+		return variableEdit{}, err
+	}
+	change.IfRevision = before.Revision
+	revision, changed, err := s.Variables.Apply(ctx, w.ID, change)
+	if errors.Is(err, repository.ErrRevisionChanged) {
+		return variableEdit{}, domain.ErrDeployInProgress
+	}
+	if err != nil {
+		return variableEdit{}, err
+	}
+	return variableEdit{before: before, revision: revision, changed: changed}, nil
+}
+
+// undoVariables : remet les valeurs d'avant une modification dont le
+// déploiement n'a pas démarré. Si une autre écriture l'a suivie, elle est
+// laissée en place.
+func (s *WorkloadService) undoVariables(ctx context.Context, id uuid.UUID, edit variableEdit) {
+	if !edit.changed {
+		return
+	}
+	s.compensate(ctx, "workload variables not restored", id, func(ctx context.Context) error {
+		_, err := s.Variables.Restore(ctx, id, edit.before, edit.revision)
+		return err
+	})
 }
 
 // ListVariables : variables du conteneur, sans la valeur des secrets.
@@ -584,15 +621,18 @@ func (s *WorkloadService) PatchVariables(ctx context.Context, id uuid.UUID, req 
 	if err := change.Validate(); err != nil {
 		return nil, err
 	}
-	var changed bool
-	if current.EnvRevision, changed, err = s.applyVariables(ctx, current, change); err != nil {
+	edit, err := s.applyVariables(ctx, current, change)
+	if err != nil {
 		return nil, err
 	}
+	current.EnvRevision = edit.revision
+	changed := edit.changed
 	// Sans image : la valeur sera prise en compte au premier déploiement.
 	// Renvoyer les mêmes valeurs ne change rien, mais doit relancer un
 	// déploiement qui n'a jamais eu lieu (échec au lancement).
 	if (changed || s.revisionBehind(ctx, current)) && current.Image != "" {
 		if err := s.redeploy(ctx, current); err != nil {
+			s.undoVariables(ctx, current.ID, edit)
 			return nil, err
 		}
 	}

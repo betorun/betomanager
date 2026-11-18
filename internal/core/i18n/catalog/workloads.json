@@ -80,6 +80,10 @@
   "en": "this container is stopped: start it before changing its variables"
  },
  {
+  "fr": "Les variables ont été modifiées par une autre requête",
+  "en": "variables changed concurrently"
+ },
+ {
   "fr": "Un déploiement de ce conteneur est en cours : attendez qu'il se termine",
   "en": "a deployment of this container is in progress: wait for it to finish"
  },

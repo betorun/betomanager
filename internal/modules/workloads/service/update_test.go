@@ -87,6 +87,23 @@ type fakeVariables struct {
 	secrets  map[string]bool
 	imported map[string]string
 	applied  []domain.VariableChange
+	// restored : révisions demandées à Restore. racer : écriture concurrente
+	// glissée entre la lecture et l'écriture.
+	restored []int64
+	racer    func()
+}
+
+func (f *fakeVariables) Snapshot(context.Context, uuid.UUID) (domain.VariableSnapshot, error) {
+	return domain.VariableSnapshot{Revision: f.revision}, nil
+}
+
+func (f *fakeVariables) Restore(_ context.Context, _ uuid.UUID, _ domain.VariableSnapshot, ifRevision int64) (int64, error) {
+	if f.revision != ifRevision {
+		return 0, repository.ErrRevisionChanged
+	}
+	f.restored = append(f.restored, ifRevision)
+	f.revision++
+	return f.revision, nil
 }
 
 func (f *fakeVariables) Import(_ context.Context, _ uuid.UUID, v map[string]string) (int64, error) {
@@ -98,6 +115,12 @@ func (f *fakeVariables) Import(_ context.Context, _ uuid.UUID, v map[string]stri
 }
 
 func (f *fakeVariables) Apply(_ context.Context, _ uuid.UUID, c domain.VariableChange) (int64, bool, error) {
+	if f.racer != nil {
+		f.racer()
+	}
+	if c.IfRevision != 0 && c.IfRevision != f.revision {
+		return 0, false, repository.ErrRevisionChanged
+	}
 	f.applied = append(f.applied, c)
 	changed := len(c.Env)+len(c.Secrets)+len(c.Unset) > 0
 	if changed || f.revision == 0 {
@@ -789,4 +812,67 @@ type noChangeVariables struct{ fakeVariables }
 
 func (f *noChangeVariables) Apply(context.Context, uuid.UUID, domain.VariableChange) (int64, bool, error) {
 	return f.revision, false, nil
+}
+
+// Une autre requête a écrit les variables entre la lecture et l'écriture : la
+// seconde est refusée sans rien écrire ni lancer.
+func TestUpdate_ConcurrentVariablesWriteRefused(t *testing.T) {
+	s, repo, id := stuckUpdate(t, nil)
+	repo.w.EnvRevision = 3
+	vars := &fakeVariables{revision: 3}
+	vars.racer = func() { vars.revision++; vars.racer = nil }
+	s.Variables = vars
+
+	err := s.Update(context.Background(), id.String(), domain.UpdateWorkloadRequest{EnvVars: map[string]string{"A": "perdant"}})
+	require.ErrorIs(t, err, domain.ErrDeployInProgress)
+	assert.Empty(t, vars.applied, "rien écrit")
+	assert.Empty(t, s.Distributor.(*fakeDistributor).started)
+	assert.Nil(t, repo.spec)
+}
+
+// Variables écrites, puis déploiement refusé (409) : elles sont annulées, sinon
+// le déploiement gagnant les lirait et les déploierait.
+func TestUpdate_LostRaceRestoresVariables(t *testing.T) {
+	s, _, id := stuckUpdate(t, fmt.Errorf("execute workflow: %w",
+		serviceerror.NewWorkflowExecutionAlreadyStarted("started", "", "run")))
+	vars := &fakeVariables{revision: 3}
+	s.Variables = vars
+	err := s.Update(context.Background(), id.String(), domain.UpdateWorkloadRequest{EnvVars: map[string]string{"A": "perdant"}})
+	require.ErrorIs(t, err, domain.ErrDeployInProgress)
+	assert.Equal(t, []int64{4}, vars.restored, "la révision écrite est annulée")
+	assert.EqualValues(t, 5, vars.revision, "l'annulation prend une révision neuve")
+}
+
+// Une écriture a suivi la nôtre : l'annulation ne l'écrase pas.
+func TestUpdate_UndoKeepsLaterWrite(t *testing.T) {
+	s, _, id := stuckUpdate(t, errors.New("temporal down"))
+	vars := &fakeVariables{revision: 3}
+	s.Variables = vars
+	s.Distributor = writeThenFail{fakeDistributor: &fakeDistributor{startErr: errors.New("temporal down")}, vars: vars}
+	require.Error(t, s.Update(context.Background(), id.String(), domain.UpdateWorkloadRequest{EnvVars: map[string]string{"A": "b"}}))
+	assert.Empty(t, vars.restored)
+	assert.EqualValues(t, 5, vars.revision)
+}
+
+// writeThenFail : une autre requête écrit les variables pendant le lancement.
+type writeThenFail struct {
+	*fakeDistributor
+	vars *fakeVariables
+}
+
+func (w writeThenFail) ExecuteWorkflow(ctx context.Context, o temporal.ExecuteOptions, wf any, a ...any) (temporal.WorkflowHandle, error) {
+	w.vars.revision++
+	return w.fakeDistributor.ExecuteWorkflow(ctx, o, wf, a...)
+}
+
+// Même règle pour PatchVariables : redéploiement refusé, valeurs annulées.
+func TestPatchVariables_LostRaceRestoresVariables(t *testing.T) {
+	s, _, id := stuckUpdate(t, fmt.Errorf("execute workflow: %w",
+		serviceerror.NewWorkflowExecutionAlreadyStarted("started", "", "run")))
+	vars := &fakeVariables{revision: 1}
+	s.Variables = vars
+	s.Repo.(*fakeRepo).w.EnvRevision = 1
+	_, err := s.PatchVariables(context.Background(), id, domain.PatchVariablesRequest{Secrets: map[string]string{"A": "b"}})
+	require.ErrorIs(t, err, domain.ErrDeployInProgress)
+	assert.Equal(t, []int64{2}, vars.restored)
 }

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,7 +31,17 @@ type VariableStore interface {
 	// Import : variables d'un conteneur antérieur, sans effet s'il a déjà une
 	// révision. Toutes marquées secrètes : rien ne dit lesquelles le sont.
 	Import(ctx context.Context, workload uuid.UUID, values map[string]string) (int64, error)
+	// Snapshot : état courant, lu de façon cohérente (révision et lignes).
+	Snapshot(ctx context.Context, workload uuid.UUID) (domain.VariableSnapshot, error)
+	// Restore : remet les lignes de snap sous une nouvelle révision (jamais
+	// l'ancienne : des pods la portent peut-être avec d'autres valeurs), à
+	// condition que la révision vaille encore ifRevision. Sinon
+	// ErrRevisionChanged et rien n'est touché.
+	Restore(ctx context.Context, workload uuid.UUID, snap domain.VariableSnapshot, ifRevision int64) (int64, error)
 }
+
+// ErrRevisionChanged : une autre écriture est passée depuis la lecture.
+var ErrRevisionChanged = errors.New("variables changed concurrently")
 
 type gormVariableStore struct {
 	db     *gorm.DB
@@ -111,6 +122,9 @@ func (s *gormVariableStore) Apply(ctx context.Context, workload uuid.UUID, chang
 		if err != nil {
 			return err
 		}
+		if change.IfRevision != 0 && current != change.IfRevision {
+			return ErrRevisionChanged
+		}
 		rows, err := s.rows(tx, workload)
 		if err != nil {
 			return err
@@ -188,6 +202,51 @@ func (s *gormVariableStore) Apply(ctx context.Context, workload uuid.UUID, chang
 		return nil
 	})
 	return revision, changed, err
+}
+
+func (s *gormVariableStore) Snapshot(ctx context.Context, workload uuid.UUID) (domain.VariableSnapshot, error) {
+	var snap domain.VariableSnapshot
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Verrou partagé : aucune écriture entre la révision et les lignes.
+		var w domain.Workload
+		if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("env_revision").Where("id = ?", workload).First(&w).Error; err != nil {
+			return err
+		}
+		rows, err := s.rows(tx, workload)
+		snap = domain.VariableSnapshot{Revision: w.EnvRevision, Rows: rows}
+		return err
+	})
+	return snap, err
+}
+
+func (s *gormVariableStore) Restore(ctx context.Context, workload uuid.UUID, snap domain.VariableSnapshot, ifRevision int64) (int64, error) {
+	var revision int64
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		current, err := lockRevision(tx, workload)
+		if err != nil {
+			return err
+		}
+		if current != ifRevision {
+			return ErrRevisionChanged
+		}
+		if err := tx.Where("workload_id = ?", workload).Delete(&domain.Variable{}).Error; err != nil {
+			return err
+		}
+		if len(snap.Rows) > 0 {
+			rows := make([]domain.Variable, len(snap.Rows))
+			for i, r := range snap.Rows {
+				// Chiffrement lié au conteneur et au nom : la ligne reste valide.
+				r.WorkloadID = workload
+				rows[i] = r
+			}
+			if err := tx.Create(&rows).Error; err != nil {
+				return err
+			}
+		}
+		revision = current + 1
+		return tx.Model(&domain.Workload{}).Where("id = ?", workload).UpdateColumn("env_revision", revision).Error
+	})
+	return revision, err
 }
 
 func (s *gormVariableStore) Import(ctx context.Context, workload uuid.UUID, values map[string]string) (int64, error) {

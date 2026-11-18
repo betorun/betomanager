@@ -174,3 +174,74 @@ func TestE2E_SameNameCreatedOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, listed, 1)
 }
+
+// plainSealer : chiffrement factice, la logique testée est ailleurs.
+type plainSealer struct{}
+
+func (plainSealer) Seal(p []byte, _ string) ([]byte, error) { return p, nil }
+func (plainSealer) Open(p []byte, _ string) ([]byte, error) { return p, nil }
+
+// Écriture conditionnelle des variables : refusée si une autre écriture est
+// passée depuis la lecture ; l'annulation remet les valeurs sous une révision
+// neuve et n'écrase jamais une écriture qui l'a suivie.
+func TestE2E_VariablesConditionalApplyAndRestore(t *testing.T) {
+	repo, db, project := e2eProject(t)
+	w := e2eCreate(t, repo, project, "vars")
+	store := NewVariableStore(db, plainSealer{})
+	ctx := context.Background()
+
+	_, _, err := store.Apply(ctx, w.ID, domain.VariableChange{Env: map[string]string{"A": "1"}})
+	require.NoError(t, err)
+	before, err := store.Snapshot(ctx, w.ID)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, before.Revision)
+	require.Len(t, before.Rows, 1)
+
+	// Gagnant : écrit sur la révision lue.
+	rev, changed, err := store.Apply(ctx, w.ID, domain.VariableChange{Env: map[string]string{"A": "gagnant"}, IfRevision: before.Revision})
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.EqualValues(t, 2, rev)
+
+	// Perdant : a lu la même révision, refusé sans rien écrire.
+	_, _, err = store.Apply(ctx, w.ID, domain.VariableChange{Env: map[string]string{"A": "perdant", "B": "x"}, IfRevision: before.Revision})
+	require.ErrorIs(t, err, ErrRevisionChanged)
+	values, err := store.Values(ctx, w.ID)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"A": "gagnant"}, values)
+
+	// Annulation sur une révision dépassée : rien ne bouge.
+	_, err = store.Restore(ctx, w.ID, before, 1)
+	require.ErrorIs(t, err, ErrRevisionChanged)
+
+	// Annulation du gagnant (son déploiement n'a pas démarré).
+	rev, err = store.Restore(ctx, w.ID, before, 2)
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, rev, "révision neuve, jamais l'ancienne")
+	values, err = store.Values(ctx, w.ID)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"A": "1"}, values)
+
+	// Lectures et écritures concurrentes : une seule écriture conditionnelle passe.
+	snap, err := store.Snapshot(ctx, w.ID)
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	won := 0
+	for i := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := store.Apply(ctx, w.ID, domain.VariableChange{Env: map[string]string{"A": string(rune('a' + i))}, IfRevision: snap.Revision})
+			if err == nil {
+				mu.Lock()
+				won++
+				mu.Unlock()
+			} else {
+				assert.True(t, errors.Is(err, ErrRevisionChanged), err)
+			}
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, 1, won)
+}

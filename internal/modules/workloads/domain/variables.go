@@ -58,6 +58,16 @@ type VariableChange struct {
 	// ReplaceEnv : les variables non secrètes absentes de Env sont supprimées
 	// (env_vars d'une mise à jour). Les secrets restent.
 	ReplaceEnv bool
+	// IfRevision : non nul, la modification n'est appliquée que si la révision
+	// vaut encore cette valeur (aucune autre écriture depuis la lecture).
+	IfRevision int64
+}
+
+// VariableSnapshot : lignes chiffrées et révision d'un conteneur à un instant
+// donné, pour annuler une modification dont le déploiement n'a pas démarré.
+type VariableSnapshot struct {
+	Revision int64
+	Rows     []Variable
 }
 
 var (
