@@ -377,7 +377,9 @@ func TestUpdate_LosesRaceWithoutWritingSpec(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrDeployInProgress)
 	assert.Nil(t, repo.spec, "spec non écrite")
 	assert.Zero(t, repo.runtimeCalls)
-	assert.Equal(t, []string{"STARTING", "RUNNING"}, repo.statuses)
+	// Le STARTING du gagnant reste : rétablir RUNNING ferait croire que son
+	// déploiement est fini (vu en e2e : TestConcurrentPatches).
+	assert.Equal(t, []string{"STARTING"}, repo.statuses)
 }
 
 // Temporal indisponible : ni nouvelle spec ni STARTING resté en base.
