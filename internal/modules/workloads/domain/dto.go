@@ -112,7 +112,17 @@ type LiveStatus struct {
 	ReadyReplicas     int32       `json:"ready_replicas"` // K8s runtime
 	AvailableReplicas int32       `json:"available_replicas"`
 	Pods              []PodStatus `json:"pods,omitempty"`
-	UpdatedAt         time.Time   `json:"updated_at"`
+	// Disk : disque persistant, absent sans stockage.
+	Disk      *DiskStatus `json:"disk,omitempty"`
+	UpdatedAt time.Time   `json:"updated_at"`
+}
+
+// DiskStatus : disque persistant d'un conteneur.
+type DiskStatus struct {
+	Size string `json:"size"`
+	// BackedUp : le disque est couvert par une sauvegarde. Toujours faux tant
+	// que la sauvegarde des disques clients n'existe pas : la console le dit.
+	BackedUp bool `json:"backed_up"`
 }
 
 // PodStatus : état d'un pod K8s (sous-ensemble pertinent pour l'UI).

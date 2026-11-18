@@ -73,6 +73,9 @@ type WorkloadService struct {
 	Registry *RegistrySettings
 	// Variables : variables et secrets chiffrés.
 	Variables repository.VariableStore
+	// ExternalRegistries : accès du projet à des registres externes (nil :
+	// images publiques et registre de la plateforme seulement).
+	ExternalRegistries ExternalRegistries
 	// Domains, DomainCfg : domaines personnalisés (nil : indisponibles).
 	Domains   repository.DomainStore
 	DomainCfg *DomainSettings

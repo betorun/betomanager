@@ -19,6 +19,9 @@ type DeployWorkloadInput struct {
 	Image       string
 	// PlatformImage : image du registre de la plateforme (Secret de pull requis).
 	PlatformImage bool
+	// ExternalPull : image d'un registre externe pour lequel le projet a un
+	// accès. Faux dans les historiques antérieurs : même chemin qu'avant.
+	ExternalPull bool
 
 	// EnvRevision : version des variables à déployer. Les valeurs ne passent
 	// jamais par ici : tout ce qu'un workflow reçoit reste dans son historique.
@@ -138,7 +141,7 @@ func DeployWorkloadWorkflow(ctx workflow.Context, input DeployWorkloadInput) err
 	}
 
 	var pullSecrets []string
-	if input.PlatformImage {
+	if input.PlatformImage || input.ExternalPull {
 		if err := workflow.ExecuteActivity(ctx, helmActs.EnsureRegistryPullSecret, input.Namespace, input.ProjectID).Get(ctx, nil); err != nil {
 			return fail(utils.PhaseSecretCreateError, err)
 		}

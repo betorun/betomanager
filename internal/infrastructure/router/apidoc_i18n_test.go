@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"github.com/thekrauss/kubemanager/internal/modules/registries"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -59,10 +60,11 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Clusters: struct {
 					clustersCtrl.IClusterController
 				}{},
-				Site:   struct{ sites.ISiteController }{},
-				IAM:    &iamapi.Controller{},
-				Builds: &builds.Controller{},
-				GitHub: &github.Controller{},
+				Site:       struct{ sites.ISiteController }{},
+				IAM:        &iamapi.Controller{},
+				Builds:     &builds.Controller{},
+				GitHub:     &github.Controller{},
+				Registries: &registries.Controller{},
 			},
 		}
 		docFizz = fizz.NewFromEngine(gin.New())

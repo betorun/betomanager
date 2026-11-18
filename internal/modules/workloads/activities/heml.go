@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	idempotency "github.com/thekrauss/kubemanager/internal/infrastructure/idempotence"
-	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
+	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 )
@@ -36,8 +36,9 @@ import (
 type WorkloadActivities struct {
 	K8sConfig *rest.Config
 	K8sClient *kubernetes.Clientset
-	// Registry : registre de la plateforme (nil si builds désactivés).
-	Registry    *RegistryPull
+	// Pull : Secret de pull des projets (registre de la plateforme et
+	// registres externes).
+	Pull        *pull.Secrets
 	Idempotency idempotency.AtomicManager
 	// Variables : valeurs chiffrées des variables des conteneurs.
 	Variables repository.VariableStore
@@ -499,40 +500,23 @@ func (a *WorkloadActivities) DeleteEnvSecret(ctx context.Context, namespace, rel
 	return err
 }
 
-// RegistryPull : de quoi créer le Secret de pull d'un projet.
-type RegistryPull struct {
-	Host  string
-	Creds registry.Credentials
-}
-
-// EnsureRegistryPullSecret : identifiant de lecture du registre, limité aux
-// images de ce projet. Le secret reste hors de l'historique Temporal : il est
-// dérivé ici, côté worker.
+// EnsureRegistryPullSecret : Secret de pull du projet, avec le registre de la
+// plateforme (limité aux images du projet) et les registres externes du
+// projet. Les identifiants restent hors de l'historique Temporal : ils sont
+// lus ici, côté worker.
 func (a *WorkloadActivities) EnsureRegistryPullSecret(ctx context.Context, namespace, projectID string) error {
-	if a.Registry == nil {
-		return temporal.NewNonRetryableApplicationError("platform registry disabled", "REGISTRY_DISABLED", nil)
+	if a.Pull == nil {
+		return temporal.NewNonRetryableApplicationError("registry pull disabled", "REGISTRY_DISABLED", nil)
 	}
 	project, err := uuid.Parse(projectID)
 	if err != nil {
 		return temporal.NewNonRetryableApplicationError("invalid project id", "INVALID_INPUT", err)
 	}
-	user, password := a.Registry.Creds.ForPull(project)
-	raw, err := registry.DockerConfigJSON(a.Registry.Host, user, password)
-	if err != nil {
-		return err
-	}
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Name: registry.PullSecretName, Namespace: namespace,
-			Labels: map[string]string{utils.LabelKmProjectID: projectID}},
-		Type: corev1.SecretTypeDockerConfigJson,
-		Data: map[string][]byte{corev1.DockerConfigJsonKey: raw},
-	}
-	api := a.K8sClient.CoreV1().Secrets(namespace)
-	if _, err := api.Create(ctx, secret, metav1.CreateOptions{}); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			return err
+	if err := a.Pull.Sync(ctx, namespace, project); err != nil {
+		if errors.Is(err, pull.ErrNothingToPull) {
+			// Accès externe retiré entre la demande et le déploiement.
+			return temporal.NewNonRetryableApplicationError("no registry access for this project", "NO_REGISTRY_ACCESS", err)
 		}
-		_, err = api.Update(ctx, secret, metav1.UpdateOptions{})
 		return err
 	}
 	return nil

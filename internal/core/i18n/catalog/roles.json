@@ -406,5 +406,13 @@
  {
   "fr": "Modifier les domaines d'un conteneur",
   "en": "Change a container's domains"
+ },
+ {
+  "fr": "Voir les registres d'images externes du projet",
+  "en": "View the project's external image registries"
+ },
+ {
+  "fr": "Gérer les accès aux registres d'images externes",
+  "en": "Manage access to external image registries"
  }
 ]

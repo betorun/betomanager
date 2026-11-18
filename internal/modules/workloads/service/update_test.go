@@ -876,3 +876,48 @@ func TestPatchVariables_LostRaceRestoresVariables(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrDeployInProgress)
 	assert.Equal(t, []int64{2}, vars.restored)
 }
+
+// Le disque persistant apparaît dans l'état, marqué non sauvegardé : la console
+// prévient le client tant que la sauvegarde des disques n'existe pas.
+func TestLiveStatus_DiskNotBackedUp(t *testing.T) {
+	notFound := `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"NotFound","code":404}`
+	id := uuid.New()
+	for _, persistent := range []bool{true, false} {
+		repo := &fakeRepo{w: domain.Workload{ID: id, Name: "web", Namespace: "km-x", PersistenceEnabled: persistent, StorageSize: "5Gi"}}
+		s := &WorkloadService{Repo: repo, K8sClient: fakeK8s(t, http.StatusNotFound, notFound)}
+		st, err := s.LiveStatus(context.Background(), id)
+		require.NoError(t, err)
+		if !persistent {
+			assert.Nil(t, st.Disk)
+			continue
+		}
+		require.NotNil(t, st.Disk)
+		assert.Equal(t, "5Gi", st.Disk.Size)
+		assert.False(t, st.Disk.BackedUp)
+	}
+}
+
+type fakeExternal map[string]bool
+
+func (f fakeExternal) Has(_ context.Context, _ uuid.UUID, host string) (bool, error) {
+	return f[host], nil
+}
+
+// Image d'un registre auquel le projet a un accès : le déploiement demande le
+// Secret de pull. Une image publique ou d'un autre registre ne le demande pas.
+func TestInputFor_ExternalPull(t *testing.T) {
+	saved := configs.AppConfig
+	defer func() { configs.AppConfig = saved }()
+	configs.AppConfig.Vps.AdressIp = "203.0.113.10"
+	s := &WorkloadService{ExternalRegistries: fakeExternal{"ghcr.io": true}}
+	for image, want := range map[string]bool{
+		"ghcr.io/org/app:v1": true,
+		"nginx:1.27":         false,
+		"quay.io/org/app:v1": false,
+	} {
+		w := &domain.Workload{ID: uuid.New(), ProjectID: uuid.New(), Name: "web", Image: image}
+		in, err := s.inputFor(context.Background(), w, domain.CreateWorkloadRequest{})
+		require.NoError(t, err)
+		assert.Equal(t, want, in.ExternalPull, image)
+	}
+}

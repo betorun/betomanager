@@ -51,6 +51,8 @@ const (
 	BuildsCreate            Permission = "workloads.builds.create"
 	BuildsCancel            Permission = "workloads.builds.cancel"
 	WorkloadsGitHubManage   Permission = "workloads.github.manage"
+	RegistriesList          Permission = "workloads.registries.list"
+	RegistriesManage        Permission = "workloads.registries.manage"
 
 	// sites
 	SitesList             Permission = "sites.sites.list"
@@ -151,6 +153,8 @@ var catalog = map[Permission]PermissionInfo{
 	BuildsCreate:            {Title: "Construire une image", CustomRoles: true},
 	BuildsCancel:            {Title: "Annuler un build", CustomRoles: true},
 	WorkloadsGitHubManage:   {Title: "Gérer la connexion GitHub et les dépôts liés aux conteneurs", CustomRoles: true},
+	RegistriesList:          {Title: "Voir les registres d'images externes du projet", CustomRoles: true},
+	RegistriesManage:        {Title: "Gérer les accès aux registres d'images externes", CustomRoles: true},
 	WorkloadMetrics:         {Title: "Voir les métriques d'un conteneur", CustomRoles: true},
 
 	SitesList:             {Title: "Lister les sites", CustomRoles: true},

@@ -262,6 +262,9 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 		Replicas:    int32(w.Replicas),
 		UpdatedAt:   w.UpdatedAt,
 	}
+	if w.PersistenceEnabled {
+		status.Disk = &domain.DiskStatus{Size: w.StorageSize, BackedUp: false}
+	}
 
 	// Best-effort : si le deployment n'existe pas encore (en cours de déploiement)
 	// on retourne juste l'état DB sans la partie K8s.

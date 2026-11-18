@@ -21,6 +21,7 @@ import (
 	githubDomain "github.com/thekrauss/kubemanager/internal/modules/github/domain"
 	identityKC "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
+	registriesDomain "github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	workloadsDomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 )
 
@@ -98,6 +99,12 @@ var sentinelErrors = []sentinelMapping{
 	{githubDomain.ErrRepositoryInaccessible, http.StatusNotFound, "GITHUB_REPOSITORY_INACCESSIBLE", false},
 	{githubDomain.ErrBranchNotFound, http.StatusBadRequest, "GITHUB_BRANCH_NOT_FOUND", false},
 	{githubDomain.ErrLinkNotFound, http.StatusNotFound, "GITHUB_LINK_NOT_FOUND", false},
+
+	{registriesDomain.ErrInvalidHost, http.StatusBadRequest, "REGISTRY_INVALID_HOST", false},
+	{registriesDomain.ErrPlatformRegistry, http.StatusBadRequest, "REGISTRY_IS_PLATFORM", false},
+	{registriesDomain.ErrInvalidUsername, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{registriesDomain.ErrInvalidPassword, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{registriesDomain.ErrNotFound, http.StatusNotFound, "REGISTRY_NOT_FOUND", false},
 	{githubDomain.ErrLinkDisabled, http.StatusConflict, "GITHUB_LINK_DISABLED", false},
 	{githubDomain.ErrUnavailable, http.StatusServiceUnavailable, "GITHUB_UNAVAILABLE", false},
 	{buildsDomain.ErrInvalidName, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},

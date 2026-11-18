@@ -103,6 +103,8 @@ func TestDeploy_Success(t *testing.T) {
 func TestDeploy_FailureIsRecorded(t *testing.T) {
 	platform := deployInput()
 	platform.PlatformImage = true
+	external := deployInput()
+	external.ExternalPull = true
 	cases := []struct {
 		name  string
 		mocks deployMocks
@@ -111,6 +113,8 @@ func TestDeploy_FailureIsRecorded(t *testing.T) {
 	}{
 		{"secret des variables", deployMocks{syncErr: nonRetryable("sync")}, deployInput(), utils.PhaseSecretCreateError},
 		{"secret de pull", deployMocks{pullErr: nonRetryable("pull")}, platform, utils.PhaseSecretCreateError},
+		// Image d'un registre externe : le Secret de pull est aussi requis.
+		{"secret de pull externe", deployMocks{pullErr: nonRetryable("pull")}, external, utils.PhaseSecretCreateError},
 		{"helm", deployMocks{installErr: nonRetryable("helm")}, deployInput(), utils.PhaseHelmError},
 	}
 	for _, c := range cases {

@@ -14,6 +14,7 @@ import (
 	projectRepos "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	projectSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
 	realtimeCtrl "github.com/thekrauss/kubemanager/internal/modules/realtime"
+	"github.com/thekrauss/kubemanager/internal/modules/registries"
 	"github.com/thekrauss/kubemanager/internal/modules/sites"
 	sitesRepo "github.com/thekrauss/kubemanager/internal/modules/sites/repository"
 	sitesSvc "github.com/thekrauss/kubemanager/internal/modules/sites/service"
@@ -53,6 +54,8 @@ type ControllerContainer struct {
 	IAM      *iamapi.Controller
 	Builds   *builds.Controller // nil si builds désactivés
 	GitHub   *github.Controller
+	// Registries : accès des projets aux registres d'images externes.
+	Registries *registries.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -66,5 +69,6 @@ func AddAllRoutes(a *App) {
 	addSiteRoutes(a)
 	addBuildRoutes(a)
 	addGitHubRoutes(a)
+	addRegistriesRoutes(a)
 	addIAMRoutes(a)
 }

@@ -31,6 +31,7 @@ import (
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	identityKC "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 	projectRepos "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
+	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 )
 
@@ -374,9 +375,11 @@ func (a *App) initVariableStore() {
 	if err != nil {
 		a.Logger.Warnw("workload variables: encryption key missing or invalid, containers cannot be deployed", "error", err)
 		a.Variables = workloadsRepo.NewVariableStore(a.DB, unavailableSealer{err})
+		a.Registries = registriesRepo.New(a.DB, unavailableSealer{err})
 		return
 	}
 	a.Variables = workloadsRepo.NewVariableStore(a.DB, sealer)
+	a.Registries = registriesRepo.New(a.DB, sealer)
 }
 
 // unavailableSealer : clé de chiffrement absente.

@@ -64,3 +64,8 @@ func DefaultLogOptions() LogOptions {
 		Timestamps:   true,
 	}
 }
+
+// ExternalRegistries : le projet a-t-il un accès à ce registre externe ?
+type ExternalRegistries interface {
+	Has(ctx context.Context, project uuid.UUID, host string) (bool, error)
+}
