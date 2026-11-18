@@ -1,5 +1,6 @@
 *.md
 .env
+.env.local
 .env.prod
 config.yaml
 k3s-config.yaml
