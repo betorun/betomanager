@@ -2,10 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+
+	"github.com/thekrauss/kubemanager/internal/core/pgerr"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
@@ -20,6 +24,9 @@ type ProjectRepository interface {
 	// UpdateProjectStatus : statut de provisionnement (PENDING, READY, ERROR).
 	UpdateProjectStatus(ctx context.Context, id, status string) error
 }
+
+// ErrNameTaken : un projet porte déjà ce nom (le nom sert d'espace Kubernetes).
+var ErrNameTaken = errors.New("a project with this name already exists")
 
 type pgProjectRepo struct {
 	db *gorm.DB
@@ -45,6 +52,10 @@ func (r *pgProjectRepo) CreateProject(ctx context.Context, project *dauth.Projec
 			project.OrganizationID = orgID
 		}
 		if err := tx.Create(project).Error; err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == pgerr.UniqueViolation && pgErr.ConstraintName != "projects_pkey" {
+				return ErrNameTaken
+			}
 			return err
 		}
 		if err := iam.AddBinding(ctx, tx, iam.Binding{

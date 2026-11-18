@@ -158,5 +158,9 @@
  {
   "fr": "Limites de projet invalides : utilisez des quantités Kubernetes (ex. 2000m, 4Gi)",
   "en": "invalid project limits: use Kubernetes quantities (e.g. 2000m, 4Gi)"
+ },
+ {
+  "fr": "Un projet porte déjà ce nom",
+  "en": "a project with this name already exists"
  }
 ]

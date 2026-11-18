@@ -21,6 +21,7 @@ import (
 	githubDomain "github.com/thekrauss/kubemanager/internal/modules/github/domain"
 	identityKC "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
+	projectsSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
 	registriesDomain "github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	workloadsDomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 )
@@ -188,6 +189,8 @@ var sentinelErrors = []sentinelMapping{
 	{iam.ErrInvalidClusterJWKS, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsSvc.ErrWorkloadIdentityDisabled, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{workloadsSvc.ErrWorkloadNameTaken, http.StatusConflict, betoerrors.CodeConflict, false},
+	{projectsSvc.ErrProjectNameTaken, http.StatusConflict, betoerrors.CodeConflict, false},
+	{projectsSvc.ErrInvalidProjectLimits, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 }
 
 // classifyError : statut, code et message sûr à exposer.

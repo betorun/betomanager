@@ -21,6 +21,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	authdomain "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	typesproject "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 	workloadRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 )
@@ -68,13 +69,17 @@ func (f *fakeDistributor) TerminateWorkflow(_ context.Context, _ string, _ strin
 func (f *fakeProjectRepo) UpdateProjectStatus(context.Context, string, string) error { return nil }
 
 type fakeProjectRepo struct {
-	project *authdomain.Project
-	getErr  error
+	project   *authdomain.Project
+	getErr    error
+	createErr error
 	created []*authdomain.Project
 	deleted []string
 }
 
 func (f *fakeProjectRepo) CreateProject(_ context.Context, p *authdomain.Project, _ string) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
 	f.created = append(f.created, p)
 	return nil
 }
@@ -218,4 +223,43 @@ func TestGetMetrics_UsageError(t *testing.T) {
 	svc.WorkloadRepo = failingUsage{err: down}
 	_, err := svc.GetMetrics(context.Background(), uuid.NewString())
 	require.ErrorIs(t, err, down)
+}
+
+// La ligne existe avant la réponse : un GET /status juste après ne renvoie
+// pas 404.
+func TestCreateProject_WritesRowBeforeWorkflow(t *testing.T) {
+	dist := &fakeDistributor{handle: temporal.WorkflowHandle{WorkflowID: "wf-1"}}
+	repo := &fakeProjectRepo{}
+	svc := newProjectServiceForTest(dist, repo)
+
+	resp, err := svc.CreateProject(context.Background(), typesproject.CreateProjectRequest{Name: "alpha"}, uuid.NewString())
+
+	require.NoError(t, err)
+	require.Len(t, repo.created, 1)
+	assert.Equal(t, resp.ProjectID, repo.created[0].ID.String())
+	assert.Equal(t, utils.ProjectStatusProvisioning, repo.created[0].Status)
+	assert.Equal(t, DefaultProjectCPU, repo.created[0].CpuLimit)
+	in := dist.gotArgs[0].(workflows.CreateProjectInput)
+	assert.Equal(t, resp.ProjectID, in.ProjectID)
+}
+
+func TestCreateProject_WorkflowStartFails_RemovesRow(t *testing.T) {
+	repo := &fakeProjectRepo{}
+	svc := newProjectServiceForTest(&fakeDistributor{err: errors.New("temporal down")}, repo)
+
+	_, err := svc.CreateProject(context.Background(), typesproject.CreateProjectRequest{Name: "alpha"}, uuid.NewString())
+
+	require.Error(t, err)
+	require.Len(t, repo.created, 1)
+	assert.Equal(t, []string{repo.created[0].ID.String()}, repo.deleted)
+}
+
+func TestCreateProject_NameTaken(t *testing.T) {
+	dist := &fakeDistributor{}
+	svc := newProjectServiceForTest(dist, &fakeProjectRepo{createErr: repository.ErrNameTaken})
+
+	_, err := svc.CreateProject(context.Background(), typesproject.CreateProjectRequest{Name: "alpha"}, uuid.NewString())
+
+	require.ErrorIs(t, err, ErrProjectNameTaken)
+	assert.Nil(t, dist.gotWorkflow, "pas de workflow pour un nom déjà pris")
 }
