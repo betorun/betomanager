@@ -193,6 +193,8 @@ func (h *Controller) writeError(c *gin.Context, err error) {
 		status, code = http.StatusNotFound, betoerrors.CodeNotFound
 	case errors.Is(err, domain.ErrTooManyBuilds):
 		status, code = http.StatusTooManyRequests, "TOO_MANY_BUILDS"
+	case errors.Is(err, domain.ErrImageQuota):
+		status, code = http.StatusConflict, "IMAGE_QUOTA"
 	case errors.Is(err, domain.ErrInvalidName), errors.Is(err, domain.ErrInvalidPath), errors.Is(err, domain.ErrInvalidArchive):
 	default:
 		var be *betoerrors.Error

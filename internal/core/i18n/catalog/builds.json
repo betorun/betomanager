@@ -46,5 +46,13 @@
  {
   "fr": "Archive trop volumineuse (maximum %d Mo)",
   "en": "archive too large (maximum %d MB)"
+ },
+ {
+  "fr": "Les images de ce projet occupent tout son espace d'images, même en ne gardant que la dernière version de chacune : réduisez la taille de vos images",
+  "en": "the images of this project use all of its image storage, even keeping only the latest version of each: reduce the size of your images"
+ },
+ {
+  "fr": "registre : image introuvable",
+  "en": "registry: manifest not found"
  }
 ]

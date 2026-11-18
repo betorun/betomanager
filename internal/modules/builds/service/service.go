@@ -53,8 +53,15 @@ type Service struct {
 	K8s         kubernetes.Interface
 	Creds       registry.Credentials
 	Issuer      *registry.Issuer
-	Cfg         Config
-	Logger      *zap.SugaredLogger
+	// Images : quota d'images du projet ; nil : pas de quota.
+	Images QuotaChecker
+	Cfg    Config
+	Logger *zap.SugaredLogger
+}
+
+// QuotaChecker : quota d'images d'un projet (images.Keeper).
+type QuotaChecker interface {
+	CheckQuota(ctx context.Context, project uuid.UUID) error
 }
 
 // MaxArchiveBytes : taille maximale d'une archive.
@@ -79,6 +86,11 @@ func (s *Service) newBuild(ctx context.Context, project uuid.UUID, name, dockerf
 	}
 	if active >= s.Cfg.MaxConcurrent {
 		return nil, domain.ErrTooManyBuilds
+	}
+	if s.Images != nil {
+		if err := s.Images.CheckQuota(ctx, project); err != nil {
+			return nil, err
+		}
 	}
 	id := uuid.New()
 	return &domain.Build{
@@ -143,7 +155,11 @@ func (s *Service) FromGitHub(ctx context.Context, req GitHubBuild) (*domain.Buil
 		return nil, err
 	}
 	b, err := s.newBuild(ctx, req.Project, req.Name, req.Dockerfile, req.By)
-	rejected := errors.Is(err, domain.ErrTooManyBuilds)
+	rejected := errors.Is(err, domain.ErrTooManyBuilds) || errors.Is(err, domain.ErrImageQuota)
+	rejection, failure := err, domain.FailureTooMany
+	if errors.Is(err, domain.ErrImageQuota) {
+		failure = domain.FailureImageQuota
+	}
 	if rejected && req.RecordRejection {
 		id := uuid.New()
 		b, err = &domain.Build{ID: id, ProjectID: req.Project, Name: req.Name, Dockerfile: req.Dockerfile, CreatedBy: req.By,
@@ -161,11 +177,11 @@ func (s *Service) FromGitHub(ctx context.Context, req GitHubBuild) (*domain.Buil
 	b.Trigger, b.DeployState = req.Trigger, domain.DeployPending
 	if rejected {
 		now := time.Now()
-		b.Status, b.Failure, b.DeployState, b.FinishedAt = domain.StatusFailed, domain.FailureTooMany, domain.DeployNotBuilt, &now
+		b.Status, b.Failure, b.DeployState, b.FinishedAt = domain.StatusFailed, failure, domain.DeployNotBuilt, &now
 		if err := s.Repo.Create(ctx, b); err != nil {
 			return nil, err
 		}
-		return b, domain.ErrTooManyBuilds
+		return b, rejection
 	}
 	return b, s.start(ctx, b)
 }

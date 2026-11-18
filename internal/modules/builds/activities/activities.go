@@ -130,7 +130,14 @@ type Activities struct {
 	Deployer   Deployer
 	// Alerts : owners prévenus d'un build échoué ; nil : aucune alerte.
 	Alerts BuildAlerter
+	// Images : taille et ménage des images après un build réussi ; nil : rien.
+	Images ImageKeeper
 	Logger *zap.SugaredLogger
+}
+
+// ImageKeeper : images du registre (images.Keeper).
+type ImageKeeper interface {
+	AfterBuild(ctx context.Context, b *domain.Build)
 }
 
 // BuildAlerter : alerte d'un build échoué (alerts.Notifier).
@@ -459,6 +466,11 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	a.saveLog(ctx, in.BuildRef)
 	if err := a.Repo.Finish(ctx, id, in.Status, in.Failure, in.Digest, in.Detected); err != nil {
 		return err
+	}
+	if in.Status == domain.StatusSucceeded && a.Images != nil {
+		if b, err := a.Repo.GetByID(ctx, id); err == nil {
+			a.Images.AfterBuild(ctx, b)
+		}
 	}
 	if in.Status == domain.StatusFailed && a.Alerts != nil {
 		if project, err := uuid.Parse(in.ProjectID); err == nil {
