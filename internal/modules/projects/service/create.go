@@ -41,6 +41,14 @@ type ProjectService struct {
 	K8sClient    *kubernetes.Clientset
 	K8sConfig    *rest.Config
 	WorkloadRepo workloadRepo.WorkloadRepository
+	// Images : place des images du projet au registre ; nil si les builds
+	// ne sont pas activés.
+	Images ImageUsage
+}
+
+// ImageUsage : octets d'images d'un projet et son quota (0 : sans quota).
+type ImageUsage interface {
+	Usage(ctx context.Context, project uuid.UUID) (used, quota int64, err error)
 }
 
 func NewProjectService(

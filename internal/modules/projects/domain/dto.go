@@ -35,6 +35,18 @@ type NamespaceMetrics struct {
 	CPUUsage      string   `json:"cpu_usage_actual"`    // Le réel (mClient)
 	MemoryUsage   string   `json:"memory_usage_actual"` // Le réel (mClient)
 	ReservedUsage UsageDTO `json:"reserved_usage"`      // Le provisionné (DB)
+	// Limits : plafonds du projet (cpu_limit, memory_limit, storage_limit).
+	Limits UsageDTO `json:"limits"`
+	// Images : place occupée au registre de la plateforme ; absent si les
+	// builds ne sont pas activés.
+	Images *ImagesUsage `json:"images,omitempty"`
+}
+
+// ImagesUsage : images du projet au registre de la plateforme, en octets.
+type ImagesUsage struct {
+	UsedBytes int64 `json:"used_bytes"`
+	// QuotaBytes : 0 si le projet n'a pas de quota d'images.
+	QuotaBytes int64 `json:"quota_bytes"`
 }
 
 type UsageDTO struct {

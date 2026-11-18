@@ -95,7 +95,7 @@ func (s *ProjectService) GetMetrics(ctx context.Context, projectID string) (*dom
 		return nil, fmt.Errorf("project usage: %w", err)
 	}
 
-	return &domain.NamespaceMetrics{
+	out := &domain.NamespaceMetrics{
 		CPUUsage:    fmt.Sprintf("%dm", totalCPU),
 		MemoryUsage: fmt.Sprintf("%dMi", totalMem/utils.BytesPerMi),
 		ReservedUsage: domain.UsageDTO{
@@ -103,5 +103,14 @@ func (s *ProjectService) GetMetrics(ctx context.Context, projectID string) (*dom
 			Memory:  fmt.Sprintf("%dMi", resMem),
 			Storage: fmt.Sprintf("%dGi", resStorage*utils.BytesPerMi/utils.BytesPerGi),
 		},
-	}, nil
+		Limits: domain.UsageDTO{CPU: project.CpuLimit, Memory: project.MemoryLimit, Storage: project.StorageLimit},
+	}
+	if s.Images != nil {
+		used, quota, err := s.Images.Usage(ctx, project.ID)
+		if err != nil {
+			return nil, fmt.Errorf("project images usage: %w", err)
+		}
+		out.Images = &domain.ImagesUsage{UsedBytes: used, QuotaBytes: quota}
+	}
+	return out, nil
 }

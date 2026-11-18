@@ -144,3 +144,16 @@ func TestCheckQuota_CompactsFirst(t *testing.T) {
 	require.NoError(t, k.CheckQuota(context.Background(), project))
 	assert.Equal(t, []string{project.String() + "/web@sha256:b"}, reg.deleted, "seule la dernière reste")
 }
+
+func TestUsage(t *testing.T) {
+	used, quota, err := (&Keeper{Store: &fakeStore{usage: 7}, Quota: 10}).Usage(context.Background(), uuid.New())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(7), used)
+	assert.Equal(t, int64(10), quota)
+
+	_, quota, _ = (&Keeper{Store: &fakeStore{}}).Usage(context.Background(), uuid.New())
+	assert.Equal(t, DefaultQuota, quota, "quota par défaut")
+
+	_, quota, _ = (&Keeper{Store: &fakeStore{}, Quota: -1}).Usage(context.Background(), uuid.New())
+	assert.Zero(t, quota, "sans quota")
+}

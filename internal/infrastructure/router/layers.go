@@ -6,6 +6,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam"
 	authCtrl "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
+	"github.com/thekrauss/kubemanager/internal/modules/builds/images"
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
@@ -143,6 +144,11 @@ func (a *App) initDomainLayers() error {
 	}
 	if buildController != nil {
 		workloadService.Registry = &workloadsSvc.RegistrySettings{Host: a.Config.Builds.RegistryHost}
+		// Place des images dans les métriques du projet (vue d'ensemble).
+		keeper, isKeeper := buildController.Service.Images.(*images.Keeper)
+		if ps, ok := projectService.(*projectSvc.ProjectService); ok && isKeeper && keeper != nil {
+			ps.Images = keeper
+		}
 	}
 
 	a.GitHub = a.newGitHubService(buildController, workloadService)
