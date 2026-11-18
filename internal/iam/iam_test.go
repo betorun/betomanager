@@ -306,3 +306,12 @@ func TestEngine_Holdings(t *testing.T) {
 	_, err = f.engine.Holdings(context.Background(), f.alice, Permission("nope.nope.nope"))
 	assert.Error(t, err)
 }
+
+func TestPermission_ReadOnly(t *testing.T) {
+	for _, p := range []Permission{ProjectsGet, ProjectsList, ProjectsGetIamPolicy, "workloads.logs.read"} {
+		assert.True(t, p.ReadOnly(), p)
+	}
+	for _, p := range []Permission{ProjectsDelete, ProjectsSetIamPolicy, ProjectsUpdate, "workloads.workloads.restart"} {
+		assert.False(t, p.ReadOnly(), p)
+	}
+}

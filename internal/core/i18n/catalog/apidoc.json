@@ -1046,5 +1046,9 @@
  {
   "fr": "Jeton d'accès, en lecture seule de préférence. Jamais relisible ensuite",
   "en": "Access token, preferably read-only. Never readable afterwards"
+ },
+ {
+  "fr": "tout utilisateur authentifié, ou le Copilot en son nom (données de l'appelant uniquement)",
+  "en": "any authenticated user, or the Copilot on their behalf (the caller's own data only)"
  }
 ]

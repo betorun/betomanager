@@ -25,6 +25,9 @@ const (
 	MethodJWTBearer = "jwt-bearer"
 	// MethodSession : jeton d'accès de la session d'une personne.
 	MethodSession = "session"
+	// MethodDelegated : jeton qu'une personne délègue à un agent de betorun
+	// (le Copilot), dérivé de sa session (voir MintDelegated).
+	MethodDelegated = "delegated"
 	// sessionRefPrefix : référence de la session dans le claim btr_key.
 	sessionRefPrefix = "session:"
 
@@ -50,6 +53,16 @@ type Claims struct {
 	AuthTime  int64    `json:"auth_time,omitempty"`
 	AMR       []string `json:"amr,omitempty"`
 	ACR       string   `json:"acr,omitempty"`
+
+	// Délégation (MethodDelegated) : l'agent qui agit (RFC 8693 §4.1) et la
+	// portée accordée.
+	Act   *Actor `json:"act,omitempty"`
+	Scope string `json:"scope,omitempty"`
+}
+
+// Actor : claim « act » de la RFC 8693 : qui agit au nom du sujet.
+type Actor struct {
+	Subject string `json:"sub"`
 }
 
 // Verified : jeton accepté.
@@ -64,6 +77,9 @@ type Verified struct {
 	AuthTime  time.Time
 	AMR       []string
 	ACR       string
+	// Délégation : agent qui agit (vide sinon) et portée (ScopeRead, ScopeWrite).
+	Actor string
+	Scope string
 }
 
 // Service : émission et vérification des jetons.
@@ -174,8 +190,14 @@ func (s *Service) Verify(ctx context.Context, raw string) (*Verified, error) {
 	if !ok {
 		return nil, ErrInvalidToken
 	}
+	if err := checkDelegation(c); err != nil {
+		return nil, err
+	}
 	v := &Verified{Principal: principal, Method: c.Method, KeyID: c.KeyID, TokenID: c.ID, ExpiresAt: c.ExpiresAt.Time,
-		SessionID: c.SessionID, AMR: c.AMR, ACR: c.ACR}
+		SessionID: c.SessionID, AMR: c.AMR, ACR: c.ACR, Scope: c.Scope}
+	if c.Act != nil {
+		v.Actor = c.Act.Subject
+	}
 	if c.AuthTime > 0 {
 		v.AuthTime = time.Unix(c.AuthTime, 0)
 	}

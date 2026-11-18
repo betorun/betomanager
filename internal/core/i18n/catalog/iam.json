@@ -286,5 +286,13 @@
  {
   "fr": "clés de comptes de service du cluster invalides : un émetteur et un JWKS avec au moins une clé sont requis",
   "en": "invalid cluster service account keys: issuer and a JWKS with at least one key are required"
+ },
+ {
+  "fr": "sts: délégation sans personne ni session",
+  "en": "sts: delegation without a person or session"
+ },
+ {
+  "fr": "sts: portée inconnue %q",
+  "en": "sts: unknown scope %q"
  }
 ]

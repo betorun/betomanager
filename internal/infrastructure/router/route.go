@@ -174,7 +174,7 @@ func addProjectRoutes(app *App) {
 	// sur son organisation (iam.Engine.Holdings). Pas de garde Perm : chaque
 	// appelant voit sa propre liste, éventuellement vide.
 	ProjectGroup.AddRoute("", http.MethodGet, "Projets accessibles (les 200 plus récents)",
-		Authenticated(), tonic.Handler(r.ListProjects, http.StatusOK))
+		AuthenticatedDelegable(), tonic.Handler(r.ListProjects, http.StatusOK))
 	ProjectGroup.AddRoute("/:id/status", http.MethodGet, "État d'un projet",
 		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectStatus, http.StatusOK))
 	ProjectGroup.AddRoute("/:id/metrics", http.MethodGet, "Métriques de consommation",

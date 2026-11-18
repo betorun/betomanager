@@ -344,7 +344,11 @@ func (m *MiddlewareManager) RequireFor(permFor func(iam.ResourceName) (iam.Permi
 			})
 			return
 		}
-		// Autorisé : reste la double authentification des personnes.
+		// Autorisé : restent les bornes d'une délégation, puis la double
+		// authentification des personnes.
+		if !checkDelegated(c, perm) {
+			return
+		}
 		if !m.checkMFA(c, perm, resource) {
 			return
 		}
@@ -398,6 +402,14 @@ func (m *MiddlewareManager) AuditMiddleware(w audit.Writer) gin.HandlerFunc {
 		}
 		if pid, err := uuid.Parse(c.GetString("projectID")); err == nil {
 			e.ProjectID = &pid
+		}
+		if actor := c.GetString(ctxActor); actor != "" {
+			// « Awa via Copilot » : le principal reste la personne.
+			if e.Metadata == nil {
+				e.Metadata = map[string]any{}
+			}
+			e.Metadata["actor"] = actor
+			e.Metadata["delegation_scope"] = c.GetString(ctxDelegationScope)
 		}
 		// La requête peut être annulée (client parti) : l'audit, lui, doit être écrit.
 		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)

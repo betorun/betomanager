@@ -20,7 +20,10 @@ const (
 // une route ne peut pas être déclarée sans contrôle d'accès explicite, et une
 // valeur vide fait échouer le démarrage (registerGroup).
 type Access struct {
-	kind       accessKind
+	kind accessKind
+	// delegable : route Authenticated() ouverte aux jetons délégués
+	// (sts.MethodDelegated). Faux par défaut : RefuseDelegated s'applique.
+	delegable  bool
 	permission iam.Permission
 	guard      gin.HandlerFunc
 	summary    string
@@ -35,7 +38,17 @@ func Public() Access {
 // Authenticated : tout principal authentifié ; le handler ne touche qu'aux
 // données de l'appelant (son profil, ses sessions, son organisation personnelle).
 func Authenticated() Access {
-	return Access{kind: accessAuthenticated, summary: "tout utilisateur authentifié (données de l'appelant uniquement)"}
+	return Access{kind: accessAuthenticated, guard: security.RefuseDelegated,
+		summary: "tout utilisateur authentifié (données de l'appelant uniquement)"}
+}
+
+// AuthenticatedDelegable : comme Authenticated, mais aussi pour un agent de
+// betorun (Copilot) agissant au nom de la personne. À réserver aux lectures
+// dont le résultat est déjà filtré par les droits de l'appelant (ex. GET
+// /projects) : la route ne doit rien modifier du compte.
+func AuthenticatedDelegable() Access {
+	return Access{kind: accessAuthenticated, delegable: true,
+		summary: "tout utilisateur authentifié, ou le Copilot en son nom (données de l'appelant uniquement)"}
 }
 
 // guards : fabrique les accès qui ont besoin du middleware de sécurité.

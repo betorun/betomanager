@@ -6,7 +6,10 @@
 // Ce package ne dépend d'aucun module métier : les modules dépendent de lui.
 package iam
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Permission : "<service>.<ressource>.<verbe>". Une permission publiée n'est
 // jamais renommée ni supprimée (les rôles personnalisés des clients la
@@ -225,4 +228,16 @@ func AllPermissions() []Permission {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
+}
+
+// ReadOnly : la permission ne fait que lire (verbe get, list, read ou
+// getIamPolicy). Sert à borner un jeton délégué en lecture (sts.ScopeRead).
+func (p Permission) ReadOnly() bool {
+	s := string(p)
+	verb := s[strings.LastIndexByte(s, '.')+1:]
+	switch verb {
+	case "get", "list", "read", "getIamPolicy":
+		return true
+	}
+	return false
 }
