@@ -7,6 +7,7 @@ import (
 	authCtrl "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identityCtrl "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
@@ -95,7 +96,11 @@ func (a *App) initDomainLayers() error {
 
 	rbacController := authCtrl.NewRBACController(rbacService)
 	apiKeyController := authCtrl.NewAPIKeyController(apiKeyService)
-	projectController := projectCtrl.NewProjectHandlers(projectService)
+	var projectAccess projectCtrl.ProjectAccess
+	if a.IAM != nil { // pas d'interface non nulle autour d'un *Engine nil
+		projectAccess = a.IAM
+	}
+	projectController := projectCtrl.NewProjectHandlers(projectService, projectAccess)
 	workloadController := workloadsCtrl.NewWorkloadHandler(workloadService)
 
 	realtimeController := realtimeCtrl.NewController(a.Config.Centrifugo, a.RealtimeSigner, a.IAM)
@@ -145,7 +150,10 @@ func (a *App) initDomainLayers() error {
 	registriesController := a.newRegistriesController()
 	a.WorkloadDeployer = workloadService
 
+	copilotService := a.newCopilotService()
+
 	a.Services = &ServiceContainer{
+		Copilot:  copilotService,
 		RBAC:     rbacService,
 		APIKey:   apiKeyService,
 		Project:  projectService,
@@ -169,6 +177,8 @@ func (a *App) initDomainLayers() error {
 		Clusters:   clustersController,
 		Site:       siteController,
 		IAM:        a.newIAMController(policies),
+		Copilot:    copilot.NewController(copilotService),
+		Databases:  a.newDatabasesController(),
 	}
 
 	a.Logger.Info("Domain layers successfully initialized.")

@@ -414,5 +414,25 @@
  {
   "fr": "Gérer les accès aux registres d'images externes",
   "en": "Manage access to external image registries"
+ },
+ {
+  "fr": "Lister les bases de données",
+  "en": "List databases"
+ },
+ {
+  "fr": "Voir une base de données",
+  "en": "View a database"
+ },
+ {
+  "fr": "Créer une base de données",
+  "en": "Create a database"
+ },
+ {
+  "fr": "Supprimer une base de données (ses données sont perdues)",
+  "en": "Delete a database (its data is lost)"
+ },
+ {
+  "fr": "Brancher une base de données sur un conteneur",
+  "en": "Attach a database to a container"
  }
 ]

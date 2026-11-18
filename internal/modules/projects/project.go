@@ -1,8 +1,11 @@
 package projects
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
+	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 
 	typeiam "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
@@ -14,14 +17,39 @@ type IProjectController interface {
 	GetProjectStatus(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectStatusResponse, error)
 	DeleteProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectResponse, error)
 	GetProjectMetrics(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.NamespaceMetrics, error)
+	ListProjects(c *gin.Context) (*typeiam.ListProjectsResponse, error)
+}
+
+// ProjectAccess : où l'appelant détient une permission (iam.Engine).
+type ProjectAccess interface {
+	Holdings(ctx context.Context, p iam.Principal, perm iam.Permission) (iam.Holdings, error)
 }
 
 type ProjectHandler struct {
 	ProjectService service.IProjectService
+	Access         ProjectAccess
 }
 
-func NewProjectHandlers(ps service.IProjectService) *ProjectHandler {
-	return &ProjectHandler{ProjectService: ps}
+func NewProjectHandlers(ps service.IProjectService, access ProjectAccess) *ProjectHandler {
+	return &ProjectHandler{ProjectService: ps, Access: access}
+}
+
+// ListProjects : projets que l'appelant peut voir (resourcemanager.projects.get
+// sur le projet ou sur son organisation). Un compte de service ne voit que
+// les projets où il a été autorisé.
+func (h *ProjectHandler) ListProjects(c *gin.Context) (*typeiam.ListProjectsResponse, error) {
+	p, ok := security.PrincipalFromContext(c)
+	if !ok {
+		return nil, betoerrors.New(betoerrors.CodeUnauthorized, "authentication required")
+	}
+	if h.Access == nil {
+		return nil, betoerrors.New(betoerrors.CodeInternal, "project listing unavailable")
+	}
+	held, err := h.Access.Holdings(c.Request.Context(), p, iam.ProjectsGet)
+	if err != nil {
+		return nil, err
+	}
+	return h.ProjectService.ListProjects(c.Request.Context(), held.Organizations, held.Projects)
 }
 
 func (h *ProjectHandler) CreateProject(c *gin.Context, in *typeiam.CreateProjectRequest) (*typeiam.ProjectResponse, error) {

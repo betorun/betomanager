@@ -1,0 +1,42 @@
+[
+ {
+  "fr": "arrêt demandé par l'appelant",
+  "en": "stopped by the caller"
+ },
+ {
+  "fr": "llm.%s : prix négatif",
+  "en": "llm.%s: negative price"
+ },
+ {
+  "fr": "llm.%s.base_url invalide",
+  "en": "llm.%s.base_url is invalid"
+ },
+ {
+  "fr": "llm.%s.model est obligatoire",
+  "en": "llm.%s.model is required"
+ },
+ {
+  "fr": "llm: chaîne sans fournisseur",
+  "en": "llm: chain without provider"
+ },
+ {
+  "fr": "llm: deux fournisseurs nommés %q (labels de métriques ambigus)",
+  "en": "llm: two providers named %q (ambiguous metric labels)"
+ },
+ {
+  "fr": "llm: désactivé (llm.enabled=false)",
+  "en": "llm: disabled (llm.enabled=false)"
+ },
+ {
+  "fr": "llm: ledger sans Redis",
+  "en": "llm: ledger without Redis"
+ },
+ {
+  "fr": "llm: llm.primary.base_url est obligatoire",
+  "en": "llm: llm.primary.base_url is required"
+ },
+ {
+  "fr": "llm: plafond journalier invalide (%d)",
+  "en": "llm: invalid daily cap (%d)"
+ }
+]

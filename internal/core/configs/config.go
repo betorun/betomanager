@@ -47,6 +47,76 @@ type GlobalConfig struct {
 	// GitHubApp : connexion GitHub des conteneurs (dépôts privés, déploiement
 	// à chaque push). Désactivée tant qu'elle est incomplète.
 	GitHubApp GitHubAppConfig `mapstructure:"github_app"`
+	// LLM : modèles de langage (Copilot). Désactivé par défaut.
+	LLM LLMConfig `mapstructure:"llm"`
+	// Databases : bases Postgres gérées (CloudNativePG).
+	Databases DatabasesConfig `mapstructure:"databases"`
+}
+
+// DatabasesConfig : bases gérées.
+type DatabasesConfig struct {
+	// StorageClass : classe des disques (vide : celle par défaut du cluster).
+	StorageClass string `mapstructure:"storage_class"`
+	// Backup : sauvegardes continues (plugin Barman Cloud) vers un stockage
+	// S3 JOIGNABLE DEPUIS LE CLUSTER (les pods des bases y écrivent).
+	// Désactivées tant que Endpoint ou Bucket est vide.
+	Backup DatabaseBackupConfig `mapstructure:"backup"`
+}
+
+// DatabaseBackupConfig : destination des sauvegardes des bases.
+type DatabaseBackupConfig struct {
+	// Endpoint : URL S3 complète, ex. https://s3.eu-central-003.backblazeb2.com
+	// ou https://storage.betorun.app (SeaweedFS de la plateforme).
+	Endpoint string `mapstructure:"endpoint"`
+	Bucket   string `mapstructure:"bucket"`
+	Region   string `mapstructure:"region"`
+	// AccessKey / SecretKey : secrets. Prod : KUBEMANAGER_DATABASES_BACKUP_*.
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	// Retention : durée de conservation, ex. 7d, 4w, 3m (défaut 7d).
+	Retention string `mapstructure:"retention"`
+	// Schedule : sauvegarde complète, cron à 6 champs avec secondes
+	// (défaut « 0 0 3 * * * », chaque nuit à 3 h UTC).
+	Schedule string `mapstructure:"schedule"`
+}
+
+// LLMConfig : accès aux modèles de langage (internal/infrastructure/llm,
+// docs/adr/0008-llm-provider-layer.md). Deux emplacements fixes plutôt
+// qu'une liste : chaque champ reste réglable par une variable
+// KUBEMANAGER_LLM_PRIMARY_* / KUBEMANAGER_LLM_FALLBACK_* (la prod se règle
+// par l'environnement, et viper ne lie pas les listes).
+type LLMConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// Primary est obligatoire si Enabled ; Fallback est facultatif (BaseURL vide = absent).
+	Primary  LLMProviderConfig `mapstructure:"primary"`
+	Fallback LLMProviderConfig `mapstructure:"fallback"`
+	// DailyBudgetMicroUSD : plafond de dépense par organisation et par jour
+	// (UTC), en micro-dollars. 2 000 000 = 2 $.
+	DailyBudgetMicroUSD int64 `mapstructure:"daily_budget_micro_usd"`
+	// BreakerFailures / BreakerCooldown : disjoncteur par fournisseur.
+	BreakerFailures int           `mapstructure:"breaker_failures"`
+	BreakerCooldown time.Duration `mapstructure:"breaker_cooldown"`
+}
+
+// LLMProviderConfig : un fournisseur compatible OpenAI (OpenAI, vLLM, Groq,
+// Gemini, Mistral…).
+type LLMProviderConfig struct {
+	// Name : nom court et stable (labels de métriques), ex. "qwen", "groq".
+	Name    string `mapstructure:"name"`
+	BaseURL string `mapstructure:"base_url"`
+	// APIKey : secret. Prod : KUBEMANAGER_LLM_PRIMARY_API_KEY.
+	APIKey  string        `mapstructure:"api_key"`
+	Model   string        `mapstructure:"model"`
+	Timeout time.Duration `mapstructure:"timeout"`
+	// MaxTokensField : "max_tokens" (défaut) ou "max_completion_tokens".
+	MaxTokensField string `mapstructure:"max_tokens_field"`
+	// ExtraBodyJSON : objet JSON fusionné dans chaque requête, ex.
+	// {"chat_template_kwargs":{"enable_thinking":false}} pour Qwen sur vLLM.
+	ExtraBodyJSON string `mapstructure:"extra_body_json"`
+	// Prix en micro-dollars par million de jetons (budget). Un modèle
+	// auto-hébergé reçoit un prix interne, sinon rien n'est plafonné.
+	InputMicroUSDPerMTok  int64 `mapstructure:"input_micro_usd_per_mtok"`
+	OutputMicroUSDPerMTok int64 `mapstructure:"output_micro_usd_per_mtok"`
 }
 
 // GitHubAppConfig : application GitHub de betorun.

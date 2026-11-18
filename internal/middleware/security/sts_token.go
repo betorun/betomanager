@@ -42,6 +42,14 @@ func (m *MiddlewareManager) handleSTSToken(c *gin.Context, raw string) {
 	if v.Method == sts.MethodSession && m.applySessionToken(c, v) {
 		return
 	}
+	if v.Method == sts.MethodDelegated {
+		// Toujours au nom d'une personne : sinon, refus (jamais le chemin
+		// des comptes de service, exempt de double authentification).
+		if !m.applySessionToken(c, v) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+		}
+		return
+	}
 	c.Set(ctxPrincipal, string(v.Principal))
 	c.Set("authMethod", "sts")
 	c.Set("tokenID", v.TokenID)

@@ -92,11 +92,11 @@ type RollbackRequest struct {
 
 type LogsRequest struct {
 	ID           string `path:"id" binding:"required"`
-	Follow       bool   `query:"follow"`
-	Previous     bool   `query:"previous"`
+	Follow       bool   `query:"follow"     description:"Suivre le flux en direct"`
+	Previous     bool   `query:"previous"   description:"Journaux de l'instance précédente (après un redémarrage)"`
 	TailLines    int64  `query:"tail"       description:"Nombre de lignes depuis la fin (défaut : 500)"`
 	SinceSeconds int64  `query:"since"      description:"Période à remonter, en secondes (défaut : 24 h)"`
-	Timestamps   bool   `query:"timestamps"`
+	Timestamps   bool   `query:"timestamps" description:"Préfixer chaque ligne de son horodatage"`
 }
 
 //  CRUD

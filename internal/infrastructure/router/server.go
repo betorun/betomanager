@@ -203,6 +203,10 @@ func (a *App) startHTTPServer() {
 	RegisterRoutes(f)
 	// Routes déclarées Public() : seules exemptées d'authentification.
 	a.Security.Middleware.SetPublicRoutes(PublicRoutes())
+	// Copilot : outils construits depuis la spécification, rejoués sur ce moteur.
+	if err := a.bindCopilot(f, engine); err != nil {
+		a.Logger.Errorw("copilot disabled: tools", "error", err)
+	}
 
 	addr := fmt.Sprintf(":%d", a.Config.Server.HTTPPort)
 	a.Servers.HTTP = &http.Server{

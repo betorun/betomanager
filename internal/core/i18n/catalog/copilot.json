@@ -1,0 +1,122 @@
+[
+ {
+  "fr": "copilot: %s %s : seules les lectures (GET) sont des outils",
+  "en": "copilot: %s %s: only reads (GET) can be tools"
+ },
+ {
+  "fr": "copilot: no answer",
+  "en": "copilot: no answer"
+ },
+ {
+  "fr": "copilot: nom d'outil invalide %q",
+  "en": "copilot: invalid tool name %q"
+ },
+ {
+  "fr": "copilot: outil %q : %s %s absent de la spécification",
+  "en": "copilot: tool %q: %s %s missing from the specification"
+ },
+ {
+  "fr": "copilot: outil %q : %s absent de la spécification publique",
+  "en": "copilot: tool %q: %s missing from the public specification"
+ },
+ {
+  "fr": "copilot: outil %q : paramètre de chemin %q non documenté",
+  "en": "copilot: tool %q: undocumented path parameter %q"
+ },
+ {
+  "fr": "copilot: outil %q, paramètre %q : schéma illisible",
+  "en": "copilot: tool %q, parameter %q: unreadable schema"
+ },
+ {
+  "fr": "copilot: spécification : %w",
+  "en": "copilot: specification: %w"
+ },
+ {
+  "fr": "copilot: spécification illisible : %w",
+  "en": "copilot: unreadable specification: %w"
+ },
+ {
+  "fr": "copilot: outil en double %q",
+  "en": "copilot: duplicate tool %q"
+ },
+ {
+  "fr": "copilot: %s exige l'outil %s",
+  "en": "copilot: %s requires the tool %s"
+ },
+ {
+  "fr": "Le Copilot n'est pas disponible",
+  "en": "the Copilot is not available"
+ },
+ {
+  "fr": "Le Copilot est réservé à une personne connectée",
+  "en": "the Copilot is only available to a signed-in person"
+ },
+ {
+  "fr": "Le message doit contenir de 1 à 4 000 caractères",
+  "en": "the message must contain 1 to 4000 characters"
+ },
+ {
+  "fr": "Trop de messages, patientez un instant",
+  "en": "too many messages, please wait a moment"
+ },
+ {
+  "fr": "Le Copilot est momentanément indisponible",
+  "en": "the Copilot is temporarily unavailable"
+ },
+ {
+  "fr": "Corps de requête invalide",
+  "en": "invalid request body"
+ },
+ {
+  "fr": "copilot: outil %q : action sensible, réservée à la personne",
+  "en": "copilot: tool %q: sensitive action, reserved to the person"
+ },
+ {
+  "fr": "copilot: outil %q : champ %q à la fois paramètre et corps",
+  "en": "copilot: tool %q: field %q is both a parameter and a body field"
+ },
+ {
+  "fr": "copilot: outil %q : corps non JSON",
+  "en": "copilot: tool %q: body is not JSON"
+ },
+ {
+  "fr": "copilot: outil %q : risque non déclaré",
+  "en": "copilot: tool %q: risk not declared"
+ },
+ {
+  "fr": "copilot: outil %q : écriture %s refusée",
+  "en": "copilot: tool %q: %s write refused"
+ },
+ {
+  "fr": "Carte introuvable ou expirée",
+  "en": "proposal not found or expired"
+ },
+ {
+  "fr": "Carte déjà traitée",
+  "en": "proposal already handled"
+ },
+ {
+  "fr": "référence inconnue %q",
+  "en": "unknown reference %q"
+ },
+ {
+  "fr": "schéma trop imbriqué",
+  "en": "schema nested too deeply"
+ },
+ {
+  "fr": "Cette carte a expiré ou n'existe pas",
+  "en": "this card has expired or does not exist"
+ },
+ {
+  "fr": "Cette carte a déjà été traitée",
+  "en": "this card has already been handled"
+ },
+ {
+  "fr": "Seule une personne connectée peut valider une action",
+  "en": "only a signed-in person can validate an action"
+ },
+ {
+  "fr": "copilot: outil %q : inverse %q absent ou incompatible",
+  "en": "copilot: tool %q: inverse %q missing or incompatible"
+ }
+]

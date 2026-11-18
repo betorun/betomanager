@@ -343,6 +343,9 @@ var messages = map[string][2]string{
 	"flag.trust.issuer":      {"GitLab auto-hébergé : URL de l'instance", "self-hosted GitLab: instance URL"},
 
 	"version.short": {"Afficher la version", "Show the version"},
+	"mcp.short":     {"Serveur MCP pour les agents de code (Claude Code, Cursor, Windsurf…)", "MCP server for coding agents (Claude Code, Cursor, Windsurf…)"},
+	"mcp.long": {"Démarre un serveur Model Context Protocol sur l'entrée et la sortie standard. Un agent de code peut alors déployer le projet ouvert, lire les journaux et diagnostiquer vos conteneurs, avec vos identifiants betorun (betorun login).\n\nClaude Code :  claude mcp add betorun -- betorun mcp\nCursor :       ~/.cursor/mcp.json → {\"mcpServers\": {\"betorun\": {\"command\": \"betorun\", \"args\": [\"mcp\"]}}}",
+		"Starts a Model Context Protocol server on standard input and output. A coding agent can then deploy the open project, read logs and diagnose your containers, with your betorun credentials (betorun login).\n\nClaude Code:  claude mcp add betorun -- betorun mcp\nCursor:       ~/.cursor/mcp.json → {\"mcpServers\": {\"betorun\": {\"command\": \"betorun\", \"args\": [\"mcp\"]}}}"},
 
 	"flag.api":        {"URL de l'API (…/kmanager/v1)", "API URL (…/kmanager/v1)"},
 	"flag.project":    {"projet (identifiant)", "project (ID)"},

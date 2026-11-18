@@ -1,0 +1,86 @@
+[
+ {
+  "fr": "CloudNativePG n'est pas installé sur le cluster",
+  "en": "CloudNativePG is not installed on the cluster"
+ },
+ {
+  "fr": "Base de données introuvable",
+  "en": "database not found"
+ },
+ {
+  "fr": "Nom de base invalide : 3 à 30 caractères, minuscules, chiffres et tirets, commençant par une lettre",
+  "en": "invalid database name: 3 to 30 lowercase letters, digits and hyphens, starting with a letter"
+ },
+ {
+  "fr": "Taille de disque invalide : 1Gi, 2Gi, 5Gi, 10Gi ou 20Gi",
+  "en": "invalid storage size: 1Gi, 2Gi, 5Gi, 10Gi or 20Gi"
+ },
+ {
+  "fr": "Une base de ce nom existe déjà dans le projet",
+  "en": "a database with this name already exists in the project"
+ },
+ {
+  "fr": "Les bases de données gérées ne sont pas disponibles sur cette plateforme",
+  "en": "managed databases are not available on this platform"
+ },
+ {
+  "fr": "ID de projet invalide",
+  "en": "invalid project id"
+ },
+ {
+  "fr": "Au plus %d bases de données par projet",
+  "en": "at most %d databases per project"
+ },
+ {
+  "fr": "Le projet n'est pas prêt (%s)",
+  "en": "project is not ready (%s)"
+ },
+ {
+  "fr": "La base de données n'a pas pu être créée : %w",
+  "en": "the database could not be created: %w"
+ },
+ {
+  "fr": "La base de données n'a pas pu être supprimée : %w",
+  "en": "the database could not be deleted: %w"
+ },
+ {
+  "fr": "Le secret de connexion n'est pas encore créé",
+  "en": "connection secret not created yet"
+ },
+ {
+  "fr": "Permission refusée : workloads.variables.update sur ce conteneur",
+  "en": "permission denied: workloads.variables.update on this container"
+ },
+ {
+  "fr": "La base de données n'est pas encore prête",
+  "en": "the database is not ready yet"
+ },
+ {
+  "fr": "Nom de variable invalide : majuscules, chiffres et tirets bas",
+  "en": "invalid variable name: uppercase letters, digits and underscores"
+ },
+ {
+  "fr": "Conteneur introuvable dans ce projet",
+  "en": "container not found in this project"
+ },
+ {
+  "fr": "Le plugin Barman Cloud n'est pas installé sur le cluster",
+  "en": "the Barman Cloud plugin is not installed on the cluster"
+ },
+ {
+  "fr": "Les sauvegardes ne sont pas configurées sur cette plateforme",
+  "en": "backups are not configured on this platform"
+ },
+ {
+  "fr": "Permission refusée : databases.databases.get sur la base source",
+  "en": "permission denied: databases.databases.get on the source database"
+ },
+ {
+  "fr": "Cette base n'a aucune sauvegarde terminée à restaurer",
+  "en": "this database has no completed backup to restore from"
+ },
+ {
+  "fr": "L'instant à restaurer doit être dans le passé",
+  "en": "the restore time must be in the past"
+ }
+]

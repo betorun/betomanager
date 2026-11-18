@@ -54,6 +54,19 @@ spec:
           port: 53
     {{- end }}
 
+    {{- if .Values.networkPolicy.egress.projectDatabases }}
+    # Bases gérées du projet (CloudNativePG, même espace de noms) : Postgres
+    # seulement. La règle Internet ci-dessous exclut les adresses privées.
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: cnpg.io/cluster
+                operator: Exists
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
+
     {{- with .Values.networkPolicy.egress.publicPorts }}
     # Sortant vers Internet (HTTP(S), SMTP submission, bases managées…).
     # Exclut les subnets privés classiques pour ne pas ouvrir l'intra-cluster.

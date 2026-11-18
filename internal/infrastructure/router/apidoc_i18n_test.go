@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
 	"net/http"
 	"net/http/httptest"
@@ -65,6 +66,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Builds:     &builds.Controller{},
 				GitHub:     &github.Controller{},
 				Registries: &registries.Controller{},
+				Databases:  &databases.Controller{},
 			},
 		}
 		docFizz = fizz.NewFromEngine(gin.New())

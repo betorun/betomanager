@@ -68,12 +68,27 @@ func (f *fakeDistributor) TerminateWorkflow(_ context.Context, _ string, _ strin
 
 func (f *fakeProjectRepo) UpdateProjectStatus(context.Context, string, string) error { return nil }
 
+func (f *fakeProjectRepo) ListProjects(_ context.Context, orgIDs, ids []uuid.UUID, limit int) ([]authdomain.Project, error) {
+	f.listed = append(f.listed, listCall{orgIDs, ids, limit})
+	if len(f.rows) > limit {
+		return f.rows[:limit], nil
+	}
+	return f.rows, nil
+}
+
+type listCall struct {
+	orgIDs, ids []uuid.UUID
+	limit       int
+}
+
 type fakeProjectRepo struct {
 	project   *authdomain.Project
 	getErr    error
 	createErr error
 	created []*authdomain.Project
 	deleted []string
+	rows    []authdomain.Project
+	listed  []listCall
 }
 
 func (f *fakeProjectRepo) CreateProject(_ context.Context, p *authdomain.Project, _ string) error {

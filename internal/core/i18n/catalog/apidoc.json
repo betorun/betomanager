@@ -1004,6 +1004,10 @@
   "en": "Dockerfile path"
  },
  {
+  "fr": "Projets accessibles (les 200 plus récents)",
+  "en": "Projects you can access (the 200 most recent)"
+ },
+ {
   "fr": "Registres d'images externes",
   "en": "External image registries"
  },
@@ -1042,5 +1046,133 @@
  {
   "fr": "Jeton d'accès, en lecture seule de préférence. Jamais relisible ensuite",
   "en": "Access token, preferably read-only. Never readable afterwards"
+ },
+ {
+  "fr": "tout utilisateur authentifié, ou le Copilot en son nom (données de l'appelant uniquement)",
+  "en": "any authenticated user, or the Copilot on their behalf (the caller's own data only)"
+ },
+ {
+  "fr": "Suivre jusqu'à la fin du build",
+  "en": "Follow until the build ends"
+ },
+ {
+  "fr": "Flux texte, une ligne par entrée (HTTP chunked)",
+  "en": "Text stream, one line per entry (HTTP chunked)"
+ },
+ {
+  "fr": "Archive .tar.gz du code source",
+  "en": "Source code as a .tar.gz archive"
+ },
+ {
+  "fr": "Chemin du Dockerfile dans l'archive (sinon détection automatique)",
+  "en": "Path of the Dockerfile in the archive (otherwise detected automatically)"
+ },
+ {
+  "fr": "Nom de l'image à construire",
+  "en": "Name of the image to build"
+ },
+ {
+  "fr": "Archive .zip du site (index.html à la racine)",
+  "en": "Site as a .zip archive (index.html at the root)"
+ },
+ {
+  "fr": "Nombre de lignes depuis la fin (défaut : 500)",
+  "en": "Number of lines from the end (default: 500)"
+ },
+ {
+  "fr": "Période à remonter, en secondes (défaut : 24 h)",
+  "en": "How far back to read, in seconds (default: 24 h)"
+ },
+ {
+  "fr": "Suivre le flux en direct",
+  "en": "Follow the live stream"
+ },
+ {
+  "fr": "Journaux de l'instance précédente (après un redémarrage)",
+  "en": "Logs of the previous instance (after a restart)"
+ },
+ {
+  "fr": "Préfixer chaque ligne de son horodatage",
+  "en": "Prefix each line with its timestamp"
+ },
+ {
+  "fr": "Supprimer une base (ses données sont perdues)",
+  "en": "Delete a database (its data is lost)"
+ },
+ {
+  "fr": "Détails et état d'une base (jamais le mot de passe)",
+  "en": "Details and state of a database (never the password)"
+ },
+ {
+  "fr": "Lister les bases de données du projet",
+  "en": "List the project's databases"
+ },
+ {
+  "fr": "Créer une base Postgres (prête en une minute environ)",
+  "en": "Create a Postgres database (ready in about a minute)"
+ },
+ {
+  "fr": "Bases Postgres gérées : une par besoin, joignables seulement depuis les conteneurs du projet.",
+  "en": "Managed Postgres databases: one per need, reachable only from the project's containers."
+ },
+ {
+  "fr": "Bases de données",
+  "en": "Databases"
+ },
+ {
+  "fr": "ID de la base de données",
+  "en": "Database ID"
+ },
+ {
+  "fr": "Nom de la base (3 à 30 caractères : minuscules, chiffres, tirets)",
+  "en": "Database name (3 to 30 characters: lowercase letters, digits, hyphens)"
+ },
+ {
+  "fr": "Taille du disque : 1Gi (défaut), 2Gi, 5Gi, 10Gi ou 20Gi",
+  "en": "Disk size: 1Gi (default), 2Gi, 5Gi, 10Gi or 20Gi"
+ },
+ {
+  "fr": "Supprimer une base",
+  "en": "Delete a database"
+ },
+ {
+  "fr": "Détails et état d'une base",
+  "en": "Details and state of a database"
+ },
+ {
+  "fr": "Créer une base Postgres",
+  "en": "Create a Postgres database"
+ },
+ {
+  "fr": "Variable qui reçoit l'URI de connexion (défaut : DATABASE_URL)",
+  "en": "Variable that receives the connection URI (default: DATABASE_URL)"
+ },
+ {
+  "fr": "ID du conteneur qui utilisera la base",
+  "en": "ID of the container that will use the database"
+ },
+ {
+  "fr": "Brancher la base sur un conteneur (URI posée en variable secrète, conteneur redéployé)",
+  "en": "Attach the database to a container (URI set as a secret variable, container redeployed)"
+ },
+ {
+  "fr": "Brancher la base sur un conteneur",
+  "en": "Attach the database to a container"
+ },
+ {
+  "fr": "Nom de la nouvelle base (la base source n'est jamais modifiée)",
+  "en": "Name of the new database (the source database is never changed)"
+ },
+ {
+  "fr": "Instant à restaurer, RFC 3339 (défaut : le plus récent)",
+  "en": "Instant to restore, RFC 3339 (default: the latest)"
+ },
+ {
+  "fr": "Restaurer dans une nouvelle base (dernier état ou instant donné ; la source n'est pas modifiée)",
+  "en": "Restore into a new database (latest state or a given instant; the source is not changed)"
+ },
+ {
+  "fr": "Restaurer dans une nouvelle base",
+  "en": "Restore into a new database"
  }
 ]

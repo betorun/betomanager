@@ -68,9 +68,18 @@ func (m *MiddlewareManager) applySessionToken(c *gin.Context, v *sts.Verified) b
 	c.Set("userID", u.keycloakID) // usage interne (appels à l'annuaire)
 	c.Set("email", u.email)
 	c.Set("tokenID", v.TokenID)
+	c.Set(ctxAuthAcr, v.ACR)
+	if v.Method == sts.MethodDelegated {
+		// Un agent au nom de la personne : ses droits, bornés par
+		// checkDelegated (jamais d'action sensible) et RefuseDelegated.
+		c.Set("authMethod", AuthMethodDelegated)
+		c.Set(ctxActor, v.Actor)
+		c.Set(ctxDelegationScope, v.Scope)
+		c.Next()
+		return true
+	}
 	// « bearer » : une personne ; la double authentification s'applique.
 	c.Set("authMethod", "bearer")
-	c.Set(ctxAuthAcr, v.ACR)
 	c.Set(ctxAuthTime, v.AuthTime.Unix())
 	c.Next()
 	return true
@@ -81,4 +90,18 @@ func (m *MiddlewareManager) applySessionToken(c *gin.Context, v *sts.Verified) b
 func SessionID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.GetString(ctxSessionID))
 	return id, err == nil
+}
+
+// PersonSession : la requête vient-elle d'une personne connectée par une
+// session betorun (ni clé API, ni compte de service, ni délégation) ? Rend
+// la session et son acr (niveau d'authentification), pour une délégation.
+func PersonSession(c *gin.Context) (sessionID uuid.UUID, acr string, ok bool) {
+	if c.GetString("authMethod") != "bearer" {
+		return uuid.Nil, "", false
+	}
+	id, ok := SessionID(c)
+	if !ok {
+		return uuid.Nil, "", false
+	}
+	return id, c.GetString(ctxAuthAcr), true
 }

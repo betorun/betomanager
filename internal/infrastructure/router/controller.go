@@ -6,6 +6,8 @@ import (
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	"github.com/thekrauss/kubemanager/internal/modules/builds"
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot"
+	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/github"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identity "github.com/thekrauss/kubemanager/internal/modules/identity"
@@ -38,6 +40,8 @@ type ServiceContainer struct {
 	Identity identitySvc.Service
 	Clusters clustersCtrl.IClusterService
 	Site     sitesSvc.ISiteService // nil si sites désactivés
+	// Copilot : toujours présent ; LLM nil = désactivé.
+	Copilot *copilot.Service
 }
 
 type ControllerContainer struct {
@@ -56,6 +60,8 @@ type ControllerContainer struct {
 	GitHub   *github.Controller
 	// Registries : accès des projets aux registres d'images externes.
 	Registries *registries.Controller
+	Copilot    *copilot.Controller
+	Databases  *databases.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -71,4 +77,6 @@ func AddAllRoutes(a *App) {
 	addGitHubRoutes(a)
 	addRegistriesRoutes(a)
 	addIAMRoutes(a)
+	addCopilotRoutes(a)
+	addDatabaseRoutes(a)
 }

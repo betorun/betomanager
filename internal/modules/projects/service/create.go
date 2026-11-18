@@ -26,6 +26,9 @@ type IProjectService interface {
 	DeleteProject(ctx context.Context, projectID string) (*typesproject.ProjectResponse, error)
 	GetProjectStatus(ctx context.Context, projectID string) (*typesproject.ProjectStatusResponse, error)
 	GetMetrics(ctx context.Context, projectID string) (*typesproject.NamespaceMetrics, error)
+	// ListProjects : projets accessibles, donnés par l'IAM (organisations et
+	// projets où l'appelant détient resourcemanager.projects.get).
+	ListProjects(ctx context.Context, orgIDs, projectIDs []uuid.UUID) (*typesproject.ListProjectsResponse, error)
 }
 
 var _ IProjectService = (*ProjectService)(nil)

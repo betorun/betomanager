@@ -6,7 +6,10 @@
 // Ce package ne dépend d'aucun module métier : les modules dépendent de lui.
 package iam
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Permission : "<service>.<ressource>.<verbe>". Une permission publiée n'est
 // jamais renommée ni supprimée (les rôles personnalisés des clients la
@@ -55,11 +58,20 @@ const (
 	RegistriesManage        Permission = "workloads.registries.manage"
 
 	// sites
-	SitesList             Permission = "sites.sites.list"
-	SitesGet              Permission = "sites.sites.get"
-	SitesCreate           Permission = "sites.sites.create"
-	SitesUpdate           Permission = "sites.sites.update"
-	SitesDelete           Permission = "sites.sites.delete"
+	SitesList   Permission = "sites.sites.list"
+	SitesGet    Permission = "sites.sites.get"
+	SitesCreate Permission = "sites.sites.create"
+	SitesUpdate Permission = "sites.sites.update"
+	SitesDelete Permission = "sites.sites.delete"
+
+	// Bases de données gérées (Postgres).
+	DatabasesList   Permission = "databases.databases.list"
+	DatabasesGet    Permission = "databases.databases.get"
+	DatabasesCreate Permission = "databases.databases.create"
+	DatabasesDelete Permission = "databases.databases.delete"
+	// DatabasesConnect : brancher une base sur un conteneur (il reçoit l'URI
+	// de connexion, mot de passe compris).
+	DatabasesConnect      Permission = "databases.databases.connect"
 	SiteDeploymentsList   Permission = "sites.deployments.list"
 	SiteDeploymentsCreate Permission = "sites.deployments.create"
 	SiteDeploymentsActive Permission = "sites.deployments.activate"
@@ -160,6 +172,11 @@ var catalog = map[Permission]PermissionInfo{
 	SitesList:             {Title: "Lister les sites", CustomRoles: true},
 	SitesGet:              {Title: "Voir un site", CustomRoles: true},
 	SitesCreate:           {Title: "Créer un site", CustomRoles: true},
+	DatabasesList:         {Title: "Lister les bases de données", CustomRoles: true},
+	DatabasesGet:          {Title: "Voir une base de données", CustomRoles: true},
+	DatabasesCreate:       {Title: "Créer une base de données", CustomRoles: true},
+	DatabasesDelete:       {Title: "Supprimer une base de données (ses données sont perdues)", CustomRoles: true, Sensitive: true},
+	DatabasesConnect:      {Title: "Brancher une base de données sur un conteneur", CustomRoles: true},
 	SitesUpdate:           {Title: "Modifier un site", CustomRoles: true},
 	SitesDelete:           {Title: "Supprimer un site", CustomRoles: true},
 	SiteDeploymentsList:   {Title: "Voir les déploiements d'un site", CustomRoles: true},
@@ -225,4 +242,16 @@ func AllPermissions() []Permission {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
+}
+
+// ReadOnly : la permission ne fait que lire (verbe get, list, read ou
+// getIamPolicy). Sert à borner un jeton délégué en lecture (sts.ScopeRead).
+func (p Permission) ReadOnly() bool {
+	s := string(p)
+	verb := s[strings.LastIndexByte(s, '.')+1:]
+	switch verb {
+	case "get", "list", "read", "getIamPolicy":
+		return true
+	}
+	return false
 }

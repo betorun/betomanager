@@ -160,6 +160,10 @@
   "en": "invalid project limits: use Kubernetes quantities (e.g. 2000m, 4Gi)"
  },
  {
+  "fr": "Liste des projets momentanément indisponible",
+  "en": "project listing unavailable"
+ },
+ {
   "fr": "Un projet porte déjà ce nom",
   "en": "a project with this name already exists"
  }
