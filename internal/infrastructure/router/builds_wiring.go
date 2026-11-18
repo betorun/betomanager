@@ -1,0 +1,140 @@
+package router
+
+import (
+	"errors"
+	"fmt"
+
+	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/thekrauss/kubemanager/internal/modules/builds/images"
+
+	"github.com/thekrauss/kubemanager/internal/modules/builds"
+	buildActs "github.com/thekrauss/kubemanager/internal/modules/builds/activities"
+	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
+	buildsRepo "github.com/thekrauss/kubemanager/internal/modules/builds/repository"
+	buildsSvc "github.com/thekrauss/kubemanager/internal/modules/builds/service"
+	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
+)
+
+// minBuildSecretBytes : longueur minimale du secret du registre.
+const minBuildSecretBytes = 32
+
+// buildsEnabled : le module a besoin du stockage objet (archives, journaux).
+func (a *App) buildsEnabled() bool { return a.Config.Builds.Enabled && a.ObjectStore != nil }
+
+// newBuildController : nil si les builds sont désactivés ; une configuration
+// incomplète empêche le démarrage plutôt que d'exposer un registre mal protégé.
+func (a *App) newBuildController() (*builds.Controller, error) {
+	if !a.buildsEnabled() {
+		return nil, nil
+	}
+	c := a.Config.Builds.WithDefaults()
+	if len(c.Secret) < minBuildSecretBytes {
+		return nil, errors.New("builds.secret must be at least 32 bytes")
+	}
+	issuer, err := registry.NewIssuer(c.TokenIssuer, c.RegistryService, c.TokenCertFile, c.TokenKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	keeper, err := a.imageKeeper(issuer)
+	if err != nil {
+		return nil, err
+	}
+	return &builds.Controller{
+		Service: &buildsSvc.Service{
+			Repo:        buildsRepo.New(a.DB),
+			Store:       a.ObjectStore,
+			Distributor: a.TemporalDistributor,
+			K8s:         a.K8sProvider.Client,
+			Creds:       registry.Credentials{Secret: []byte(c.Secret)},
+			Issuer:      issuer,
+			Images:      keeper,
+			Cfg: buildsSvc.Config{Namespace: c.Namespace, RegistryHost: c.RegistryHost,
+				MaxArchiveBytes: c.MaxArchiveBytes, MaxConcurrent: c.MaxConcurrent, Deadline: c.Timeout},
+			Logger: a.Logger,
+		},
+		Logger: a.Logger,
+	}, nil
+}
+
+// pullSecrets : Secret de pull des projets (registre de la plateforme si les
+// builds sont activés, et registres externes des projets).
+func (a *App) pullSecrets() *pull.Secrets {
+	if a.K8sProvider == nil || a.K8sProvider.Client == nil {
+		return nil
+	}
+	s := &pull.Secrets{K8s: a.K8sProvider.Client}
+	if a.Registries != nil {
+		s.External = a.Registries
+	}
+	if a.buildsEnabled() {
+		s.Platform = &pull.Platform{Host: a.Config.Builds.RegistryHost, Creds: registry.Credentials{Secret: []byte(a.Config.Builds.Secret)}}
+	}
+	return s
+}
+
+// buildActivities : étapes du workflow, côté worker.
+func (a *App) buildActivities() *buildActs.Activities {
+	if !a.buildsEnabled() {
+		return nil
+	}
+	c := a.Config.Builds.WithDefaults()
+	opts := ""
+	if c.RegistryInsecure {
+		opts = ",registry.insecure=true"
+	}
+	acts := &buildActs.Activities{
+		Repo:  buildsRepo.New(a.DB),
+		Store: a.ObjectStore,
+		K8s:   a.K8sProvider.Client,
+		Job: buildActs.JobConfig{
+			Namespace: c.Namespace, Image: c.BuildkitImage, RegistryOpts: opts,
+			CPURequest: c.CPURequest, CPULimit: c.CPULimit, MemoryRequest: c.MemoryRequest, MemoryLimit: c.MemoryLimit,
+			DiskLimit: c.DiskLimit, DeadlineSecond: int64(c.Timeout.Seconds()),
+			RuntimeClass: c.RuntimeClass, NodeSelector: c.NodeSelector, EgressAllow: c.EgressAllowCIDRs,
+		},
+		Creds:      registry.Credentials{Secret: []byte(c.Secret)},
+		RegHost:    c.RegistryHost,
+		SourceBase: c.PublicAPIURL,
+		Deployer:   a.WorkloadDeployer,
+		Logger:     a.Logger,
+	}
+	if n := a.alertNotifier(); n != nil {
+		acts.Alerts = n
+	}
+	if issuer, err := registry.NewIssuer(c.TokenIssuer, c.RegistryService, c.TokenCertFile, c.TokenKeyFile); err != nil {
+		a.Logger.Warnw("image pruning disabled: registry token key unavailable", "error", err)
+	} else if keeper, err := a.imageKeeper(issuer); err != nil {
+		a.Logger.Warnw("image pruning disabled", "error", err)
+	} else {
+		acts.Images = keeper
+	}
+	if a.GitHub.Enabled() {
+		acts.Git = a.GitHub
+	}
+	return acts
+}
+
+// imageKeeper : taille, ménage et quota des images du registre de la plateforme.
+func (a *App) imageKeeper(issuer *registry.Issuer) (*images.Keeper, error) {
+	c := a.Config.Builds.WithDefaults()
+	quota := images.DefaultQuota
+	if c.ProjectImageQuota != "" {
+		q, err := resource.ParseQuantity(c.ProjectImageQuota)
+		if err != nil {
+			return nil, fmt.Errorf("builds.project_image_quota: %w", err)
+		}
+		quota = q.Value()
+		if quota == 0 {
+			quota = -1 // "0" : sans quota
+		}
+	}
+	return &images.Keeper{
+		Store:    buildsRepo.NewImageStore(a.DB),
+		Registry: &registry.Client{BaseURL: c.RegistryAPIURL, Issuer: issuer},
+		Host:     c.RegistryHost,
+		Keep:     c.KeepImages,
+		Quota:    quota,
+		Logger:   a.Logger.With("component", "images"),
+	}, nil
+}
