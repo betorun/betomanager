@@ -50,13 +50,15 @@ type Config struct {
 
 // Service : le Copilot. LLM nil = désactivé (llm.enabled=false).
 type Service struct {
-	LLM    llm.Provider
-	STS    Minter
-	Store  *store.Store
-	Redis  redis.UniversalClient
-	Config Config
-	Logger *zap.SugaredLogger
-	Now    func() time.Time
+	LLM   llm.Provider
+	STS   Minter
+	Store *store.Store
+	Redis redis.UniversalClient
+	// Proposals : cartes d'action (nil : Redis).
+	Proposals ProposalStore
+	Config    Config
+	Logger    *zap.SugaredLogger
+	Now       func() time.Time
 
 	mu      sync.RWMutex
 	handler http.Handler
@@ -223,14 +225,15 @@ func (h *Controller) Chat(c *gin.Context) {
 		stored = nil // sans mémoire, on répond quand même
 	}
 
+	sse := newSSE(c)
 	s.mu.RLock()
 	runner := &boundRunner{cat: s.catalog, inv: tools.Invoker{
 		Handler: s.handler, Token: token, ClientIP: c.ClientIP(),
 		AcceptLanguage: c.GetHeader("Accept-Language"),
-	}}
+	}, svc: s, userID: user.String(), conversationID: convID,
+		onProposal: func(v View) { sse.send("action", v) }}
 	s.mu.RUnlock()
 
-	sse := newSSE(c)
 	sse.send("meta", gin.H{"conversation_id": convID})
 
 	page := agent.Page{Path: in.Page.Path, ProjectID: in.Page.ProjectID, WorkloadID: in.Page.WorkloadID,
@@ -299,11 +302,26 @@ func (s *Service) allow(ctx context.Context, userID string) (retryAfter int, ok 
 type boundRunner struct {
 	cat *tools.Catalog
 	inv tools.Invoker
+	// Écritures : propositions (cartes), une par message au plus.
+	svc            *Service
+	userID         string
+	conversationID string
+	onProposal     func(View)
+	proposed       int
 }
 
 func (r *boundRunner) Definitions() []llm.Tool { return r.cat.Definitions() }
 
 func (r *boundRunner) Run(ctx context.Context, name string, args json.RawMessage) tools.Result {
+	if t, ok := r.cat.Lookup(name); ok && t.Write {
+		res := r.propose(ctx, t, args)
+		outcome := "proposed"
+		if res.IsError {
+			outcome = "error"
+		}
+		toolCallsTotal.WithLabelValues(name, outcome).Inc()
+		return res
+	}
 	res := r.cat.Call(ctx, r.inv, name, args)
 	outcome := "ok"
 	if res.IsError {

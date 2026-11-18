@@ -37,10 +37,29 @@ func TestCopilotToolsBuildFromPublicSpec(t *testing.T) {
 	require.Contains(t, string(logs.Schema), `"maximum":300`)
 }
 
-// Aucune route marquée ForCopilot n'est une écriture (lot 1 : lecture seule).
-func TestCopilotToolsAreReadOnly(t *testing.T) {
+// Lectures en GET ; écritures déclarées Write, jamais DELETE ni sensibles, avec
+// un risque ; les secrets ne sont jamais un argument du modèle.
+func TestCopilotToolsReadsAndWrites(t *testing.T) {
 	documentedAPI(t)
+	writes := 0
 	for _, r := range CopilotRoutes(AllGroups) {
-		require.Equal(t, "GET", r.Method, r.Name)
+		if !r.Write {
+			require.Equal(t, "GET", r.Method, r.Name)
+			continue
+		}
+		writes++
+		require.NotEqual(t, "DELETE", r.Method, r.Name)
+		require.False(t, r.Sensitive, r.Name)
+		require.NotEmpty(t, r.Risk, r.Name)
 	}
+	require.GreaterOrEqual(t, writes, 8)
+
+	spec, err := publicSpec(documentedAPI(t).Generator().API(), i18n.EN)
+	require.NoError(t, err)
+	cat, err := tools.Build(CopilotRoutes(AllGroups), spec)
+	require.NoError(t, err)
+	vars, ok := cat.Lookup("update_workload_variables")
+	require.True(t, ok)
+	require.NotContains(t, string(vars.Schema), "secrets", "valeur secrète jamais confiée au modèle")
+	require.Contains(t, string(vars.Schema), `"env"`)
 }

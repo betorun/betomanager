@@ -3,6 +3,7 @@ package router
 import (
 	"errors"
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
 	workloadsCtrl "github.com/thekrauss/kubemanager/internal/modules/workloads"
@@ -207,16 +208,24 @@ func addWorkloadRoutes(app *App) {
 
 	WorkloadGroup.AddRoute("/:id/domains", http.MethodGet, "Domaines personnalisés et enregistrements DNS à créer", on(iam.WorkloadDomainsList), tonic.Handler(r.ListDomains, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "list_workload_domains"})
-	WorkloadGroup.AddRoute("/:id/domains", http.MethodPost, "Ajouter un domaine (rien n'est routé avant la preuve de propriété)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.AddDomain, http.StatusCreated))
-	WorkloadGroup.AddRoute("/:id/domains/:domainID/verify", http.MethodPost, "Vérifier la preuve de propriété et router le domaine (enregistrement TXT)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.VerifyDomain, http.StatusOK))
+	WorkloadGroup.AddRoute("/:id/domains", http.MethodPost, "Ajouter un domaine (rien n'est routé avant la preuve de propriété)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.AddDomain, http.StatusCreated)).
+		ForCopilot(CopilotTool{Name: "add_workload_domain", Write: true, Risk: tools.RiskLow})
+	WorkloadGroup.AddRoute("/:id/domains/:domainID/verify", http.MethodPost, "Vérifier la preuve de propriété et router le domaine (enregistrement TXT)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.VerifyDomain, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "verify_workload_domain", Write: true, Risk: tools.RiskLow})
 	WorkloadGroup.AddRoute("/:id/domains/:domainID", http.MethodDelete, "Retirer un domaine et sa route", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.RemoveDomain, http.StatusNoContent))
 	WorkloadGroup.AddRoute("/:id/variables", http.MethodGet, "Variables et secrets du conteneur (la valeur d'un secret n'est jamais renvoyée)", on(iam.WorkloadVariablesList), tonic.Handler(r.ListVariables, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "list_workload_variables", Hint: "Secret values are never returned."})
-	WorkloadGroup.AddRoute("/:id/variables", http.MethodPatch, "Créer, modifier ou supprimer des variables et des secrets (nouveau déploiement si une valeur change)", on(iam.WorkloadVariablesUpdate), tonic.Handler(r.PatchVariables, http.StatusOK))
-	WorkloadGroup.AddRoute("/:id/stop", http.MethodPost, "Arrêter un conteneur (plus aucune réplique en service)", on(iam.WorkloadsStop), tonic.Handler(r.StopWorkload, http.StatusOK))
-	WorkloadGroup.AddRoute("/:id/start", http.MethodPost, "Démarrer un conteneur (retour au nombre de répliques configuré)", on(iam.WorkloadsStart), tonic.Handler(r.StartWorkload, http.StatusOK))
-	WorkloadGroup.AddRoute("/:id/restart", http.MethodPost, "Redémarrer un conteneur (remplacement progressif des répliques)", on(iam.WorkloadsRestart), tonic.Handler(r.RestartWorkload, http.StatusOK))
-	WorkloadGroup.AddRoute("/:id/rollback", http.MethodPost, "Revenir à une révision précédente", on(iam.WorkloadsRollback), tonic.Handler(r.RollbackWorkload, http.StatusOK))
+	WorkloadGroup.AddRoute("/:id/variables", http.MethodPatch, "Créer, modifier ou supprimer des variables et des secrets (nouveau déploiement si une valeur change)", on(iam.WorkloadVariablesUpdate), tonic.Handler(r.PatchVariables, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "update_workload_variables", Write: true, Risk: tools.RiskMedium, Omit: []string{"secrets"},
+			Hint: "Plain variables only: secrets are never set by the Copilot (the person sets them in the console). Changing a value redeploys the container."})
+	WorkloadGroup.AddRoute("/:id/stop", http.MethodPost, "Arrêter un conteneur (plus aucune réplique en service)", on(iam.WorkloadsStop), tonic.Handler(r.StopWorkload, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "stop_workload", Write: true, Risk: tools.RiskMedium, Undo: "start_workload"})
+	WorkloadGroup.AddRoute("/:id/start", http.MethodPost, "Démarrer un conteneur (retour au nombre de répliques configuré)", on(iam.WorkloadsStart), tonic.Handler(r.StartWorkload, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "start_workload", Write: true, Risk: tools.RiskLow, Undo: "stop_workload"})
+	WorkloadGroup.AddRoute("/:id/restart", http.MethodPost, "Redémarrer un conteneur (remplacement progressif des répliques)", on(iam.WorkloadsRestart), tonic.Handler(r.RestartWorkload, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "restart_workload", Write: true, Risk: tools.RiskLow})
+	WorkloadGroup.AddRoute("/:id/rollback", http.MethodPost, "Revenir à une révision précédente", on(iam.WorkloadsRollback), tonic.Handler(r.RollbackWorkload, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "rollback_workload", Write: true, Risk: tools.RiskMedium})
 
 	WorkloadGroup.AddRoute("/:id/status", http.MethodGet, "État en direct du conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkloadStatus, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "get_workload_status"})
@@ -312,7 +321,8 @@ func addBuildRoutes(app *App) {
 	b.AddRoute("/:buildID/logs", http.MethodGet, "Journal du build, en flux (?follow=true jusqu'à la fin)", g.Perm(iam.BuildsGet, build), wrapRawHandler(r.Logs)).
 		Documented(RawDoc{Input: buildsDomain.LogsRequest{}, Produces: MIMETextStream}).
 		ForCopilot(CopilotTool{Name: "get_build_logs", Fixed: map[string]string{"follow": "false"}, Hint: "Returns the build log as plain text; for a long log only the end is kept."})
-	b.AddRoute("/:buildID/cancel", http.MethodPost, "Annuler un build en cours", g.Perm(iam.BuildsCancel, build), tonic.Handler(r.Cancel, http.StatusNoContent))
+	b.AddRoute("/:buildID/cancel", http.MethodPost, "Annuler un build en cours", g.Perm(iam.BuildsCancel, build), tonic.Handler(r.Cancel, http.StatusNoContent)).
+		ForCopilot(CopilotTool{Name: "cancel_build", Write: true, Risk: tools.RiskLow})
 
 	// Internes, sans session : les Jobs et le registre y accèdent avec leurs
 	// propres preuves (URL signée, identifiant du registre).

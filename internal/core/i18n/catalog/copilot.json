@@ -66,5 +66,57 @@
  {
   "fr": "Corps de requête invalide",
   "en": "invalid request body"
+ },
+ {
+  "fr": "copilot: outil %q : action sensible, réservée à la personne",
+  "en": "copilot: tool %q: sensitive action, reserved to the person"
+ },
+ {
+  "fr": "copilot: outil %q : champ %q à la fois paramètre et corps",
+  "en": "copilot: tool %q: field %q is both a parameter and a body field"
+ },
+ {
+  "fr": "copilot: outil %q : corps non JSON",
+  "en": "copilot: tool %q: body is not JSON"
+ },
+ {
+  "fr": "copilot: outil %q : risque non déclaré",
+  "en": "copilot: tool %q: risk not declared"
+ },
+ {
+  "fr": "copilot: outil %q : écriture %s refusée",
+  "en": "copilot: tool %q: %s write refused"
+ },
+ {
+  "fr": "Carte introuvable ou expirée",
+  "en": "proposal not found or expired"
+ },
+ {
+  "fr": "Carte déjà traitée",
+  "en": "proposal already handled"
+ },
+ {
+  "fr": "référence inconnue %q",
+  "en": "unknown reference %q"
+ },
+ {
+  "fr": "schéma trop imbriqué",
+  "en": "schema nested too deeply"
+ },
+ {
+  "fr": "Cette carte a expiré ou n'existe pas",
+  "en": "this card has expired or does not exist"
+ },
+ {
+  "fr": "Cette carte a déjà été traitée",
+  "en": "this card has already been handled"
+ },
+ {
+  "fr": "Seule une personne connectée peut valider une action",
+  "en": "only a signed-in person can validate an action"
+ },
+ {
+  "fr": "copilot: outil %q : inverse %q absent ou incompatible",
+  "en": "copilot: tool %q: inverse %q missing or incompatible"
  }
 ]

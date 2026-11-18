@@ -88,18 +88,43 @@ func (s *Store) Append(ctx context.Context, userID, conversationID, question, an
 	return s.rdb.Set(ctx, key(userID, conversationID), raw, TTL).Err()
 }
 
+// AppendNote : constat ajouté à la conversation, du point de vue de
+// l'assistant (ex. « action validée par la personne, réussie »), pour que le
+// modèle sache ce qui a été fait au tour suivant.
+func (s *Store) AppendNote(ctx context.Context, userID, conversationID, note string) error {
+	msgs, err := s.Load(ctx, userID, conversationID)
+	if err != nil {
+		return err
+	}
+	msgs = append(msgs, Message{Role: "assistant", Text: clip(note), At: s.now().UTC()})
+	if len(msgs) > MaxMessages {
+		msgs = msgs[len(msgs)-MaxMessages:]
+	}
+	raw, err := json.Marshal(msgs)
+	if err != nil {
+		return err
+	}
+	return s.rdb.Set(ctx, key(userID, conversationID), raw, TTL).Err()
+}
+
 // Clear : oublie une conversation.
 func (s *Store) Clear(ctx context.Context, userID, conversationID string) error {
 	return s.rdb.Del(ctx, key(userID, conversationID)).Err()
 }
 
-// History : messages au format llm.
+// History : messages au format llm. Deux messages consécutifs du même rôle
+// (réponse puis constat d'action) sont fusionnés : certains fournisseurs
+// exigent l'alternance.
 func History(msgs []Message) []llm.Message {
 	out := make([]llm.Message, 0, len(msgs))
 	for _, m := range msgs {
 		role := llm.RoleUser
 		if m.Role == "assistant" {
 			role = llm.RoleAssistant
+		}
+		if n := len(out); n > 0 && out[n-1].Role == role {
+			out[n-1].Text += "\n\n" + m.Text
+			continue
 		}
 		out = append(out, llm.Message{Role: role, Text: m.Text})
 	}

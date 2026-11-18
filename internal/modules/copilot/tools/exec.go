@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -44,17 +46,33 @@ const (
 // KeepTail : pour ces outils, on garde la FIN de la réponse (journaux).
 func (t *Tool) keepTail() bool { return strings.HasSuffix(t.Path, "/logs") }
 
-// Call : exécute l'outil name avec les arguments du modèle.
+// Prepared : une requête figée, prête à être jouée (après validation pour
+// une écriture). Sérialisable : elle est gardée le temps de la validation.
+type Prepared struct {
+	Tool   string          `json:"tool"`
+	Method string          `json:"method"`
+	Path   string          `json:"path"` // chemin et requête, échappés
+	Body   json.RawMessage `json:"body,omitempty"`
+	// Args : arguments du modèle, après contrôle (affichage de la carte, inverse).
+	Args map[string]any `json:"args"`
+}
+
+// ErrWriteNeedsApproval : une écriture ne passe jamais par Call.
+const writeNeedsApproval = "this tool is an action: it must be validated by the person"
+
+// Call : exécute l'outil name avec les arguments du modèle. Lectures et
+// outils composites seulement : une écriture est refusée ici (voir Prepare).
 func (c *Catalog) Call(ctx context.Context, inv Invoker, name string, args json.RawMessage) Result {
 	t, ok := c.tools[name]
 	if !ok {
 		return errorResult(0, fmt.Sprintf("unknown tool %q", name))
 	}
-	in := map[string]any{}
-	if len(bytes.TrimSpace(args)) > 0 {
-		if err := json.Unmarshal(args, &in); err != nil {
-			return errorResult(0, "arguments must be a JSON object")
-		}
+	if t.Write {
+		return errorResult(0, writeNeedsApproval)
+	}
+	in, res := decodeArgs(args)
+	if res != nil {
+		return *res
 	}
 	if t.run != nil {
 		return t.run(ctx, c, inv, in)
@@ -62,39 +80,66 @@ func (c *Catalog) Call(ctx context.Context, inv Invoker, name string, args json.
 	return c.callRoute(ctx, inv, t, in)
 }
 
-func (c *Catalog) callRoute(ctx context.Context, inv Invoker, t *Tool, in map[string]any) Result {
+func decodeArgs(args json.RawMessage) (map[string]any, *Result) {
+	in := map[string]any{}
+	if len(bytes.TrimSpace(args)) > 0 {
+		if err := json.Unmarshal(args, &in); err != nil || in == nil {
+			r := errorResult(0, "arguments must be a JSON object")
+			return nil, &r
+		}
+	}
+	return in, nil
+}
+
+// Prepare : contrôle les arguments d'un outil et fige la requête, sans rien
+// exécuter. Le message d'erreur est destiné au modèle (il corrige son appel).
+func (c *Catalog) Prepare(name string, args json.RawMessage) (*Prepared, error) {
+	t, ok := c.tools[name]
+	if !ok || t.run != nil {
+		return nil, fmt.Errorf("unknown tool %q", name)
+	}
+	in, res := decodeArgs(args)
+	if res != nil {
+		return nil, errors.New("arguments must be a JSON object")
+	}
+	return c.prepare(t, in)
+}
+
+func (c *Catalog) prepare(t *Tool, in map[string]any) (*Prepared, error) {
 	path := t.Path
 	known := map[string]bool{}
 	for _, p := range t.pathParams {
 		known[p] = true
-		v, ok := in[p]
-		s := scalar(v)
-		if !ok || s == "" || strings.ContainsAny(s, "/?#") || s == "." || s == ".." {
-			return errorResult(0, fmt.Sprintf("argument %q is required (an identifier)", p))
+		s := scalar(in[p])
+		if s == "" || strings.ContainsAny(s, "/?#") || s == "." || s == ".." {
+			return nil, fmt.Errorf("argument %q is required (an identifier)", p)
 		}
 		path = strings.Replace(path, ":"+p, url.PathEscape(s), 1)
 	}
 	q := url.Values{}
+	body := map[string]any{}
 	keys := make([]string, 0, len(in))
 	for k := range in {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if known[k] {
-			continue
-		}
-		if !t.query[k] {
-			return errorResult(0, fmt.Sprintf("unknown argument %q", k))
-		}
-		s := scalar(in[k])
-		if max, ok := t.Max[k]; ok {
-			if n, err := strconv.Atoi(s); err == nil && n > max {
-				s = strconv.Itoa(max)
+		switch {
+		case known[k]:
+		case t.query[k]:
+			s := scalar(in[k])
+			if max, ok := t.Max[k]; ok {
+				if n, err := strconv.Atoi(s); err == nil && n > max {
+					s = strconv.Itoa(max)
+				}
 			}
-		}
-		if s != "" {
-			q.Set(k, s)
+			if s != "" {
+				q.Set(k, s)
+			}
+		case t.body[k]:
+			body[k] = in[k]
+		default:
+			return nil, fmt.Errorf("unknown argument %q", k)
 		}
 	}
 	for k, v := range t.Fixed {
@@ -103,20 +148,76 @@ func (c *Catalog) callRoute(ctx context.Context, inv Invoker, t *Tool, in map[st
 	if enc := q.Encode(); enc != "" {
 		path += "?" + enc
 	}
-	return invoke(ctx, inv, path, t.keepTail())
+	p := &Prepared{Tool: t.Name, Method: t.Method, Path: path, Args: in}
+	if t.Write && len(t.body) > 0 {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return nil, errors.New("invalid arguments")
+		}
+		p.Body = raw
+	}
+	return p, nil
 }
 
-// invoke : GET interne, réponse capturée et bornée.
-func invoke(ctx context.Context, inv Invoker, path string, keepTail bool) Result {
+func (c *Catalog) callRoute(ctx context.Context, inv Invoker, t *Tool, in map[string]any) Result {
+	p, err := c.prepare(t, in)
+	if err != nil {
+		return errorResult(0, err.Error())
+	}
+	return invoke(ctx, inv, p, t.keepTail(), "")
+}
+
+// Execute : joue une écriture préparée et VALIDÉE par la personne (l'appelant
+// garantit la validation et fournit un jeton en portée « write »).
+// idempotencyKey : la même validation rejouée ne s'exécute qu'une fois.
+func (c *Catalog) Execute(ctx context.Context, inv Invoker, p *Prepared, idempotencyKey string) Result {
+	t, ok := c.tools[p.Tool]
+	if !ok || !t.Write || p.Method != t.Method {
+		return errorResult(0, "unknown action")
+	}
+	return invoke(ctx, inv, p, false, idempotencyKey)
+}
+
+// Inverse : requête qui défait p (outil Undo, mêmes paramètres de chemin),
+// ou nil s'il n'y en a pas.
+func (c *Catalog) Inverse(p *Prepared) *Prepared {
+	t, ok := c.tools[p.Tool]
+	if !ok || t.Undo == "" {
+		return nil
+	}
+	inv := c.tools[t.Undo]
+	args := map[string]any{}
+	for _, name := range inv.pathParams {
+		args[name] = p.Args[name]
+	}
+	out, err := c.prepare(inv, args)
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+// invoke : requête interne, réponse capturée et bornée.
+func invoke(ctx context.Context, inv Invoker, p *Prepared, keepTail bool, idempotencyKey string) Result {
 	if inv.Handler == nil {
 		return errorResult(0, "tools unavailable")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+	var body io.Reader
+	if len(p.Body) > 0 {
+		body = bytes.NewReader(p.Body)
+	}
+	req, err := http.NewRequestWithContext(ctx, p.Method, p.Path, body)
 	if err != nil {
 		return errorResult(0, "invalid request")
 	}
 	req.Header.Set("Authorization", "Bearer "+inv.Token)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
 	if inv.AcceptLanguage != "" {
 		req.Header.Set("Accept-Language", inv.AcceptLanguage)
 	}
@@ -124,11 +225,11 @@ func invoke(ctx context.Context, inv Invoker, path string, keepTail bool) Result
 	w := newCapture(keepTail)
 	inv.Handler.ServeHTTP(w, req)
 
-	body := w.text()
+	text := w.text()
 	if w.status/100 != 2 {
-		return Result{Status: w.status, Content: errorContent(w.status, body), IsError: true}
+		return Result{Status: w.status, Content: errorContent(w.status, text), IsError: true}
 	}
-	content, truncated := clip(compactJSON(body), keepTail)
+	content, truncated := clip(compactJSON(text), keepTail)
 	return Result{Status: w.status, Content: content, Truncated: truncated || w.truncated}
 }
 
