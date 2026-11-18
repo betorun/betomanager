@@ -302,8 +302,14 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 		replicas, in.Replicas = 1, 1
 	}
 
-	if err := s.validateNetwork(in.TargetPort); err != nil {
-		return nil, none, err
+	// Sorte et processus : port, horaire, commande (worker et cron : sans port).
+	if err := domain.NormalizeProcess(&in.CreateWorkloadRequest); err != nil {
+		return nil, none, err // erreurs nommées : 400 traduit (router/errors.go)
+	}
+	if in.Kind == domain.KindWeb {
+		if err := s.validateNetwork(in.TargetPort); err != nil {
+			return nil, none, err
+		}
 	}
 	if err := normalizeResources(&in.CreateWorkloadRequest); err != nil {
 		return nil, none, err
@@ -371,6 +377,7 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 		ChartName:          defaultChartName,
 		Version:            defaultChartVersion,
 		Image:              in.Image,
+		Kind:               in.Kind,
 		Replicas:           in.Replicas,
 		CPULimit:           in.CPULimit,
 		MemoryLimit:        in.MemoryLimit,
@@ -390,7 +397,7 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 	if workload.Spec, err = json.Marshal(spec); err != nil {
 		return nil, none, err
 	}
-	workload.ExternalURL = publicRoute(in.Name, pID, in.TLSEnabled).URL
+	workload.ExternalURL = routeFor(in.Kind, in.Name, pID, in.TLSEnabled).URL
 
 	if err := s.Repo.Create(ctx, workload); err != nil {
 		if errors.Is(err, repository.ErrNameTaken) {
@@ -471,6 +478,9 @@ func (s *WorkloadService) Update(ctx context.Context, id string, req domain.Upda
 	if err != nil {
 		return err
 	}
+	if err := applyProcess(current, &spec, &req); err != nil {
+		return err
+	}
 	if req.Image != "" {
 		if err := s.checkImage(current.ProjectID, req.Image); err != nil {
 			return err
@@ -478,6 +488,10 @@ func (s *WorkloadService) Update(ctx context.Context, id string, req domain.Upda
 		current.Image, spec.Image = req.Image, req.Image
 	}
 	runtimeChanged, err := s.applyRuntime(ctx, current, &spec, req)
+	if spec.Kind == domain.KindCron {
+		// Une exécution à la fois : jamais plus d'une réplique.
+		current.Replicas, spec.Replicas = 1, 1
+	}
 	if err != nil {
 		return err
 	}
@@ -515,7 +529,7 @@ func (s *WorkloadService) Update(ctx context.Context, id string, req domain.Upda
 			return err
 		}
 	}
-	url := publicRoute(current.Name, current.ProjectID, spec.TLSEnabled).URL
+	url := routeFor(spec.Kind, current.Name, current.ProjectID, spec.TLSEnabled).URL
 	return s.Repo.UpdateSpec(save, current.ID, current.Image, current.StorageSize, url, raw)
 }
 
@@ -656,6 +670,15 @@ func (s *WorkloadService) revisionBehind(ctx context.Context, w *domain.Workload
 	if s.K8sClient == nil || w.Image == "" {
 		return false
 	}
+	want := strconv.FormatInt(w.EnvRevision, 10)
+	if isCron(w) {
+		rev, found, err := cronRevision(ctx, s.K8sClient, w)
+		if err != nil {
+			s.warn("deployed revision unavailable", "workload", w.ID, "error", err)
+			return false
+		}
+		return !found || rev != want
+	}
 	dep, err := s.K8sClient.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return true
@@ -664,7 +687,7 @@ func (s *WorkloadService) revisionBehind(ctx context.Context, w *domain.Workload
 		s.warn("deployed revision unavailable", "workload", w.ID, "error", err)
 		return false
 	}
-	return dep.Spec.Template.Annotations[utils.AnnotationEnvChecksum] != strconv.FormatInt(w.EnvRevision, 10)
+	return dep.Spec.Template.Annotations[utils.AnnotationEnvChecksum] != want
 }
 
 // specOf : spec déclarative enregistrée (sans variables ni secrets, qui
@@ -682,9 +705,10 @@ func (s *WorkloadService) specFor(w *domain.Workload) (domain.CreateWorkloadRequ
 		if err := json.Unmarshal(w.Spec, &spec); err != nil {
 			return spec, fmt.Errorf("workload spec: %w", err)
 		}
+		spec.Kind = kindOf(w) // la colonne fait foi (immuable)
 		return spec, nil
 	}
-	return domain.CreateWorkloadRequest{ProjectID: w.ProjectID.String(), Name: w.Name, Image: w.Image, Replicas: w.Replicas,
+	return domain.CreateWorkloadRequest{ProjectID: w.ProjectID.String(), Name: w.Name, Image: w.Image, Replicas: w.Replicas, Kind: kindOf(w),
 		CPURequest: w.CPURequest, MemoryRequest: w.MemoryRequest, CPULimit: w.CPULimit, MemoryLimit: w.MemoryLimit,
 		TargetPort: w.TargetPort, PersistenceEnabled: w.PersistenceEnabled, StorageSize: w.StorageSize,
 		StorageClass: w.StorageClass, TLSEnabled: w.TLSEnabled}, nil
@@ -763,8 +787,15 @@ func (s *WorkloadService) applyRuntime(ctx context.Context, w *domain.Workload, 
 // deployInput : entrée du workflow de déploiement, construite de la même
 // façon à la création et à chaque mise à jour.
 func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWorkloadRequest) workflows.DeployWorkloadInput {
-	route := publicRoute(w.Name, w.ProjectID, spec.TLSEnabled)
+	route := routeFor(spec.Kind, w.Name, w.ProjectID, spec.TLSEnabled)
 	in := workflows.DeployWorkloadInput{
+		Process: activities.ProcessSpec{
+			Kind: kindOf(w), Command: spec.Command, Args: spec.Args,
+			Schedule: spec.Schedule, TimeZone: spec.TimeZone, MaxDurationSeconds: spec.MaxDurationSeconds,
+			// Cron arrêté : reste suspendu à chaque déploiement (mise à jour,
+			// variables, retour arrière).
+			Suspend: kindOf(w) == domain.KindCron && w.Status == utils.WorkloadStopped,
+		},
 		WorkloadID: w.ID.String(), ProjectID: w.ProjectID.String(), Namespace: w.Namespace, ReleaseName: w.Name,
 		Image: w.Image, EnvRevision: w.EnvRevision, Replicas: spec.Replicas,
 		PersistenceEnabled: spec.PersistenceEnabled, StorageSize: w.StorageSize, StorageClass: spec.StorageClass,
@@ -816,6 +847,55 @@ type route struct {
 // publicRoute : <nom>-<projet>.<ip>.sslip.io si l'IP du point d'entrée est
 // configurée (vps.vps_ip) ; sinon aucune URL publique (avant : hôte
 // « web-xxxxxx..sslip.io » invalide, refusé par Kubernetes).
+// routeFor : adresse publique d'un conteneur web ; aucune pour un worker ou
+// un cron (ni ingress, ni URL).
+func routeFor(kind, name string, projectID uuid.UUID, tls bool) route {
+	if kind != "" && kind != domain.KindWeb {
+		return route{}
+	}
+	return publicRoute(name, projectID, tls)
+}
+
+// kindOf : sorte enregistrée (vide : conteneur antérieur, donc web).
+func kindOf(w *domain.Workload) string {
+	if w.Kind == "" {
+		return domain.KindWeb
+	}
+	return w.Kind
+}
+
+// applyProcess : commande, arguments et horaire demandés. La sorte ne change
+// jamais ; port et TLS n'ont pas de sens hors web (ignorés : un client peut
+// les envoyer par défaut, comme la CLI ou MCP).
+func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *domain.UpdateWorkloadRequest) error {
+	kind := kindOf(w)
+	if kind != domain.KindWeb {
+		req.TargetPort, req.TLSEnabled = 0, nil
+	}
+	if req.Command != nil {
+		if !domain.ValidCommand(*req.Command) {
+			return domain.ErrInvalidCommand
+		}
+		spec.Command = *req.Command
+	}
+	if req.Args != nil {
+		if !domain.ValidCommand(*req.Args) {
+			return domain.ErrInvalidCommand
+		}
+		spec.Args = *req.Args
+	}
+	if req.Schedule != "" {
+		if kind != domain.KindCron {
+			return domain.ErrNotCron
+		}
+		if !domain.ValidSchedule(req.Schedule) {
+			return domain.ErrInvalidSchedule
+		}
+		spec.Schedule = strings.TrimSpace(req.Schedule)
+	}
+	return nil
+}
+
 func publicRoute(name string, projectID uuid.UUID, tls bool) route {
 	r := route{
 		IngressClass:     configs.AppConfig.Kubernetes.IngressClass,

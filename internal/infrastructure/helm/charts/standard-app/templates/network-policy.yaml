@@ -24,7 +24,9 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "standard-app.selectorLabels" . | nindent 14 }}
-    # 2. Ingress controller (namespace ingress-nginx par défaut).
+    {{- if eq (include "standard-app.kind" .) "web" }}
+    # 2. Ingress controller (namespace ingress-nginx par défaut). Web seulement :
+    # un worker ou un cron n'écoute aucun port.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -32,6 +34,7 @@ spec:
       ports:
         - protocol: {{ .Values.service.protocol | default "TCP" }}
           port: {{ .Values.service.targetPort | default 8080 }}
+    {{- end }}
 
   {{- if .Values.networkPolicy.egress.enabled }}
   # ── EGRESS ───────────────────────────────────────────────────────────

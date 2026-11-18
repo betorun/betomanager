@@ -125,11 +125,17 @@ func (e mcpEnv) toolList() []mcp.Tool {
 		{Name: "deploy", Title: "Deploy to betorun",
 			Description: "Build a local project directory and put it online: packs the code (respecting .dockerignore; .env files and keys are excluded by default), " +
 				"builds it on betorun (no Dockerfile needed for common frameworks), creates or updates the container of that name, waits until it runs " +
-				"and returns its public URL. On a build failure, returns the decisive log lines to fix the code.",
+				"and returns its public URL. On a build failure, returns the decisive log lines to fix the code. " +
+				"kind=worker runs a long-lived process without a port or URL (queue consumer, bot); kind=cron runs the command on a schedule " +
+				"(one run at a time). The kind of an existing container cannot change.",
 			InputSchema: schema(`"path":{"type":"string","description":"Project directory (absolute, or relative to the current directory)"},`+
 				`"name":{"type":"string","description":"Container name, 3-30 lowercase characters (default: the directory name)"},`+projectProp+
 				`,"port":{"type":"integer","description":"Port the app listens on (default 8080, which betorun builds use)"}`+
-				`,"env":{"type":"object","additionalProperties":{"type":"string"},"description":"Plain environment variables (never secrets)"}`, "path"),
+				`,"env":{"type":"object","additionalProperties":{"type":"string"},"description":"Plain environment variables (never secrets)"}`+
+				`,"kind":{"type":"string","enum":["web","worker","cron"],"description":"web (default, HTTP service with a URL), worker (long-running, no port) or cron (scheduled task)"}`+
+				`,"command":{"type":"array","items":{"type":"string"},"description":"Start command replacing the image's, e.g. [\"node\",\"queue.js\"] (optional)"}`+
+				`,"schedule":{"type":"string","description":"cron only: 5 fields (\"0 2 * * *\") or @hourly, @daily, @weekly, @monthly"}`+
+				`,"time_zone":{"type":"string","description":"cron only: IANA time zone of the schedule, e.g. Africa/Dakar (default UTC)"}`, "path"),
 			Annotations: mcp.Annotations{Title: "Deploy", OpenWorldHint: true}, Handler: e.deploy},
 		{Name: "list_databases", Description: "Managed Postgres databases of a project, with their state.",
 			InputSchema: schema(projectProp), Annotations: readOnly("List databases"), Handler: e.listDatabases},
@@ -151,7 +157,7 @@ func (e mcpEnv) toolList() []mcp.Tool {
 			InputSchema: schema(`"database":{"type":"string","description":"Source database ID or name"},"name":{"type":"string","description":"Name of the new database"},`+projectProp+
 				`,"target_time":{"type":"string","description":"Instant to restore, RFC 3339 (default: latest)"}`, "database", "name"),
 			Annotations: mcp.Annotations{Title: "Restore a database", OpenWorldHint: true}, Handler: e.restoreDatabase},
-		{Name: "restart_workload", Description: "Restart a container (rolling replacement, no downtime with several replicas).",
+		{Name: "restart_workload", Description: "Restart a container (rolling replacement, no downtime with several replicas). For a cron container: run it now, outside its schedule.",
 			InputSchema: schema(`"workload":{"type":"string","description":"Container ID or name"},`+projectProp, "workload"),
 			Annotations: mcp.Annotations{Title: "Restart a container", IdempotentHint: true, OpenWorldHint: true}, Handler: e.restart},
 	}
@@ -214,6 +220,26 @@ func signInHint(err error) error {
 func str(v any) string {
 	s, _ := v.(string)
 	return strings.TrimSpace(s)
+}
+
+// strList : tableau de chaînes ; nil si absent.
+func strList(v any, field string) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	raw, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array of strings", field)
+	}
+	out := make([]string, 0, len(raw))
+	for _, x := range raw {
+		s, ok := x.(string)
+		if !ok {
+			return nil, fmt.Errorf("%s must be an array of strings", field)
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 func num(v any, def, max int) int {
@@ -426,6 +452,7 @@ func (e mcpEnv) restart(ctx context.Context, call mcp.Call) (mcp.Result, error) 
 type DeployResult struct {
 	Status     string   `json:"status"` // running | build_failed | deploy_failed | still_building | still_deploying
 	Name       string   `json:"name"`
+	Kind       string   `json:"kind,omitempty"`
 	WorkloadID string   `json:"workload_id,omitempty"`
 	BuildID    string   `json:"build_id,omitempty"`
 	Image      string   `json:"image,omitempty"`
@@ -466,7 +493,46 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 		}
 	}
 	port := num(in["port"], defaultTargetPort, 65535)
+	kind := strings.ToLower(str(in["kind"]))
+	command, err := strList(in["command"], "command")
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	schedule, timeZone := strings.TrimSpace(str(in["schedule"])), strings.TrimSpace(str(in["time_zone"]))
 	res := DeployResult{Name: name}
+
+	// Sorte et horaire vérifiés avant le build : inutile de construire pour
+	// refuser ensuite.
+	list, err := m.cl.ListWorkloads(ctx, m.project)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	existingKind := ""
+	for i := range list {
+		if list[i].Name == name {
+			res.WorkloadID, existingKind = list[i].ID.String(), firstNonEmpty(list[i].Kind, kindWeb)
+		}
+	}
+	if res.WorkloadID != "" {
+		if kind != "" && kind != existingKind {
+			return mcp.Result{}, fmt.Errorf("container %q is a %s container: its kind cannot change (deploy under another name)", name, existingKind)
+		}
+		kind = existingKind
+	}
+	kind = firstNonEmpty(kind, kindWeb)
+	if kind != kindWeb && kind != kindWorker && kind != kindCron {
+		return mcp.Result{}, fmt.Errorf("invalid kind %q: web, worker or cron", kind)
+	}
+	if kind != kindWeb {
+		port = 0 // ni port ni URL hors web
+	}
+	if kind == kindCron && res.WorkloadID == "" && schedule == "" {
+		return mcp.Result{}, errors.New(`kind "cron" needs a schedule, e.g. "0 2 * * *" or "@daily"`)
+	}
+	if kind != kindCron && (schedule != "" || timeZone != "") {
+		return mcp.Result{}, errors.New(`schedule and time_zone only apply to kind "cron"`)
+	}
+	res.Kind = kind
 
 	// 1. Code → archive → build.
 	call.Progress(0, 0, "packing "+dir)
@@ -517,17 +583,11 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 
 	// 3. Conteneur : mise à jour s'il existe, création sinon.
 	call.Progress(0, 0, "deploying "+name)
-	list, err := m.cl.ListWorkloads(ctx, m.project)
-	if err != nil {
-		return mcp.Result{}, err
-	}
-	for i := range list {
-		if list[i].Name == name {
-			res.WorkloadID = list[i].ID.String()
-		}
-	}
 	if res.WorkloadID != "" {
-		req := api.UpdateWorkloadRequest{Image: build.Image, TargetPort: port}
+		req := api.UpdateWorkloadRequest{Image: build.Image, TargetPort: port, Schedule: schedule}
+		if command != nil {
+			req.Command = &command
+		}
 		if len(env) > 0 {
 			// env_vars REMPLACE les variables simples du conteneur : on part des
 			// existantes pour n'en perdre aucune (les secrets ne sont pas touchés).
@@ -545,7 +605,8 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 		}
 	} else {
 		created, err := m.cl.CreateWorkload(ctx, api.CreateWorkloadRequest{ProjectID: m.project, Name: name, Image: build.Image,
-			EnvVars: env, Replicas: 1, TargetPort: port, CPULimit: defaultCPULimit, MemoryLimit: defaultMemoryLimit})
+			EnvVars: env, Replicas: 1, TargetPort: port, CPULimit: defaultCPULimit, MemoryLimit: defaultMemoryLimit,
+			Kind: kind, Command: command, Schedule: schedule, TimeZone: timeZone})
 		if err != nil {
 			return mcp.Result{}, err
 		}
@@ -563,6 +624,12 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 		switch {
 		case workloadReady[w.Status]:
 			res.Status = "running"
+			switch kind {
+			case kindCron:
+				return deployResult(res, "Deployed: the task runs on its schedule. restart_workload runs it now.")
+			case kindWorker:
+				return deployResult(res, "Deployed and running (no public URL: a worker has no port).")
+			}
 			return deployResult(res, "Deployed and running.")
 		case workloadFailed[w.Status]:
 			res.Status, res.Failure = "deploy_failed", w.Status+" "+w.CurrentPhase

@@ -1,4 +1,4 @@
-{{- if .Values.ingress.enabled -}}
+{{- if and .Values.ingress.enabled (eq (include "standard-app.kind" .) "web") -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

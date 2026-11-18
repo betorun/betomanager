@@ -1,0 +1,36 @@
+{{- if eq (include "standard-app.kind" .) "cron" }}
+{{- /*
+Tâche planifiée : un Job par exécution, à l'horaire donné. Jamais deux
+exécutions en même temps (quota du projet), durée maximale, historique court.
+« Arrêter » le conteneur = suspend (valeur rendue depuis son statut, pour
+qu'une mise à jour ne le réactive pas).
+*/ -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "standard-app.labels" . | nindent 4 }}
+spec:
+  schedule: {{ required "cron.schedule" .Values.cron.schedule | quote }}
+  {{- with .Values.cron.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  suspend: {{ .Values.cron.suspend | default false }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.cron.startingDeadlineSeconds | default 300 }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "standard-app.labels" . | nindent 8 }}
+    spec:
+      backoffLimit: {{ .Values.cron.backoffLimit | default 0 }}
+      activeDeadlineSeconds: {{ .Values.cron.activeDeadlineSeconds | default 3600 }}
+      # Jobs terminés supprimés après une journée (les journaux restent lisibles d'ici là).
+      ttlSecondsAfterFinished: 86400
+      template:
+        {{- include "standard-app.podTemplate" . | nindent 8 }}
+{{- end }}

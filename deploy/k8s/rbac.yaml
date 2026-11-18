@@ -55,6 +55,10 @@ rules:
   - apiGroups: [batch]
     resources: [jobs]
     verbs: [get, list, watch, create, update, patch, delete]
+  # Conteneurs « cron » : CronJob (suspendre/reprendre, exécuter maintenant).
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [networking.k8s.io]
     resources: [ingresses, networkpolicies]
     verbs: [get, list, watch, create, update, patch, delete]

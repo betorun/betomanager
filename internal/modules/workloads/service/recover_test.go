@@ -20,13 +20,27 @@ import (
 )
 
 type fakeIncidents struct {
-	rows      []domain.Workload
-	changed   bool // statut modifié entre la lecture et l'écriture
-	recovered []uuid.UUID
+	rows         []domain.Workload
+	crons        []domain.Workload
+	failedPhases []string
+	changed      bool // statut modifié entre la lecture et l'écriture
+	recovered    []uuid.UUID
 }
 
 func (f *fakeIncidents) ListIncidents(context.Context, int) ([]domain.Workload, error) {
 	return f.rows, nil
+}
+
+func (f *fakeIncidents) ListRunningCrons(context.Context, int) ([]domain.Workload, error) {
+	return f.crons, nil
+}
+
+func (f *fakeIncidents) MarkRunFailed(_ context.Context, _ uuid.UUID, _, newPhase string) (bool, error) {
+	if f.changed {
+		return false, nil
+	}
+	f.failedPhases = append(f.failedPhases, newPhase)
+	return true, nil
 }
 
 func (f *fakeIncidents) Recover(_ context.Context, id uuid.UUID, _, _, _ string) (bool, error) {

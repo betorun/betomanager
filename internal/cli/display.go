@@ -53,6 +53,7 @@ var workloadStates = map[string]struct {
 	"CONFIG_ERROR":      {ui.ToneError, "st.config"},
 	"OOM_KILLED":        {ui.ToneError, "st.oom"},
 	"EVICTED":           {ui.ToneError, "st.evicted"},
+	"RUN_FAILED":        {ui.ToneError, "st.run_failed"},
 }
 
 func workloadStatus(p *ui.Printer, status string) string {

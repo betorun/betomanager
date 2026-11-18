@@ -126,5 +126,41 @@
  {
   "fr": "Un même nom ne peut pas être défini et supprimé, ni être à la fois une variable et un secret, dans une même requête",
   "en": "the same name cannot be set and removed, or be both a variable and a secret, in one request"
+ },
+ {
+  "fr": "Un conteneur cron a besoin d'un horaire (ex. « 0 2 * * * »)",
+  "en": "a cron container needs a schedule (e.g. \"0 2 * * *\")"
+ },
+ {
+  "fr": "Commande ou arguments invalides : 32 éléments de 4096 caractères au plus, sans caractère NUL",
+  "en": "invalid command or args: at most 32 parts of 4096 characters, without NUL"
+ },
+ {
+  "fr": "Sorte invalide : web, worker ou cron",
+  "en": "invalid kind: web, worker or cron"
+ },
+ {
+  "fr": "Horaire invalide : 5 champs (minute heure jour mois jour-de-semaine) ou @hourly, @daily, @weekly, @monthly",
+  "en": "invalid schedule: 5 fields (minute hour day month weekday) or @hourly, @daily, @weekly, @monthly"
+ },
+ {
+  "fr": "La sorte d'un conteneur ne change pas : créez un nouveau conteneur",
+  "en": "the kind of a container cannot change: create a new container"
+ },
+ {
+  "fr": "Cette action n'existe que pour un conteneur cron",
+  "en": "this action is only available for a cron container"
+ },
+ {
+  "fr": "Cette action n'existe que pour un conteneur web",
+  "en": "this action is only available for a web container"
+ },
+ {
+  "fr": "Fuseau horaire invalide : utilisez un nom IANA comme Africa/Dakar",
+  "en": "invalid time zone: use an IANA name such as Africa/Dakar"
+ },
+ {
+  "fr": "max_duration_seconds : 86400 au plus (24 heures)",
+  "en": "max_duration_seconds: at most 86400 (24 hours)"
  }
 ]

@@ -102,6 +102,9 @@ func (s *WorkloadService) AddDomain(ctx context.Context, workload uuid.UUID, hos
 	if err := ensureNotDeleting(w); err != nil {
 		return nil, err
 	}
+	if kindOf(w) != domain.KindWeb {
+		return nil, domain.ErrNotWeb
+	}
 	host, err := sitesDomain.NormalizeHostname(hostname, configs.AppConfig.Sites.BaseDomain)
 	if err != nil {
 		return nil, err

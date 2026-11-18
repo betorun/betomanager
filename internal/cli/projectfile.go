@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
@@ -32,18 +33,27 @@ var envRefRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 var invalidNameChars = regexp.MustCompile(`[^a-z0-9-]+`)
 
 type projectFile struct {
-	Name           string            `yaml:"name"`
-	Project        string            `yaml:"project,omitempty"`
-	Image          string            `yaml:"image,omitempty"`
-	Build          *fileBuild        `yaml:"build,omitempty"`
-	Git            *fileGit          `yaml:"git,omitempty"`
-	Port           int               `yaml:"port,omitempty"`
-	Replicas       int               `yaml:"replicas,omitempty"`
-	CPU            string            `yaml:"cpu,omitempty"`
-	Memory         string            `yaml:"memory,omitempty"`
-	TLS            *bool             `yaml:"tls,omitempty"`
-	ServiceAccount string            `yaml:"service_account,omitempty"`
-	Env            map[string]string `yaml:"env,omitempty"`
+	Name           string     `yaml:"name"`
+	Project        string     `yaml:"project,omitempty"`
+	Image          string     `yaml:"image,omitempty"`
+	Build          *fileBuild `yaml:"build,omitempty"`
+	Git            *fileGit   `yaml:"git,omitempty"`
+	Port           int        `yaml:"port,omitempty"`
+	Replicas       int        `yaml:"replicas,omitempty"`
+	CPU            string     `yaml:"cpu,omitempty"`
+	Memory         string     `yaml:"memory,omitempty"`
+	TLS            *bool      `yaml:"tls,omitempty"`
+	ServiceAccount string     `yaml:"service_account,omitempty"`
+	// Kind : web (défaut), worker ou cron. Command / Args remplacent
+	// l'ENTRYPOINT / le CMD de l'image ; Schedule, TimeZone et MaxDuration
+	// (ex. 30m) ne valent que pour un cron.
+	Kind        string            `yaml:"kind,omitempty"`
+	Command     []string          `yaml:"command,omitempty"`
+	Args        []string          `yaml:"args,omitempty"`
+	Schedule    string            `yaml:"schedule,omitempty"`
+	TimeZone    string            `yaml:"timezone,omitempty"`
+	MaxDuration string            `yaml:"max_duration,omitempty"`
+	Env         map[string]string `yaml:"env,omitempty"`
 	// Secrets : noms ; chaque valeur est lue dans l'environnement au déploiement.
 	Secrets []string `yaml:"secrets,omitempty"`
 }
@@ -176,7 +186,10 @@ func newDeploy() *cobra.Command {
 				}
 				id := workloads[i].ID.String()
 				req := api.UpdateWorkloadRequest{Image: image, EnvVars: pf.Env, SecretData: secrets, Replicas: pf.Replicas, TargetPort: pf.Port,
-					CPULimit: pf.CPU, MemoryLimit: pf.Memory, TLSEnabled: pf.TLS}
+					CPULimit: pf.CPU, MemoryLimit: pf.Memory, TLSEnabled: pf.TLS, Schedule: pf.Schedule}
+				// Le fichier fait foi : sans commande, celle de l'image.
+				command, cmdArgs := append([]string{}, pf.Command...), append([]string{}, pf.Args...)
+				req.Command, req.Args = &command, &cmdArgs
 				printer(cmd).Title(i18n.T("wl.update.sending", pf.Name), image)
 				if err := cl.UpdateWorkload(ctx, id, req); err != nil {
 					return err
@@ -185,7 +198,14 @@ func newDeploy() *cobra.Command {
 			}
 			req := api.CreateWorkloadRequest{ProjectID: project, Name: pf.Name, Image: image, EnvVars: pf.Env, SecretData: secrets, Replicas: firstPositive(pf.Replicas, 1),
 				TargetPort: firstPositive(pf.Port, defaultTargetPort), CPULimit: firstNonEmpty(pf.CPU, defaultCPULimit),
-				MemoryLimit: firstNonEmpty(pf.Memory, defaultMemoryLimit), ServiceAccount: pf.ServiceAccount}
+				MemoryLimit: firstNonEmpty(pf.Memory, defaultMemoryLimit), ServiceAccount: pf.ServiceAccount,
+				Kind: pf.Kind, Command: pf.Command, Args: pf.Args, Schedule: pf.Schedule, TimeZone: pf.TimeZone}
+			if req.MaxDurationSeconds, err = pf.maxDurationSeconds(); err != nil {
+				return err
+			}
+			if pf.Kind != "" && pf.Kind != kindWeb {
+				req.TargetPort = 0 // pas de port hors web
+			}
 			if pf.TLS != nil {
 				req.TLSEnabled = *pf.TLS
 			}
@@ -265,4 +285,16 @@ func defaultName(dir string) string {
 		return "app"
 	}
 	return n
+}
+
+// maxDurationSeconds : max_duration (ex. 30m, 2h) en secondes ; 0 = défaut.
+func (pf *projectFile) maxDurationSeconds() (int, error) {
+	if pf.MaxDuration == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(pf.MaxDuration)
+	if err != nil || d < time.Second {
+		return 0, errors.New(i18n.T("pf.max_duration.invalid", pf.MaxDuration))
+	}
+	return int(d / time.Second), nil
 }

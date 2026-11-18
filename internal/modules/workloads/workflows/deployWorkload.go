@@ -11,6 +11,8 @@ import (
 type DeployWorkloadInput struct {
 	// Identity : identité du workload (nil : aucune).
 	Identity *activities.WorkloadIdentity
+	// Process : sorte et processus (vide : web, commande de l'image).
+	Process activities.ProcessSpec
 
 	WorkloadID  string
 	ProjectID   string
@@ -191,6 +193,7 @@ func DeployWorkloadWorkflow(ctx workflow.Context, input DeployWorkloadInput) err
 		HealthPath:           input.HealthPath,
 		ReadinessPath:        input.ReadinessPath,
 		Identity:             input.Identity,
+		Process:              input.Process,
 	}
 	err = workflow.ExecuteActivity(install, helmActs.InstallChart, helmInput).Get(install, nil)
 	if err != nil {

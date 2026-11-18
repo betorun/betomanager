@@ -2,6 +2,7 @@
 Un Ingress et un certificat par domaine personnalisé : un domaine qui ne pointe
 plus vers nous n'empêche pas de renouveler le certificat des autres.
 */ -}}
+{{- if eq (include "standard-app.kind" .) "web" }}
 {{- range .Values.customDomains }}
 {{- $name := printf "%s-d-%s" $.Release.Name (sha256sum . | trunc 10) }}
 ---
@@ -36,4 +37,5 @@ spec:
                 name: {{ $.Release.Name }}
                 port:
                   number: {{ $.Values.service.port }}
+{{- end }}
 {{- end }}

@@ -160,6 +160,9 @@ func (a *App) RunWorker(ctx context.Context) error {
 			Publisher: a.Publisher,
 			Logger:    a.Logger.With("component", "workload-recovery"),
 		}
+		if n := a.alertNotifier(); n != nil { // pas d'interface non nulle autour d'un nil
+			recoverer.Alerts = n
+		}
 		go recoverer.Run(ctx, workloadsSvc.DefaultRecoverEvery)
 	}
 
