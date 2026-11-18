@@ -177,11 +177,14 @@ func addProjectRoutes(app *App) {
 	// sur son organisation (iam.Engine.Holdings). Pas de garde Perm : chaque
 	// appelant voit sa propre liste, éventuellement vide.
 	ProjectGroup.AddRoute("", http.MethodGet, "Projets accessibles (les 200 plus récents)",
-		AuthenticatedDelegable(), tonic.Handler(r.ListProjects, http.StatusOK))
+		AuthenticatedDelegable(), tonic.Handler(r.ListProjects, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_projects"})
 	ProjectGroup.AddRoute("/:id/status", http.MethodGet, "État d'un projet",
-		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectStatus, http.StatusOK))
+		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectStatus, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_project_status"})
 	ProjectGroup.AddRoute("/:id/metrics", http.MethodGet, "Métriques de consommation",
-		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectMetrics, http.StatusOK))
+		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectMetrics, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_project_metrics"})
 	ProjectGroup.AddRoute("/:id", http.MethodDelete, "Supprimer un projet",
 		g.Perm(iam.ProjectsDelete, project), tonic.Handler(r.DeleteProject, http.StatusAccepted))
 }
@@ -195,28 +198,36 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("", http.MethodPost, "Déployer un nouveau conteneur",
 		g.Perm(iam.WorkloadsCreate, security.ProjectJSONBody("project_id")), tonic.Handler(r.CreateWorkload, http.StatusAccepted))
 	WorkloadGroup.AddRoute("", http.MethodGet, "Lister les conteneurs d'un projet",
-		g.Perm(iam.WorkloadsList, security.ProjectQuery("project_id")), tonic.Handler(r.ListWorkloads, http.StatusOK))
-	WorkloadGroup.AddRoute("/:id", http.MethodGet, "Détails d'un conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkload, http.StatusOK))
+		g.Perm(iam.WorkloadsList, security.ProjectQuery("project_id")), tonic.Handler(r.ListWorkloads, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_workloads", Hint: "project_id is required (see list_projects)."})
+	WorkloadGroup.AddRoute("/:id", http.MethodGet, "Détails d'un conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkload, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_workload"})
 	WorkloadGroup.AddRoute("/:id", http.MethodPatch, "Mettre à jour un conteneur (image, variables, stockage)", on(iam.WorkloadsUpdate), tonic.Handler(r.UpdateWorkload, http.StatusAccepted))
 	WorkloadGroup.AddRoute("/:id", http.MethodDelete, "Supprimer un conteneur et ses ressources", on(iam.WorkloadsDelete), tonic.Handler(r.DeleteWorkload, http.StatusAccepted))
 
-	WorkloadGroup.AddRoute("/:id/domains", http.MethodGet, "Domaines personnalisés et enregistrements DNS à créer", on(iam.WorkloadDomainsList), tonic.Handler(r.ListDomains, http.StatusOK))
+	WorkloadGroup.AddRoute("/:id/domains", http.MethodGet, "Domaines personnalisés et enregistrements DNS à créer", on(iam.WorkloadDomainsList), tonic.Handler(r.ListDomains, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_workload_domains"})
 	WorkloadGroup.AddRoute("/:id/domains", http.MethodPost, "Ajouter un domaine (rien n'est routé avant la preuve de propriété)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.AddDomain, http.StatusCreated))
 	WorkloadGroup.AddRoute("/:id/domains/:domainID/verify", http.MethodPost, "Vérifier la preuve de propriété et router le domaine (enregistrement TXT)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.VerifyDomain, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/domains/:domainID", http.MethodDelete, "Retirer un domaine et sa route", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.RemoveDomain, http.StatusNoContent))
-	WorkloadGroup.AddRoute("/:id/variables", http.MethodGet, "Variables et secrets du conteneur (la valeur d'un secret n'est jamais renvoyée)", on(iam.WorkloadVariablesList), tonic.Handler(r.ListVariables, http.StatusOK))
+	WorkloadGroup.AddRoute("/:id/variables", http.MethodGet, "Variables et secrets du conteneur (la valeur d'un secret n'est jamais renvoyée)", on(iam.WorkloadVariablesList), tonic.Handler(r.ListVariables, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_workload_variables", Hint: "Secret values are never returned."})
 	WorkloadGroup.AddRoute("/:id/variables", http.MethodPatch, "Créer, modifier ou supprimer des variables et des secrets (nouveau déploiement si une valeur change)", on(iam.WorkloadVariablesUpdate), tonic.Handler(r.PatchVariables, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/stop", http.MethodPost, "Arrêter un conteneur (plus aucune réplique en service)", on(iam.WorkloadsStop), tonic.Handler(r.StopWorkload, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/start", http.MethodPost, "Démarrer un conteneur (retour au nombre de répliques configuré)", on(iam.WorkloadsStart), tonic.Handler(r.StartWorkload, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/restart", http.MethodPost, "Redémarrer un conteneur (remplacement progressif des répliques)", on(iam.WorkloadsRestart), tonic.Handler(r.RestartWorkload, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/rollback", http.MethodPost, "Revenir à une révision précédente", on(iam.WorkloadsRollback), tonic.Handler(r.RollbackWorkload, http.StatusOK))
 
-	WorkloadGroup.AddRoute("/:id/status", http.MethodGet, "État en direct du conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkloadStatus, http.StatusOK))
-	WorkloadGroup.AddRoute("/:id/events", http.MethodGet, "Événements récents du conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkloadEvents, http.StatusOK))
-	WorkloadGroup.AddRoute("/:id/metrics", http.MethodGet, "Consommation CPU et mémoire en direct, et ressources réservées", on(iam.WorkloadMetrics), tonic.Handler(r.GetWorkloadMetrics, http.StatusOK))
+	WorkloadGroup.AddRoute("/:id/status", http.MethodGet, "État en direct du conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkloadStatus, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_workload_status"})
+	WorkloadGroup.AddRoute("/:id/events", http.MethodGet, "Événements récents du conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkloadEvents, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_workload_events"})
+	WorkloadGroup.AddRoute("/:id/metrics", http.MethodGet, "Consommation CPU et mémoire en direct, et ressources réservées", on(iam.WorkloadMetrics), tonic.Handler(r.GetWorkloadMetrics, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_workload_metrics"})
 	// Logs : streaming direct sur c.Writer (pas tonic — on contrôle la réponse).
 	WorkloadGroup.AddRoute("/:id/logs", http.MethodGet, "Journaux du conteneur, en flux (HTTP chunked)", on(iam.WorkloadLogsRead), wrapRawHandler(r.GetWorkloadLogs)).
-		Documented(RawDoc{Input: workloadsCtrl.LogsRequest{}, Produces: MIMETextStream})
+		Documented(RawDoc{Input: workloadsCtrl.LogsRequest{}, Produces: MIMETextStream}).
+		ForCopilot(CopilotTool{Name: "get_workload_logs", Fixed: map[string]string{"follow": "false"}, Max: map[string]int{"tail": 300}, Hint: "Read once (not streamed): returns the last lines as plain text, at most 300."})
 }
 
 // workloadResource : "projects/{p}/workloads/{id}" pour le workload ":id".
@@ -250,20 +261,24 @@ func addSiteRoutes(app *App) {
 	site := security.ProjectChild("id", "sites", "siteID")
 	on := func(p iam.Permission) Access { return g.Perm(p, site) }
 
-	sites.AddRoute("", http.MethodGet, "Lister les sites du projet", g.Perm(iam.SitesList, project), tonic.Handler(r.ListSites, http.StatusOK))
+	sites.AddRoute("", http.MethodGet, "Lister les sites du projet", g.Perm(iam.SitesList, project), tonic.Handler(r.ListSites, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_sites"})
 	sites.AddRoute("", http.MethodPost, "Créer un site", g.Perm(iam.SitesCreate, project), tonic.Handler(r.CreateSite, http.StatusCreated))
-	sites.AddRoute("/:siteID", http.MethodGet, "Détails d'un site", on(iam.SitesGet), tonic.Handler(r.GetSite, http.StatusOK))
+	sites.AddRoute("/:siteID", http.MethodGet, "Détails d'un site", on(iam.SitesGet), tonic.Handler(r.GetSite, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_site"})
 	sites.AddRoute("/:siteID", http.MethodPatch, "Modifier un site (mode SPA)", on(iam.SitesUpdate), tonic.Handler(r.UpdateSite, http.StatusOK))
 	sites.AddRoute("/:siteID", http.MethodDelete, "Supprimer un site (fichiers + domaines)", on(iam.SitesDelete), tonic.Handler(r.DeleteSite, http.StatusAccepted))
 
-	sites.AddRoute("/:siteID/deployments", http.MethodGet, "Historique des déploiements", on(iam.SiteDeploymentsList), tonic.Handler(r.ListDeployments, http.StatusOK))
+	sites.AddRoute("/:siteID/deployments", http.MethodGet, "Historique des déploiements", on(iam.SiteDeploymentsList), tonic.Handler(r.ListDeployments, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_site_deployments"})
 	// Upload multipart (champ "archive") : hors tonic.
 	sites.AddRoute("/:siteID/deployments", http.MethodPost, "Déployer une archive .zip (multipart, champ archive)", on(iam.SiteDeploymentsCreate), wrapRawHandler(r.UploadDeployment)).
 		Documented(RawDoc{Input: sitesDomain.UploadPath{}, Status: http.StatusAccepted, Produces: MIMEJSON, Output: sitesDomain.SiteDeployment{},
 			Multipart: []FormField{{Name: sitesDomain.ArchiveFormField, Description: "Archive .zip du site (index.html à la racine)", File: true, Required: true}}})
 	sites.AddRoute("/:siteID/deployments/:deploymentID/activate", http.MethodPost, "Activer un déploiement (retour arrière)", on(iam.SiteDeploymentsActive), tonic.Handler(r.ActivateDeployment, http.StatusOK))
 
-	sites.AddRoute("/:siteID/domains", http.MethodGet, "Domaines personnalisés du site", on(iam.SiteDomainsList), tonic.Handler(r.ListDomains, http.StatusOK))
+	sites.AddRoute("/:siteID/domains", http.MethodGet, "Domaines personnalisés du site", on(iam.SiteDomainsList), tonic.Handler(r.ListDomains, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_site_domains"})
 	sites.AddRoute("/:siteID/domains", http.MethodPost, "Ajouter un domaine personnalisé", on(iam.SiteDomainsCreate), tonic.Handler(r.AddDomain, http.StatusCreated))
 	sites.AddRoute("/:siteID/domains/:domainID/verify", http.MethodPost, "Vérifier le DNS d'un domaine", on(iam.SiteDomainsVerify), tonic.Handler(r.VerifyDomain, http.StatusOK))
 	sites.AddRoute("/:siteID/domains/:domainID", http.MethodDelete, "Retirer un domaine personnalisé", on(iam.SiteDomainsDelete), tonic.Handler(r.DeleteDomain, http.StatusNoContent))
@@ -281,7 +296,8 @@ func addBuildRoutes(app *App) {
 	project := security.ProjectParam("id")
 	build := security.ProjectChild("id", "builds", "buildID")
 
-	b.AddRoute("", http.MethodGet, "Lister les builds récents", g.Perm(iam.BuildsList, project), tonic.Handler(r.List, http.StatusOK))
+	b.AddRoute("", http.MethodGet, "Lister les builds récents", g.Perm(iam.BuildsList, project), tonic.Handler(r.List, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "list_builds"})
 	b.AddRoute("", http.MethodPost, "Construire depuis un dépôt Git public", g.Perm(iam.BuildsCreate, project), tonic.Handler(r.CreateFromGit, http.StatusAccepted))
 	// Upload multipart (champs archive, name, dockerfile) : hors tonic.
 	b.AddRoute("/upload", http.MethodPost, "Construire depuis une archive .tar.gz (multipart : archive, name, dockerfile)", g.Perm(iam.BuildsCreate, project), wrapRawHandler(r.Upload)).
@@ -291,9 +307,11 @@ func addBuildRoutes(app *App) {
 				{Name: "name", Description: "Nom de l'image à construire"},
 				{Name: "dockerfile", Description: "Chemin du Dockerfile dans l'archive (sinon détection automatique)"},
 			}})
-	b.AddRoute("/:buildID", http.MethodGet, "Détails d'un build", g.Perm(iam.BuildsGet, build), tonic.Handler(r.Get, http.StatusOK))
+	b.AddRoute("/:buildID", http.MethodGet, "Détails d'un build", g.Perm(iam.BuildsGet, build), tonic.Handler(r.Get, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_build"})
 	b.AddRoute("/:buildID/logs", http.MethodGet, "Journal du build, en flux (?follow=true jusqu'à la fin)", g.Perm(iam.BuildsGet, build), wrapRawHandler(r.Logs)).
-		Documented(RawDoc{Input: buildsDomain.LogsRequest{}, Produces: MIMETextStream})
+		Documented(RawDoc{Input: buildsDomain.LogsRequest{}, Produces: MIMETextStream}).
+		ForCopilot(CopilotTool{Name: "get_build_logs", Fixed: map[string]string{"follow": "false"}, Hint: "Returns the build log as plain text; for a long log only the end is kept."})
 	b.AddRoute("/:buildID/cancel", http.MethodPost, "Annuler un build en cours", g.Perm(iam.BuildsCancel, build), tonic.Handler(r.Cancel, http.StatusNoContent))
 
 	// Internes, sans session : les Jobs et le registre y accèdent avec leurs
@@ -335,7 +353,8 @@ func addGitHubRoutes(app *App) {
 	// Déployer un conteneur est vérifié en plus par le service (workloads.workloads.create).
 	p.AddRoute("/workloads", http.MethodPost, "Créer un conteneur depuis un dépôt : conteneur, lien et première construction en une action", manage, tonic.Handler(r.CreateWorkload, http.StatusAccepted))
 
-	WorkloadGroup.AddRoute("/:id/github", http.MethodGet, "Dépôt lié au conteneur, dernier commit déployé et dernier build", g.Perm(iam.WorkloadsGet, workload), tonic.Handler(r.GetLink, http.StatusOK))
+	WorkloadGroup.AddRoute("/:id/github", http.MethodGet, "Dépôt lié au conteneur, dernier commit déployé et dernier build", g.Perm(iam.WorkloadsGet, workload), tonic.Handler(r.GetLink, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_workload_github"})
 	WorkloadGroup.AddRoute("/:id/github", http.MethodPut, "Lier le conteneur à un dépôt (ou remplacer le lien)", g.Perm(iam.WorkloadsGitHubManage, workload), tonic.Handler(r.PutLink, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/github", http.MethodPatch, "Modifier le lien : branche, sous-dossier, Dockerfile, déploiement à chaque push", g.Perm(iam.WorkloadsGitHubManage, workload), tonic.Handler(r.PatchLink, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/github", http.MethodDelete, "Supprimer le lien (le conteneur continue de tourner)", g.Perm(iam.WorkloadsGitHubManage, workload), tonic.Handler(r.DeleteLink, http.StatusNoContent))

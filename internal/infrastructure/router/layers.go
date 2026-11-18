@@ -7,6 +7,7 @@ import (
 	authCtrl "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identityCtrl "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
@@ -149,7 +150,10 @@ func (a *App) initDomainLayers() error {
 	registriesController := a.newRegistriesController()
 	a.WorkloadDeployer = workloadService
 
+	copilotService := a.newCopilotService()
+
 	a.Services = &ServiceContainer{
+		Copilot:  copilotService,
 		RBAC:     rbacService,
 		APIKey:   apiKeyService,
 		Project:  projectService,
@@ -173,6 +177,7 @@ func (a *App) initDomainLayers() error {
 		Clusters:   clustersController,
 		Site:       siteController,
 		IAM:        a.newIAMController(policies),
+		Copilot:    copilot.NewController(copilotService),
 	}
 
 	a.Logger.Info("Domain layers successfully initialized.")
