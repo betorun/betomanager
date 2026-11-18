@@ -293,3 +293,30 @@ func TestGetConfig_Defaults(t *testing.T) {
 	assert.Contains(t, cfg.EnabledReasons, "CrashLoopBackOff")
 	assert.Contains(t, cfg.EnabledReasons, "OOMKilled")
 }
+
+type recordingAlerter struct{ statuses []string }
+
+func (r *recordingAlerter) WorkloadIncident(_ context.Context, _, _ uuid.UUID, _, status string) {
+	r.statuses = append(r.statuses, status)
+}
+
+// Alerte au passage en incident seulement : un même CrashLoopBackOff
+// répété ne renvoie rien (le Notifier limite aussi la fréquence).
+func TestOnPodEvent_AlertsOnTransitionOnly(t *testing.T) {
+	workloadID, projectID := uuid.New(), uuid.New()
+	w := &domain.Workload{ID: workloadID, ProjectID: projectID, Name: "myapp", Namespace: "km-demo", Status: "RUNNING"}
+	repo := &fakeWorkloadRepo{byID: map[uuid.UUID]*domain.Workload{workloadID: w}}
+	alerts := &recordingAlerter{}
+	svc := NewService(repo, newFakeClusterRepo(), &capturePublisher{}, zap.NewNop().Sugar(), WithAlerts(alerts))
+	event := PodEvent{EventID: "e1", Name: "myapp-abc", Namespace: "km-demo", Reason: "CrashLoopBackOff",
+		Message: "secret=hunter2 at /app/main.go", Labels: map[string]string{"km-workload-id": workloadID.String()}}
+
+	_, err := svc.OnPodEvent(context.Background(), "cluster-1", event)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"CRASHLOOP"}, alerts.statuses)
+
+	w.Status = "CRASHLOOP"
+	_, err = svc.OnPodEvent(context.Background(), "cluster-1", event)
+	require.NoError(t, err)
+	assert.Len(t, alerts.statuses, 1, "pas de nouvelle alerte sans changement de statut")
+}

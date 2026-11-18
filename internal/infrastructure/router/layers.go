@@ -7,6 +7,7 @@ import (
 	authCtrl "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identityCtrl "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
@@ -105,7 +106,11 @@ func (a *App) initDomainLayers() error {
 	realtimeController := realtimeCtrl.NewController(a.Config.Centrifugo, a.RealtimeSigner, a.IAM)
 
 	clusterRepo := clustersCtrl.NewClusterRepository(a.DB)
-	clustersService := clustersCtrl.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger)
+	var clusterOpts []clustersCtrl.Option
+	if n := a.alertNotifier(); n != nil {
+		clusterOpts = append(clusterOpts, clustersCtrl.WithAlerts(n))
+	}
+	clustersService := clustersCtrl.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger, clusterOpts...)
 	clustersController := clustersCtrl.NewController(clustersService)
 
 	// Sites statiques : actifs seulement si l'object store est configuré.
@@ -145,7 +150,10 @@ func (a *App) initDomainLayers() error {
 	registriesController := a.newRegistriesController()
 	a.WorkloadDeployer = workloadService
 
+	copilotService := a.newCopilotService()
+
 	a.Services = &ServiceContainer{
+		Copilot:  copilotService,
 		RBAC:     rbacService,
 		APIKey:   apiKeyService,
 		Project:  projectService,
@@ -169,6 +177,7 @@ func (a *App) initDomainLayers() error {
 		Clusters:   clustersController,
 		Site:       siteController,
 		IAM:        a.newIAMController(policies),
+		Copilot:    copilot.NewController(copilotService),
 	}
 
 	a.Logger.Info("Domain layers successfully initialized.")

@@ -128,7 +128,14 @@ type Activities struct {
 	SourceBase string    // URL de l'API vue depuis les pods
 	Git        GitAccess // nil : connexion GitHub désactivée
 	Deployer   Deployer
-	Logger     *zap.SugaredLogger
+	// Alerts : owners prévenus d'un build échoué ; nil : aucune alerte.
+	Alerts BuildAlerter
+	Logger *zap.SugaredLogger
+}
+
+// BuildAlerter : alerte d'un build échoué (alerts.Notifier).
+type BuildAlerter interface {
+	BuildFailed(ctx context.Context, project, build uuid.UUID, failure string)
 }
 
 // MarkBuilding : le build démarre.
@@ -452,6 +459,11 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 	a.saveLog(ctx, in.BuildRef)
 	if err := a.Repo.Finish(ctx, id, in.Status, in.Failure, in.Digest, in.Detected); err != nil {
 		return err
+	}
+	if in.Status == domain.StatusFailed && a.Alerts != nil {
+		if project, err := uuid.Parse(in.ProjectID); err == nil {
+			a.Alerts.BuildFailed(ctx, project, id, in.Failure)
+		}
 	}
 	a.cleanup(ctx, in.BuildRef)
 	return nil

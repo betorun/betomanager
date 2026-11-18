@@ -91,3 +91,17 @@ func SessionID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.GetString(ctxSessionID))
 	return id, err == nil
 }
+
+// PersonSession : la requête vient-elle d'une personne connectée par une
+// session betorun (ni clé API, ni compte de service, ni délégation) ? Rend
+// la session et son acr (niveau d'authentification), pour une délégation.
+func PersonSession(c *gin.Context) (sessionID uuid.UUID, acr string, ok bool) {
+	if c.GetString("authMethod") != "bearer" {
+		return uuid.Nil, "", false
+	}
+	id, ok := SessionID(c)
+	if !ok {
+		return uuid.Nil, "", false
+	}
+	return id, c.GetString(ctxAuthAcr), true
+}

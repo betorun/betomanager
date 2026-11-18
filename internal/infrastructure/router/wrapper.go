@@ -34,6 +34,8 @@ type Route struct {
 	Access Access
 	// Raw : documentation d'une route brute (rawdoc.go), nil pour tonic.
 	Raw *RawDoc
+	// Copilot : outil du Copilot (copilot_wiring.go), nil sinon.
+	Copilot *CopilotTool
 }
 
 type RouteGroup struct {

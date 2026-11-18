@@ -33,6 +33,21 @@ type service struct {
 	clusters  ClusterRepository
 	publisher realtime.Publisher
 	logger    *zap.SugaredLogger
+	alerts    IncidentAlerter
+}
+
+// IncidentAlerter : prévient les owners qu'un conteneur passe en incident
+// (alerts.Notifier).
+type IncidentAlerter interface {
+	WorkloadIncident(ctx context.Context, project, workload uuid.UUID, name, status string)
+}
+
+// Option : réglage facultatif du service.
+type Option func(*service)
+
+// WithAlerts : alertes email sur les incidents.
+func WithAlerts(a IncidentAlerter) Option {
+	return func(s *service) { s.alerts = a }
 }
 
 // Defaults RemoteConfig — valeurs saines pour un watcher single-cluster.
@@ -56,13 +71,18 @@ func NewService(
 	clusters ClusterRepository,
 	publisher realtime.Publisher,
 	logger *zap.SugaredLogger,
+	opts ...Option,
 ) IClusterService {
-	return &service{
+	s := &service{
 		workloads: workloads,
 		clusters:  clusters,
 		publisher: publisher,
 		logger:    logger.With("service", "ClusterService"),
 	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
 }
 
 // ── Enroll ────────────────────────────────────────────────────────────────
@@ -188,7 +208,15 @@ func (s *service) OnPodEvent(ctx context.Context, clusterID string, event PodEve
 	if mapped {
 		phase := utils.PhasePodEventPrefix + event.Reason
 		// Suppression en cours : le statut ne bouge plus, l'événement reste diffusé.
-		if err := s.workloads.UpdateStatus(ctx, workloadID, newStatus, phase); err != nil && !errors.Is(err, workloadsDomain.ErrWorkloadDeleting) {
+		err := s.workloads.UpdateStatus(ctx, workloadID, newStatus, phase)
+		switch {
+		case err == nil:
+			// Passage en incident : les owners sont prévenus (fréquence
+			// limitée par le Notifier). Jamais le message brut du pod.
+			if wl.Status != newStatus && s.alerts != nil {
+				s.alerts.WorkloadIncident(ctx, wl.ProjectID, wl.ID, wl.Name, newStatus)
+			}
+		case !errors.Is(err, workloadsDomain.ErrWorkloadDeleting):
 			s.logger.Errorw("update workload status failed", "workload", workloadID, "error", err)
 			// On continue quand même le broadcast — l'UI doit voir l'event même si DB down.
 		}
