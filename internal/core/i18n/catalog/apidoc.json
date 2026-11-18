@@ -1094,5 +1094,53 @@
  {
   "fr": "Préfixer chaque ligne de son horodatage",
   "en": "Prefix each line with its timestamp"
+ },
+ {
+  "fr": "Supprimer une base (ses données sont perdues)",
+  "en": "Delete a database (its data is lost)"
+ },
+ {
+  "fr": "Détails et état d'une base (jamais le mot de passe)",
+  "en": "Details and state of a database (never the password)"
+ },
+ {
+  "fr": "Lister les bases de données du projet",
+  "en": "List the project's databases"
+ },
+ {
+  "fr": "Créer une base Postgres (prête en une minute environ)",
+  "en": "Create a Postgres database (ready in about a minute)"
+ },
+ {
+  "fr": "Bases Postgres gérées : une par besoin, joignables seulement depuis les conteneurs du projet.",
+  "en": "Managed Postgres databases: one per need, reachable only from the project's containers."
+ },
+ {
+  "fr": "Bases de données",
+  "en": "Databases"
+ },
+ {
+  "fr": "ID de la base de données",
+  "en": "Database ID"
+ },
+ {
+  "fr": "Nom de la base (3 à 30 caractères : minuscules, chiffres, tirets)",
+  "en": "Database name (3 to 30 characters: lowercase letters, digits, hyphens)"
+ },
+ {
+  "fr": "Taille du disque : 1Gi (défaut), 2Gi, 5Gi, 10Gi ou 20Gi",
+  "en": "Disk size: 1Gi (default), 2Gi, 5Gi, 10Gi or 20Gi"
+ },
+ {
+  "fr": "Supprimer une base",
+  "en": "Delete a database"
+ },
+ {
+  "fr": "Détails et état d'une base",
+  "en": "Details and state of a database"
+ },
+ {
+  "fr": "Créer une base Postgres",
+  "en": "Create a Postgres database"
  }
 ]

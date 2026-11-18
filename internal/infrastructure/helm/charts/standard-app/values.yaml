@@ -228,6 +228,8 @@ networkPolicy:
     enabled: true
     # Allow DNS vers kube-system.
     allowDNS: true
+    # Bases Postgres gérées du projet (pods CloudNativePG du même espace).
+    projectDatabases: true
     # Ports TCP sortants vers Internet : HTTP(S), SMTP submission (465/587),
     # bases managées (MySQL, Postgres, Redis, MongoDB). Port 25 volontairement
     # absent (anti-spam). Liste vide = aucun sortant public.

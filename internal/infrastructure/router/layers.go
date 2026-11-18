@@ -178,6 +178,7 @@ func (a *App) initDomainLayers() error {
 		Site:       siteController,
 		IAM:        a.newIAMController(policies),
 		Copilot:    copilot.NewController(copilotService),
+		Databases:  a.newDatabasesController(),
 	}
 
 	a.Logger.Info("Domain layers successfully initialized.")

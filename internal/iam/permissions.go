@@ -58,11 +58,17 @@ const (
 	RegistriesManage        Permission = "workloads.registries.manage"
 
 	// sites
-	SitesList             Permission = "sites.sites.list"
-	SitesGet              Permission = "sites.sites.get"
-	SitesCreate           Permission = "sites.sites.create"
-	SitesUpdate           Permission = "sites.sites.update"
-	SitesDelete           Permission = "sites.sites.delete"
+	SitesList   Permission = "sites.sites.list"
+	SitesGet    Permission = "sites.sites.get"
+	SitesCreate Permission = "sites.sites.create"
+	SitesUpdate Permission = "sites.sites.update"
+	SitesDelete Permission = "sites.sites.delete"
+
+	// Bases de données gérées (Postgres).
+	DatabasesList         Permission = "databases.databases.list"
+	DatabasesGet          Permission = "databases.databases.get"
+	DatabasesCreate       Permission = "databases.databases.create"
+	DatabasesDelete       Permission = "databases.databases.delete"
 	SiteDeploymentsList   Permission = "sites.deployments.list"
 	SiteDeploymentsCreate Permission = "sites.deployments.create"
 	SiteDeploymentsActive Permission = "sites.deployments.activate"
@@ -163,6 +169,10 @@ var catalog = map[Permission]PermissionInfo{
 	SitesList:             {Title: "Lister les sites", CustomRoles: true},
 	SitesGet:              {Title: "Voir un site", CustomRoles: true},
 	SitesCreate:           {Title: "Créer un site", CustomRoles: true},
+	DatabasesList:         {Title: "Lister les bases de données", CustomRoles: true},
+	DatabasesGet:          {Title: "Voir une base de données", CustomRoles: true},
+	DatabasesCreate:       {Title: "Créer une base de données", CustomRoles: true},
+	DatabasesDelete:       {Title: "Supprimer une base de données (ses données sont perdues)", CustomRoles: true, Sensitive: true},
 	SitesUpdate:           {Title: "Modifier un site", CustomRoles: true},
 	SitesDelete:           {Title: "Supprimer un site", CustomRoles: true},
 	SiteDeploymentsList:   {Title: "Voir les déploiements d'un site", CustomRoles: true},
