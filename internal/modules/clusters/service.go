@@ -173,6 +173,17 @@ func (s *service) OnPodEvent(ctx context.Context, clusterID string, event PodEve
 		return nil, fmt.Errorf("workload lookup: %w", err)
 	}
 
+	// Le label km-workload-id est posé dans le namespace du client, qui peut
+	// le recopier sur ses propres pods : seul le namespace (lu par le watcher
+	// sur le pod lui-même) prouve que l'événement concerne bien ce workload.
+	if event.Namespace != wl.Namespace {
+		s.logger.Warnw("pod event namespace does not match workload — ignored",
+			"cluster", clusterID, "workload", workloadID, "pod", event.Name,
+			"event_namespace", event.Namespace, "workload_namespace", wl.Namespace)
+		observability.PodEventsIngested.WithLabelValues(clusterID, metricStatusRejected).Inc()
+		return &PodEventAck{EventID: event.EventID, Status: ackStatusIgnored}, nil
+	}
+
 	newStatus, mapped := reasonToWorkloadStatus[event.Reason]
 	if mapped {
 		phase := utils.PhasePodEventPrefix + event.Reason

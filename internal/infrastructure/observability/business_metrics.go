@@ -74,7 +74,7 @@ var ClusterEnrolled = promauto.NewGaugeVec(
 )
 
 // PodEventsIngested counts every pod event processed by OnPodEvent. Partitioned
-// by status (mapped / accepted / ignored) + the K8s reason label.
+// by status (mapped / accepted / rejected = namespace mismatch).
 var PodEventsIngested = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "kubemanager",

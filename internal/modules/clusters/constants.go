@@ -23,5 +23,9 @@ const (
 	ackStatusMapped   = "mapped"
 )
 
+// metricStatusRejected : événement refusé car son namespace ne correspond pas
+// au workload visé. Libellé de métrique seulement : le watcher reçoit "ignored".
+const metricStatusRejected = "rejected"
+
 // podEventType : type des messages temps réel d'événement de pod.
 const podEventType = "pod_event"

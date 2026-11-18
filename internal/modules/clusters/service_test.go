@@ -65,9 +65,9 @@ func (p *capturePublisher) Publish(ctx context.Context, channel string, data any
 
 // fakeClusterRepo : in-memory ClusterRepository pour les tests.
 type fakeClusterRepo struct {
-	mu       sync.Mutex
-	byID     map[string]*Cluster
-	touched  []string
+	mu      sync.Mutex
+	byID    map[string]*Cluster
+	touched []string
 }
 
 func newFakeClusterRepo() *fakeClusterRepo {
@@ -190,10 +190,11 @@ func TestOnPodEvent_MappedReason_UpdatesAndBroadcasts(t *testing.T) {
 	svc := NewService(repo, newFakeClusterRepo(), pub, zap.NewNop().Sugar())
 
 	ack, err := svc.OnPodEvent(context.Background(), "cluster-1", PodEvent{
-		EventID: "e2",
-		Name:    "myapp-abc",
-		Reason:  "CrashLoopBackOff",
-		Phase:   "Failed",
+		EventID:      "e2",
+		Name:         "myapp-abc",
+		Namespace:    "km-demo",
+		Reason:       "CrashLoopBackOff",
+		Phase:        "Failed",
 		RestartCount: 5,
 		Labels: map[string]string{
 			"km-workload-id": workloadID.String(),
@@ -226,9 +227,10 @@ func TestOnPodEvent_UnmappedReason_AcceptedNoUpdate(t *testing.T) {
 	svc := NewService(repo, newFakeClusterRepo(), pub, zap.NewNop().Sugar())
 
 	ack, err := svc.OnPodEvent(context.Background(), "c1", PodEvent{
-		EventID: "e3",
-		Reason:  "SomeObscureReason",
-		Labels:  map[string]string{"km-workload-id": workloadID.String()},
+		EventID:   "e3",
+		Namespace: "km-x",
+		Reason:    "SomeObscureReason",
+		Labels:    map[string]string{"km-workload-id": workloadID.String()},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "accepted", ack.Status)
@@ -236,6 +238,35 @@ func TestOnPodEvent_UnmappedReason_AcceptedNoUpdate(t *testing.T) {
 	assert.Empty(t, repo.statusUpdates)
 	// Mais un broadcast quand même (l'UI doit voir l'event brut).
 	require.Len(t, pub.published, 1)
+}
+
+// Un client recopie le label km-workload-id d'un autre projet sur un pod de
+// son propre namespace : l'événement ne doit ni changer le statut de la
+// victime ni partir sur son canal temps réel.
+func TestOnPodEvent_NamespaceMismatch_Ignored(t *testing.T) {
+	victimID := uuid.New()
+	repo := &fakeWorkloadRepo{
+		byID: map[uuid.UUID]*domain.Workload{
+			victimID: {ID: victimID, ProjectID: uuid.New(), Name: "victim", Namespace: "km-victim"},
+		},
+	}
+	pub := &capturePublisher{}
+	svc := NewService(repo, newFakeClusterRepo(), pub, zap.NewNop().Sugar())
+
+	for _, ns := range []string{"km-attacker", ""} {
+		ack, err := svc.OnPodEvent(context.Background(), "cluster-1", PodEvent{
+			EventID:   "e4",
+			Name:      "evil-pod",
+			Namespace: ns,
+			Reason:    "CrashLoopBackOff",
+			Labels:    map[string]string{"km-workload-id": victimID.String()},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "ignored", ack.Status, "namespace=%q", ns)
+		assert.Empty(t, ack.WorkloadID, "namespace=%q", ns)
+	}
+	assert.Empty(t, repo.statusUpdates)
+	assert.Empty(t, pub.published)
 }
 
 func TestEnroll_FirstTimeAndUpdate(t *testing.T) {
