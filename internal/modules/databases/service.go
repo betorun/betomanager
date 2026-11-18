@@ -105,10 +105,10 @@ func (s *Service) Create(ctx context.Context, projectID uuid.UUID, in domain.Cre
 	if err := s.Repo.Create(ctx, d); err != nil {
 		return nil, err
 	}
-	if err := s.Clusters.Create(ctx, ns, ClusterSpec{Name: d.ClusterName(), DatabaseID: d.ID.String(), Storage: size}); err != nil {
+	if err := s.Clusters.Create(ctx, ns, ClusterSpec{Name: d.ClusterName(), DatabaseID: d.ID.String(), ProjectID: projectID.String(), Storage: size}); err != nil {
 		s.Logger.Errorw("database: cluster creation failed", "database", d.ID, "error", err)
 		_ = s.Repo.SetStatus(context.WithoutCancel(ctx), d.ID, domain.StatusFailed)
-		if errors.Is(err, ErrOperatorMissing) {
+		if errors.Is(err, ErrOperatorMissing) || errors.Is(err, ErrBackupPluginMissing) {
 			return nil, domain.ErrUnavailable
 		}
 		return nil, fmt.Errorf("the database could not be created: %w", err)
@@ -255,7 +255,20 @@ func view(d domain.Database, ns string, st ClusterState) domain.DatabaseView {
 		StorageSize: d.StorageSize, Status: d.Status, Phase: st.Phase,
 		Host: d.ClusterName() + "-rw." + ns + ".svc", Port: domain.Port,
 		Database: domain.DatabaseName, User: domain.UserName, CreatedAt: d.CreatedAt,
+		Backups: backupsView(st),
 	}
+}
+
+func backupsView(st ClusterState) domain.Backups {
+	b := domain.Backups{Enabled: st.BackupsEnabled}
+	if st.LastBackup != nil {
+		b.LastStatus = st.LastBackup.Phase
+		if !st.LastBackup.StoppedAt.IsZero() {
+			t := st.LastBackup.StoppedAt
+			b.LastAt = &t
+		}
+	}
+	return b
 }
 
 // imageVersion : « ghcr.io/cloudnative-pg/postgresql:17.6 » → « 17.6 ».

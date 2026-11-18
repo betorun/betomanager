@@ -62,5 +62,9 @@
  {
   "fr": "Conteneur introuvable dans ce projet",
   "en": "container not found in this project"
+ },
+ {
+  "fr": "Le plugin Barman Cloud n'est pas installé sur le cluster",
+  "en": "the Barman Cloud plugin is not installed on the cluster"
  }
 ]

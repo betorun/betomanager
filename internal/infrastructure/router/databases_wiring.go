@@ -29,7 +29,15 @@ func (a *App) newDatabasesController() *databases.Controller {
 		if err != nil {
 			a.Logger.Errorw("databases disabled: dynamic client", "error", err)
 		} else {
-			s.Clusters = &databases.CNPG{Dynamic: dyn, Kube: a.K8sProvider.Client}
+			cnpg := &databases.CNPG{Dynamic: dyn, Kube: a.K8sProvider.Client, StorageClass: a.Config.Databases.StorageClass}
+			if target, err := databases.BackupTargetFrom(a.Config.Databases.Backup); err != nil {
+				a.Logger.Errorw("databases: backups disabled (configuration)", "error", err)
+			} else if target != nil {
+				cnpg.Backup = target
+			} else {
+				a.Logger.Warnw("databases: no backup storage configured (databases.backup.*): new databases will have NO backups")
+			}
+			s.Clusters = cnpg
 		}
 	}
 	ctl := databases.NewController(s)

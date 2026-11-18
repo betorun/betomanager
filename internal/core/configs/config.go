@@ -49,6 +49,35 @@ type GlobalConfig struct {
 	GitHubApp GitHubAppConfig `mapstructure:"github_app"`
 	// LLM : modèles de langage (Copilot). Désactivé par défaut.
 	LLM LLMConfig `mapstructure:"llm"`
+	// Databases : bases Postgres gérées (CloudNativePG).
+	Databases DatabasesConfig `mapstructure:"databases"`
+}
+
+// DatabasesConfig : bases gérées.
+type DatabasesConfig struct {
+	// StorageClass : classe des disques (vide : celle par défaut du cluster).
+	StorageClass string `mapstructure:"storage_class"`
+	// Backup : sauvegardes continues (plugin Barman Cloud) vers un stockage
+	// S3 JOIGNABLE DEPUIS LE CLUSTER (les pods des bases y écrivent).
+	// Désactivées tant que Endpoint ou Bucket est vide.
+	Backup DatabaseBackupConfig `mapstructure:"backup"`
+}
+
+// DatabaseBackupConfig : destination des sauvegardes des bases.
+type DatabaseBackupConfig struct {
+	// Endpoint : URL S3 complète, ex. https://s3.eu-central-003.backblazeb2.com
+	// ou https://storage.betorun.app (SeaweedFS de la plateforme).
+	Endpoint string `mapstructure:"endpoint"`
+	Bucket   string `mapstructure:"bucket"`
+	Region   string `mapstructure:"region"`
+	// AccessKey / SecretKey : secrets. Prod : KUBEMANAGER_DATABASES_BACKUP_*.
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	// Retention : durée de conservation, ex. 7d, 4w, 3m (défaut 7d).
+	Retention string `mapstructure:"retention"`
+	// Schedule : sauvegarde complète, cron à 6 champs avec secondes
+	// (défaut « 0 0 3 * * * », chaque nuit à 3 h UTC).
+	Schedule string `mapstructure:"schedule"`
 }
 
 // LLMConfig : accès aux modèles de langage (internal/infrastructure/llm,

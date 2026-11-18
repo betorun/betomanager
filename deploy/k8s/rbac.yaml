@@ -75,7 +75,11 @@ rules:
   # Bases Postgres gérées (CloudNativePG, à installer : voir README.txt).
   # Les secrets de connexion <cluster>-app sont lus via la règle des secrets.
   - apiGroups: [postgresql.cnpg.io]
-    resources: [clusters]
+    resources: [clusters, scheduledbackups, backups]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Sauvegardes des bases (plugin Barman Cloud, à installer : voir README.txt).
+  - apiGroups: [barmancloud.cnpg.io]
+    resources: [objectstores]
     verbs: [get, list, watch, create, update, patch, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

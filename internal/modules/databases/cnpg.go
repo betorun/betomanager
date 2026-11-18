@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -16,8 +17,17 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// ClusterGVR : Cluster CloudNativePG.
-var ClusterGVR = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "clusters"}
+// Ressources CloudNativePG et plugin Barman Cloud.
+var (
+	ClusterGVR         = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "clusters"}
+	ScheduledBackupGVR = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "scheduledbackups"}
+	BackupGVR          = schema.GroupVersionResource{Group: "postgresql.cnpg.io", Version: "v1", Resource: "backups"}
+	ObjectStoreGVR     = schema.GroupVersionResource{Group: "barmancloud.cnpg.io", Version: "v1", Resource: "objectstores"}
+)
+
+// barmanPlugin : nom du plugin de sauvegarde (CNPG-I). L'archivage natif
+// (barmanObjectStore) est déprécié depuis 1.26 et retiré en 1.32.
+const barmanPlugin = "barman-cloud.cloudnative-pg.io"
 
 // operatorNamespace : espace de l'opérateur (manifeste officiel).
 const operatorNamespace = "cnpg-system"
@@ -28,6 +38,16 @@ type ClusterState struct {
 	Phase         string // texte de CloudNativePG, ex. « Cluster in healthy state »
 	ReadyInstance bool
 	Image         string
+	// Sauvegardes : configurées (plugin présent) et dernière issue connue.
+	BackupsEnabled bool
+	LastBackup     *BackupState
+}
+
+// BackupState : une sauvegarde complète (objet Backup de CloudNativePG).
+type BackupState struct {
+	Phase     string    // completed, running, failed…
+	StoppedAt time.Time // fin (vide si en cours)
+	Error     string
 }
 
 // Clusters : ce que le service demande au cluster Kubernetes.
@@ -44,7 +64,16 @@ type Clusters interface {
 type ClusterSpec struct {
 	Name       string // nom du Cluster (db-<nom>)
 	DatabaseID string
+	ProjectID  string
 	Storage    string
+}
+
+// BackupTarget : destination S3 des sauvegardes (nil : pas de sauvegarde).
+type BackupTarget struct {
+	Endpoint, Bucket, Region string
+	AccessKey, SecretKey     string
+	Retention                string // ex. 7d
+	Schedule                 string // cron à 6 champs
 }
 
 // CNPG : Clusters sur un vrai cluster (client dynamique pour la CRD, client
@@ -53,7 +82,22 @@ type CNPG struct {
 	Dynamic      dynamic.Interface
 	Kube         kubernetes.Interface
 	StorageClass string // vide : classe par défaut du cluster
+	// Backup : nil = bases sans sauvegarde (aucun stockage configuré).
+	Backup *BackupTarget
 }
+
+// Conteneur annexe du plugin dans le pod de la base : demandes et limites
+// obligatoires, comme Postgres (quota du projet).
+const (
+	sidecarCPURequest = "50m"
+	sidecarMemRequest = "64Mi"
+	sidecarCPULimit   = "200m"
+	sidecarMemLimit   = "256Mi"
+)
+
+func storeName(cluster string) string    { return cluster + "-store" }
+func secretName(cluster string) string   { return cluster + "-backup-s3" }
+func scheduleName(cluster string) string { return cluster + "-daily" }
 
 // Ressources d'une instance : demandes et limites obligatoires (le projet a
 // un quota CPU et mémoire ; sans elles, le pod serait refusé).
@@ -77,7 +121,7 @@ func (c *CNPG) clusterObject(ns string, spec ClusterSpec) *unstructured.Unstruct
 	if c.StorageClass != "" {
 		storage["storageClass"] = c.StorageClass
 	}
-	return &unstructured.Unstructured{Object: map[string]any{
+	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "postgresql.cnpg.io/v1",
 		"kind":       "Cluster",
 		"metadata":   map[string]any{"name": spec.Name, "namespace": ns, "labels": labels(spec)},
@@ -93,6 +137,65 @@ func (c *CNPG) clusterObject(ns string, spec ClusterSpec) *unstructured.Unstruct
 			"enableSuperuserAccess": false,
 		},
 	}}
+	if c.Backup != nil {
+		// Archivage continu du journal (WAL) : restauration à un instant donné.
+		_ = unstructured.SetNestedSlice(obj.Object, []any{map[string]any{
+			"name": barmanPlugin, "isWALArchiver": true,
+			"parameters": map[string]any{"barmanObjectName": storeName(spec.Name)},
+		}}, "spec", "plugins")
+	}
+	return obj
+}
+
+// backupObjects : secret des clés S3, ObjectStore (destination, rétention,
+// compression, ressources du conteneur annexe) et sauvegarde planifiée.
+func (c *CNPG) backupObjects(ns string, spec ClusterSpec) (*corev1.Secret, *unstructured.Unstructured, *unstructured.Unstructured) {
+	b := c.Backup
+	lbl := map[string]string{"app.kubernetes.io/managed-by": "betorun", "betorun.dev/database-id": spec.DatabaseID}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: secretName(spec.Name), Namespace: ns, Labels: lbl},
+		Type:       corev1.SecretTypeOpaque,
+		StringData: map[string]string{"ACCESS_KEY_ID": b.AccessKey, "SECRET_ACCESS_KEY": b.SecretKey, "REGION": b.Region},
+	}
+	ref := func(key string) map[string]any { return map[string]any{"name": secretName(spec.Name), "key": key} }
+	creds := map[string]any{"accessKeyId": ref("ACCESS_KEY_ID"), "secretAccessKey": ref("SECRET_ACCESS_KEY")}
+	if b.Region != "" {
+		creds["region"] = ref("REGION")
+	}
+	store := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "barmancloud.cnpg.io/v1",
+		"kind":       "ObjectStore",
+		"metadata":   map[string]any{"name": storeName(spec.Name), "namespace": ns, "labels": labels(spec)},
+		"spec": map[string]any{
+			"configuration": map[string]any{
+				// Un dossier par projet et par base : jamais deux bases au même endroit.
+				"destinationPath": "s3://" + b.Bucket + "/" + spec.ProjectID + "/" + spec.DatabaseID,
+				"endpointURL":     b.Endpoint,
+				"s3Credentials":   creds,
+				"wal":             map[string]any{"compression": "gzip"},
+				"data":            map[string]any{"compression": "gzip"},
+			},
+			"retentionPolicy": b.Retention,
+			"instanceSidecarConfiguration": map[string]any{"resources": map[string]any{
+				"requests": map[string]any{"cpu": sidecarCPURequest, "memory": sidecarMemRequest},
+				"limits":   map[string]any{"cpu": sidecarCPULimit, "memory": sidecarMemLimit},
+			}},
+		},
+	}}
+	sched := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "postgresql.cnpg.io/v1",
+		"kind":       "ScheduledBackup",
+		"metadata":   map[string]any{"name": scheduleName(spec.Name), "namespace": ns, "labels": labels(spec)},
+		"spec": map[string]any{
+			"schedule":             b.Schedule,
+			"immediate":            true, // une première sauvegarde complète dès la création
+			"backupOwnerReference": "self",
+			"cluster":              map[string]any{"name": spec.Name},
+			"method":               "plugin",
+			"pluginConfiguration":  map[string]any{"name": barmanPlugin},
+		},
+	}}
+	return secret, store, sched
 }
 
 // networkPolicy : seuls les pods du projet (même espace) et l'opérateur
@@ -122,6 +225,23 @@ func (c *CNPG) Create(ctx context.Context, ns string, spec ClusterSpec) error {
 	if _, err := c.Kube.NetworkingV1().NetworkPolicies(ns).Create(ctx, networkPolicy(ns, spec), metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("network policy: %w", err)
 	}
+	var sched *unstructured.Unstructured
+	if c.Backup != nil {
+		// La destination existe avant le Cluster : l'archivage du journal
+		// démarre avec la base.
+		secret, store, s := c.backupObjects(ns, spec)
+		sched = s
+		if _, err := c.Kube.CoreV1().Secrets(ns).Create(ctx, secret, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+			return fmt.Errorf("backup secret: %w", err)
+		}
+		_, err := c.Dynamic.Resource(ObjectStoreGVR).Namespace(ns).Create(ctx, store, metav1.CreateOptions{})
+		if apierrors.IsNotFound(err) {
+			return ErrBackupPluginMissing
+		}
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			return fmt.Errorf("object store: %w", err)
+		}
+	}
 	_, err := c.Dynamic.Resource(ClusterGVR).Namespace(ns).Create(ctx, c.clusterObject(ns, spec), metav1.CreateOptions{})
 	if apierrors.IsNotFound(err) {
 		// CRD absente : l'opérateur n'est pas installé sur ce cluster.
@@ -130,8 +250,16 @@ func (c *CNPG) Create(ctx context.Context, ns string, spec ClusterSpec) error {
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("cluster: %w", err)
 	}
+	if sched != nil {
+		if _, err := c.Dynamic.Resource(ScheduledBackupGVR).Namespace(ns).Create(ctx, sched, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+			return fmt.Errorf("scheduled backup: %w", err)
+		}
+	}
 	return nil
 }
+
+// ErrBackupPluginMissing : sauvegardes configurées mais plugin Barman Cloud absent.
+var ErrBackupPluginMissing = errors.New("the Barman Cloud plugin is not installed on the cluster")
 
 // ErrOperatorMissing : CloudNativePG n'est pas installé.
 var ErrOperatorMissing = errors.New("CloudNativePG is not installed on the cluster")
@@ -149,7 +277,41 @@ func (c *CNPG) State(ctx context.Context, ns, name string) (ClusterState, error)
 	st.Image, _, _ = unstructured.NestedString(obj.Object, "status", "image")
 	ready, _, _ := unstructured.NestedInt64(obj.Object, "status", "readyInstances")
 	st.ReadyInstance = ready >= 1
+	plugins, _, _ := unstructured.NestedSlice(obj.Object, "spec", "plugins")
+	for _, p := range plugins {
+		if m, ok := p.(map[string]any); ok && m["name"] == barmanPlugin {
+			st.BackupsEnabled = true
+		}
+	}
+	if st.BackupsEnabled {
+		st.LastBackup = c.lastBackup(ctx, ns, name)
+	}
 	return st, nil
+}
+
+// lastBackup : la sauvegarde complète la plus récente (au mieux : une erreur
+// de lecture ne fait pas échouer l'état de la base).
+func (c *CNPG) lastBackup(ctx context.Context, ns, cluster string) *BackupState {
+	list, err := c.Dynamic.Resource(BackupGVR).Namespace(ns).List(ctx, metav1.ListOptions{LabelSelector: "cnpg.io/cluster=" + cluster})
+	if err != nil || len(list.Items) == 0 {
+		return nil
+	}
+	var best *BackupState
+	var bestAt time.Time
+	for _, item := range list.Items {
+		phase, _, _ := unstructured.NestedString(item.Object, "status", "phase")
+		stopped, _, _ := unstructured.NestedString(item.Object, "status", "stoppedAt")
+		msg, _, _ := unstructured.NestedString(item.Object, "status", "error")
+		at := item.GetCreationTimestamp().Time
+		b := &BackupState{Phase: phase, Error: msg}
+		if t, err := time.Parse(time.RFC3339, stopped); err == nil {
+			b.StoppedAt = t
+		}
+		if best == nil || at.After(bestAt) {
+			best, bestAt = b, at
+		}
+	}
+	return best
 }
 
 // Delete : le Cluster (ses disques suivent : CloudNativePG en est
@@ -162,6 +324,21 @@ func (c *CNPG) Delete(ctx context.Context, ns, name string) error {
 	err = c.Kube.NetworkingV1().NetworkPolicies(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("network policy: %w", err)
+	}
+	// Sauvegarde planifiée, destination et clés S3. Les fichiers déjà
+	// sauvegardés restent dans le bucket (filet de sécurité ; ménage par
+	// règle de cycle de vie du bucket). CRD absentes : rien à supprimer.
+	for _, gvr := range []schema.GroupVersionResource{ScheduledBackupGVR, ObjectStoreGVR} {
+		n := scheduleName(name)
+		if gvr == ObjectStoreGVR {
+			n = storeName(name)
+		}
+		if err := c.Dynamic.Resource(gvr).Namespace(ns).Delete(ctx, n, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("%s: %w", gvr.Resource, err)
+		}
+	}
+	if err := c.Kube.CoreV1().Secrets(ns).Delete(ctx, secretName(name), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("backup secret: %w", err)
 	}
 	return nil
 }

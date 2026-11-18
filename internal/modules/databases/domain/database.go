@@ -97,6 +97,15 @@ type DatabaseView struct {
 	Database    string    `json:"database"`
 	User        string    `json:"user"`
 	CreatedAt   time.Time `json:"created_at"`
+	Backups     Backups   `json:"backups"`
+}
+
+// Backups : sauvegardes continues (journal) et complètes (chaque nuit).
+type Backups struct {
+	Enabled bool `json:"enabled"`
+	// LastAt / LastStatus : dernière sauvegarde complète (completed, running, failed…).
+	LastAt     *time.Time `json:"last_at,omitempty"`
+	LastStatus string     `json:"last_status,omitempty"`
 }
 
 // DefaultVariable : variable posée sur le conteneur (convention des

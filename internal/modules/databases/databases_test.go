@@ -20,6 +20,7 @@ import (
 	dynfake "k8s.io/client-go/dynamic/fake"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
+	"github.com/thekrauss/kubemanager/internal/core/configs"
 	"github.com/thekrauss/kubemanager/internal/iam"
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/databases/domain"
@@ -182,7 +183,7 @@ func TestDelete(t *testing.T) {
 func TestCNPGObjects(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
-	dyn := dynfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{ClusterGVR: "ClusterList"})
+	dyn := dynfake.NewSimpleDynamicClientWithCustomListKinds(scheme, listKinds)
 	kube := kubefake.NewClientset()
 	c := &CNPG{Dynamic: dyn, Kube: kube}
 	spec := ClusterSpec{Name: "db-main", DatabaseID: "d1", Storage: "2Gi"}
@@ -287,5 +288,97 @@ func TestAttachChecksWorkloadPermission(t *testing.T) {
 	_, err := h.Attach(c, &domain.AttachRequest{ProjectID: uuid.NewString(), DatabaseID: uuid.NewString(), WorkloadID: uuid.NewString()})
 	if err == nil || !strings.Contains(err.Error(), "workloads.variables.update") {
 		t.Fatalf("refus attendu : %v", err)
+	}
+}
+
+var listKinds = map[schema.GroupVersionResource]string{
+	ClusterGVR: "ClusterList", BackupGVR: "BackupList", ScheduledBackupGVR: "ScheduledBackupList", ObjectStoreGVR: "ObjectStoreList",
+}
+
+func TestCNPGWithBackups(t *testing.T) {
+	ctx := context.Background()
+	dyn := dynfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds)
+	kube := kubefake.NewClientset()
+	c := &CNPG{Dynamic: dyn, Kube: kube, Backup: &BackupTarget{Endpoint: "https://s3.example", Bucket: "db-backups",
+		Region: "eu", AccessKey: "AK", SecretKey: "SK", Retention: "7d", Schedule: "0 0 3 * * *"}}
+	spec := ClusterSpec{Name: "db-main", DatabaseID: "d1", ProjectID: "p1", Storage: "1Gi"}
+	if err := c.Create(ctx, "km-demo", spec); err != nil {
+		t.Fatal(err)
+	}
+	store, err := dyn.Resource(ObjectStoreGVR).Namespace("km-demo").Get(ctx, "db-main-store", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, _, _ := unstructured.NestedString(store.Object, "spec", "configuration", "destinationPath")
+	key, _, _ := unstructured.NestedString(store.Object, "spec", "configuration", "s3Credentials", "accessKeyId", "name")
+	sideLimit, _, _ := unstructured.NestedString(store.Object, "spec", "instanceSidecarConfiguration", "resources", "limits", "memory")
+	if dest != "s3://db-backups/p1/d1" || key != "db-main-backup-s3" || sideLimit == "" {
+		t.Fatalf("object store : dest=%q key=%q sidecar=%q", dest, key, sideLimit)
+	}
+	sec, err := kube.CoreV1().Secrets("km-demo").Get(ctx, "db-main-backup-s3", metav1.GetOptions{})
+	if err != nil || sec.StringData["SECRET_ACCESS_KEY"] != "SK" {
+		t.Fatalf("secret : %v", err)
+	}
+	cl, _ := dyn.Resource(ClusterGVR).Namespace("km-demo").Get(ctx, "db-main", metav1.GetOptions{})
+	plugins, _, _ := unstructured.NestedSlice(cl.Object, "spec", "plugins")
+	if len(plugins) != 1 || plugins[0].(map[string]any)["isWALArchiver"] != true {
+		t.Fatalf("plugin d'archivage : %v", plugins)
+	}
+	sched, err := dyn.Resource(ScheduledBackupGVR).Namespace("km-demo").Get(ctx, "db-main-daily", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	method, _, _ := unstructured.NestedString(sched.Object, "spec", "method")
+	immediate, _, _ := unstructured.NestedBool(sched.Object, "spec", "immediate")
+	if method != "plugin" || !immediate {
+		t.Fatalf("sauvegarde planifiée : method=%q immediate=%v", method, immediate)
+	}
+
+	// Dernière sauvegarde lue sur les objets Backup du cluster.
+	b := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "postgresql.cnpg.io/v1", "kind": "Backup",
+		"metadata": map[string]any{"name": "b1", "namespace": "km-demo", "labels": map[string]any{"cnpg.io/cluster": "db-main"}},
+		"status":   map[string]any{"phase": "completed", "stoppedAt": "2026-11-18T03:00:05Z"},
+	}}
+	if _, err := dyn.Resource(BackupGVR).Namespace("km-demo").Create(ctx, b, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := c.State(ctx, "km-demo", "db-main")
+	if err != nil || !st.BackupsEnabled || st.LastBackup == nil || st.LastBackup.Phase != "completed" || st.LastBackup.StoppedAt.IsZero() {
+		t.Fatalf("état des sauvegardes : %+v %v", st, err)
+	}
+
+	if err := c.Delete(ctx, "km-demo", "db-main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dyn.Resource(ObjectStoreGVR).Namespace("km-demo").Get(ctx, "db-main-store", metav1.GetOptions{}); err == nil {
+		t.Fatal("ObjectStore non supprimé")
+	}
+	if _, err := kube.CoreV1().Secrets("km-demo").Get(ctx, "db-main-backup-s3", metav1.GetOptions{}); err == nil {
+		t.Fatal("clés S3 non supprimées")
+	}
+}
+
+func TestBackupTargetFrom(t *testing.T) {
+	if tg, err := BackupTargetFrom(configs.DatabaseBackupConfig{}); tg != nil || err != nil {
+		t.Fatal("sans configuration : désactivé, sans erreur")
+	}
+	ok := configs.DatabaseBackupConfig{Endpoint: "https://s3.example", Bucket: "db-backups", AccessKey: "a", SecretKey: "s"}
+	tg, err := BackupTargetFrom(ok)
+	if err != nil || tg.Retention != "7d" || tg.Schedule != "0 0 3 * * *" {
+		t.Fatalf("défauts : %+v %v", tg, err)
+	}
+	for name, mut := range map[string]func(*configs.DatabaseBackupConfig){
+		"endpoint sans schéma": func(c *configs.DatabaseBackupConfig) { c.Endpoint = "s3.example" },
+		"bucket invalide":      func(c *configs.DatabaseBackupConfig) { c.Bucket = "A" },
+		"sans clé":             func(c *configs.DatabaseBackupConfig) { c.SecretKey = "" },
+		"rétention":            func(c *configs.DatabaseBackupConfig) { c.Retention = "7 jours" },
+		"cron à 5 champs":      func(c *configs.DatabaseBackupConfig) { c.Schedule = "0 3 * * *" },
+	} {
+		c := ok
+		mut(&c)
+		if _, err := BackupTargetFrom(c); err == nil {
+			t.Errorf("%s : erreur attendue", name)
+		}
 	}
 }
