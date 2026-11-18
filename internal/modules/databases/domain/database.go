@@ -98,3 +98,33 @@ type DatabaseView struct {
 	User        string    `json:"user"`
 	CreatedAt   time.Time `json:"created_at"`
 }
+
+// DefaultVariable : variable posée sur le conteneur (convention des
+// frameworks : Prisma, Django, Rails, Laravel…).
+const DefaultVariable = "DATABASE_URL"
+
+var variableRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]{0,63}$`)
+
+// ValidVariable : nom de variable d'environnement accepté.
+func ValidVariable(n string) bool { return variableRe.MatchString(n) }
+
+var (
+	ErrNotReady         = errors.New("the database is not ready yet")
+	ErrInvalidVariable  = errors.New("invalid variable name: uppercase letters, digits and underscores")
+	ErrWorkloadNotFound = errors.New("container not found in this project")
+)
+
+type AttachRequest struct {
+	ProjectID  string `path:"id" binding:"required" description:"ID du projet"`
+	DatabaseID string `path:"databaseID" binding:"required" description:"ID de la base de données"`
+	WorkloadID string `json:"workload_id" binding:"required" description:"ID du conteneur qui utilisera la base"`
+	Variable   string `json:"variable" description:"Variable qui reçoit l'URI de connexion (défaut : DATABASE_URL)"`
+}
+
+// AttachResponse : la base est branchée ; le conteneur est redéployé avec la
+// variable (secrète : jamais relisible).
+type AttachResponse struct {
+	WorkloadID string `json:"workload_id"`
+	Variable   string `json:"variable"`
+	Redeploy   bool   `json:"redeploy"`
+}

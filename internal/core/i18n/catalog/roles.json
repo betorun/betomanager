@@ -430,5 +430,9 @@
  {
   "fr": "Supprimer une base de données (ses données sont perdues)",
   "en": "Delete a database (its data is lost)"
+ },
+ {
+  "fr": "Brancher une base de données sur un conteneur",
+  "en": "Attach a database to a container"
  }
 ]

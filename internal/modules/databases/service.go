@@ -34,12 +34,19 @@ type Repository interface {
 // MaxPerProject : bases par projet.
 const MaxPerProject = 5
 
+// Workloads : conteneurs (projet d'appartenance, secret posé avec redéploiement).
+type Workloads interface {
+	ProjectOf(ctx context.Context, workloadID uuid.UUID) (uuid.UUID, error)
+	SetSecret(ctx context.Context, workloadID uuid.UUID, name, value string) (redeploy bool, err error)
+}
+
 // Service : cycle de vie des bases. Clusters nil = fonction indisponible.
 type Service struct {
-	Repo     Repository
-	Projects Projects
-	Clusters Clusters
-	Logger   *zap.SugaredLogger
+	Repo      Repository
+	Projects  Projects
+	Clusters  Clusters
+	Workloads Workloads
+	Logger    *zap.SugaredLogger
 }
 
 func (s *Service) available() error {
@@ -194,6 +201,52 @@ func (s *Service) Delete(ctx context.Context, projectID, id uuid.UUID) error {
 		return fmt.Errorf("the database could not be deleted: %w", err)
 	}
 	return s.Repo.Delete(ctx, d.ID)
+}
+
+// Attach : pose l'URI de connexion de la base dans une variable SECRÈTE du
+// conteneur (redéployé). Le conteneur doit être du même projet ; l'URI ne
+// sort jamais de l'API. Les droits (connect sur la base, variables du
+// conteneur) sont vérifiés avant l'appel.
+func (s *Service) Attach(ctx context.Context, projectID, id, workloadID uuid.UUID, variable string) (*domain.AttachResponse, error) {
+	if err := s.available(); err != nil {
+		return nil, err
+	}
+	if s.Workloads == nil {
+		return nil, domain.ErrUnavailable
+	}
+	if variable == "" {
+		variable = domain.DefaultVariable
+	}
+	if !domain.ValidVariable(variable) {
+		return nil, domain.ErrInvalidVariable
+	}
+	owner, err := s.Workloads.ProjectOf(ctx, workloadID)
+	if err != nil || owner != projectID {
+		return nil, domain.ErrWorkloadNotFound
+	}
+	d, err := s.Repo.Get(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	ns, err := s.namespace(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if v := s.live(ctx, *d, ns); v.Status != domain.StatusReady {
+		return nil, domain.ErrNotReady
+	}
+	uri, err := s.Clusters.AppURI(ctx, ns, d.ClusterName())
+	if err != nil {
+		if errors.Is(err, errAppSecretMissing) {
+			return nil, domain.ErrNotReady
+		}
+		return nil, err
+	}
+	redeploy, err := s.Workloads.SetSecret(ctx, workloadID, variable, uri)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.AttachResponse{WorkloadID: workloadID.String(), Variable: variable, Redeploy: redeploy}, nil
 }
 
 func view(d domain.Database, ns string, st ClusterState) domain.DatabaseView {

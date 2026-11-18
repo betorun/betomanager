@@ -27,10 +27,11 @@ import (
 // plus que la CLI. Les actions sensibles (suppression, accès, clés) ne sont
 // pas des outils : elles restent à la personne.
 
-const mcpInstructions = `betorun hosts containers built from code. Typical flow: call deploy with the project directory ` +
+const mcpInstructions = `betorun hosts containers built from code, and managed Postgres databases. Typical flow: call deploy with the project directory ` +
 	`(no Dockerfile needed for Next.js, Vite/React/Vue/Astro, Node, Django, FastAPI, Flask, Streamlit or static sites); ` +
 	`it builds, deploys and returns the public URL. If the build fails, the result contains the decisive log lines: fix the ` +
-	`code and call deploy again. To investigate a running container, call diagnose_workload. Never put secrets in env: ` +
+	`code and call deploy again. If the app needs a database, call create_database with attach_to set to the container: it gets DATABASE_URL. ` +
+	`To investigate a running container, call diagnose_workload. Never put secrets in env: ` +
 	`tell the person to set them with "betorun workloads secrets" or in the console.`
 
 // mcpEnv : ce dont les outils ont besoin (remplaçable dans les tests).
@@ -130,6 +131,20 @@ func (e mcpEnv) toolList() []mcp.Tool {
 				`,"port":{"type":"integer","description":"Port the app listens on (default 8080, which betorun builds use)"}`+
 				`,"env":{"type":"object","additionalProperties":{"type":"string"},"description":"Plain environment variables (never secrets)"}`, "path"),
 			Annotations: mcp.Annotations{Title: "Deploy", OpenWorldHint: true}, Handler: e.deploy},
+		{Name: "list_databases", Description: "Managed Postgres databases of a project, with their state.",
+			InputSchema: schema(projectProp), Annotations: readOnly("List databases"), Handler: e.listDatabases},
+		{Name: "create_database", Title: "Create a Postgres database",
+			Description: "Create a managed Postgres database in the project (reachable only from its containers), wait until it is ready, " +
+				"and optionally attach it to a container: its connection URI becomes the SECRET variable DATABASE_URL and the container is redeployed. " +
+				"The password never appears in the result.",
+			InputSchema: schema(`"name":{"type":"string","description":"Database name, 3-30 lowercase letters, digits, hyphens"},`+projectProp+
+				`,"storage_size":{"type":"string","enum":["1Gi","2Gi","5Gi","10Gi","20Gi"],"description":"Disk size (default 1Gi)"}`+
+				`,"attach_to":{"type":"string","description":"Container ID or name to attach it to (optional)"}`, "name"),
+			Annotations: mcp.Annotations{Title: "Create a database", OpenWorldHint: true}, Handler: e.createDatabase},
+		{Name: "attach_database", Description: "Give a container access to a database: sets its connection URI as a SECRET variable (DATABASE_URL by default) and redeploys the container.",
+			InputSchema: schema(`"database":{"type":"string","description":"Database ID or name"},"workload":{"type":"string","description":"Container ID or name"},`+projectProp+
+				`,"variable":{"type":"string","description":"Variable name (default DATABASE_URL)"}`, "database", "workload"),
+			Annotations: mcp.Annotations{Title: "Attach a database", IdempotentHint: true, OpenWorldHint: true}, Handler: e.attachDatabase},
 		{Name: "restart_workload", Description: "Restart a container (rolling replacement, no downtime with several replicas).",
 			InputSchema: schema(`"workload":{"type":"string","description":"Container ID or name"},`+projectProp, "workload"),
 			Annotations: mcp.Annotations{Title: "Restart a container", IdempotentHint: true, OpenWorldHint: true}, Handler: e.restart},
@@ -665,4 +680,137 @@ func clipText(s string, max int) string {
 		return s
 	}
 	return s[:max] + "\n[…]"
+}
+
+// ── Bases de données ───────────────────────────────────────────────────────
+
+type databaseView struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	Version     string `json:"version,omitempty"`
+	StorageSize string `json:"storage_size"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Database    string `json:"database"`
+	User        string `json:"user"`
+}
+
+func dbPath(project string) string { return "/projects/" + url.PathEscape(project) + "/databases" }
+
+func (m *mcpCtx) databases(ctx context.Context) ([]databaseView, error) {
+	var out []databaseView
+	err := m.cl.Do(ctx, http.MethodGet, dbPath(m.project), nil, &out)
+	return out, err
+}
+
+func (m *mcpCtx) database(ctx context.Context, ref string) (*databaseView, error) {
+	if ref == "" {
+		return nil, errors.New(`"database" is required`)
+	}
+	list, err := m.databases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		if list[i].ID == ref || list[i].Name == ref {
+			return &list[i], nil
+		}
+	}
+	return nil, fmt.Errorf("no database %q in this project", ref)
+}
+
+func (e mcpEnv) listDatabases(ctx context.Context, call mcp.Call) (mcp.Result, error) {
+	m, _, err := e.session(ctx, call.Arguments, true)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	list, err := m.databases(ctx)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	out := map[string]any{"databases": list}
+	return mcp.Result{Text: jsonText(out), Structured: out}, nil
+}
+
+func (e mcpEnv) attach(ctx context.Context, m *mcpCtx, db *databaseView, workloadRef, variable string) (string, error) {
+	w, err := m.workload(ctx, workloadRef)
+	if err != nil {
+		return "", err
+	}
+	var res struct {
+		Variable string `json:"variable"`
+		Redeploy bool   `json:"redeploy"`
+	}
+	body := map[string]string{"workload_id": w.ID.String()}
+	if variable != "" {
+		body["variable"] = variable
+	}
+	if err := m.cl.Do(ctx, http.MethodPost, dbPath(m.project)+"/"+url.PathEscape(db.ID)+"/attach", body, &res); err != nil {
+		return "", err
+	}
+	msg := fmt.Sprintf("Database %q attached to container %q as the secret variable %s.", db.Name, w.Name, res.Variable)
+	if res.Redeploy {
+		msg += " The container is being redeployed."
+	}
+	return msg, nil
+}
+
+func (e mcpEnv) createDatabase(ctx context.Context, call mcp.Call) (mcp.Result, error) {
+	m, in, err := e.session(ctx, call.Arguments, true)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	body := map[string]string{"name": str(in["name"])}
+	if size := str(in["storage_size"]); size != "" {
+		body["storage_size"] = size
+	}
+	var db databaseView
+	if err := m.cl.Do(ctx, http.MethodPost, dbPath(m.project), body, &db); err != nil {
+		return mcp.Result{}, err
+	}
+	deadline := e.now().Add(e.workloadTimeout)
+	for db.Status != "READY" {
+		if db.Status == "FAILED" {
+			return mcp.Result{Text: "The database could not be created.", Structured: db, IsError: true}, nil
+		}
+		if e.now().After(deadline) {
+			return mcp.Result{Text: "The database is still starting; call list_databases in a moment.", Structured: db}, nil
+		}
+		call.Progress(0, 0, "database "+strings.ToLower(db.Status))
+		select {
+		case <-ctx.Done():
+			return mcp.Result{}, ctx.Err()
+		case <-time.After(e.poll):
+		}
+		if err := m.cl.Do(ctx, http.MethodGet, dbPath(m.project)+"/"+url.PathEscape(db.ID), nil, &db); err != nil {
+			return mcp.Result{}, err
+		}
+	}
+	text := fmt.Sprintf("Database %q is ready (Postgres %s, %s). Host %s:%d, database %s, user %s; reachable only from the project's containers.",
+		db.Name, firstNonEmpty(db.Version, "?"), db.StorageSize, db.Host, db.Port, db.Database, db.User)
+	if target := str(in["attach_to"]); target != "" {
+		msg, err := e.attach(ctx, m, &db, target, "")
+		if err != nil {
+			return mcp.Result{Text: text + "\nAttaching failed: " + err.Error(), Structured: db, IsError: true}, nil
+		}
+		text += "\n" + msg
+	}
+	return mcp.Result{Text: text, Structured: db}, nil
+}
+
+func (e mcpEnv) attachDatabase(ctx context.Context, call mcp.Call) (mcp.Result, error) {
+	m, in, err := e.session(ctx, call.Arguments, true)
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	db, err := m.database(ctx, str(in["database"]))
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	msg, err := e.attach(ctx, m, db, str(in["workload"]), str(in["variable"]))
+	if err != nil {
+		return mcp.Result{}, err
+	}
+	return mcp.Result{Text: msg}, nil
 }

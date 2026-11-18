@@ -70,6 +70,8 @@ func (r *boundRunner) target(ctx context.Context, t *tools.Tool, p *tools.Prepar
 		tool, args["id"] = tools.ToolGetWorkload, p.Args["id"]
 	case strings.Contains(t.Path, ":siteID"):
 		tool, args["id"], args["siteID"] = "get_site", p.Args["id"], p.Args["siteID"]
+	case strings.Contains(t.Path, ":databaseID"):
+		tool, args["id"], args["databaseID"] = "get_database", p.Args["id"], p.Args["databaseID"]
 	case strings.Contains(t.Path, ":buildID"):
 		tool, args["id"], args["buildID"] = "get_build", p.Args["id"], p.Args["buildID"]
 	default:

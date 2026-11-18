@@ -3,10 +3,14 @@ package databases
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +20,7 @@ import (
 	dynfake "k8s.io/client-go/dynamic/fake"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
+	"github.com/thekrauss/kubemanager/internal/iam"
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/databases/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -88,6 +93,13 @@ func (f *fakeClusters) Create(_ context.Context, _ string, s ClusterSpec) error 
 func (f *fakeClusters) State(context.Context, string, string) (ClusterState, error) {
 	return f.state, nil
 }
+func (f *fakeClusters) AppURI(context.Context, string, string) (string, error) {
+	if !f.state.ReadyInstance {
+		return "", errAppSecretMissing
+	}
+	return "postgresql://app:s3cret@db-main-rw.km-demo:5432/app", nil
+}
+
 func (f *fakeClusters) Delete(_ context.Context, _, name string) error {
 	f.deleted = append(f.deleted, name)
 	return nil
@@ -205,5 +217,75 @@ func TestCNPGObjects(t *testing.T) {
 	}
 	if st, _ := c.State(ctx, "km-demo", "db-main"); st.Exists {
 		t.Fatal("cluster encore présent")
+	}
+}
+
+type fakeWorkloads struct {
+	project uuid.UUID
+	set     map[string]string
+}
+
+func (f *fakeWorkloads) ProjectOf(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return f.project, nil
+}
+func (f *fakeWorkloads) SetSecret(_ context.Context, _ uuid.UUID, name, value string) (bool, error) {
+	f.set[name] = value
+	return true, nil
+}
+
+func TestAttach(t *testing.T) {
+	ctx, p := context.Background(), uuid.New()
+	fc := &fakeClusters{}
+	s, _ := svc(fc)
+	wl := &fakeWorkloads{project: p, set: map[string]string{}}
+	s.Workloads = wl
+	v, _ := s.Create(ctx, p, domain.CreateDatabaseRequest{Name: "main"}, "u")
+	id := uuid.MustParse(v.ID)
+
+	if _, err := s.Attach(ctx, p, id, uuid.New(), ""); !errors.Is(err, domain.ErrNotReady) {
+		t.Fatalf("base pas prête : %v", err)
+	}
+	fc.state = ClusterState{Exists: true, ReadyInstance: true}
+	if _, err := s.Attach(ctx, p, id, uuid.New(), "bad-name"); !errors.Is(err, domain.ErrInvalidVariable) {
+		t.Fatalf("variable invalide : %v", err)
+	}
+	other := &fakeWorkloads{project: uuid.New(), set: map[string]string{}}
+	s.Workloads = other
+	if _, err := s.Attach(ctx, p, id, uuid.New(), ""); !errors.Is(err, domain.ErrWorkloadNotFound) {
+		t.Fatalf("conteneur d'un autre projet : %v", err)
+	}
+	s.Workloads = wl
+	res, err := s.Attach(ctx, p, id, uuid.New(), "")
+	if err != nil || res.Variable != "DATABASE_URL" || !res.Redeploy {
+		t.Fatalf("attache : %+v %v", res, err)
+	}
+	if wl.set["DATABASE_URL"] == "" {
+		t.Fatal("URI non posée en secret")
+	}
+	raw := fmt.Sprintf("%+v", res)
+	if strings.Contains(raw, "s3cret") {
+		t.Fatal("le mot de passe ne doit jamais sortir de l'API")
+	}
+}
+
+type denyAll struct{ allowed bool }
+
+func (d denyAll) Check(context.Context, iam.Principal, iam.Permission, iam.ResourceName) (iam.Decision, error) {
+	return iam.Decision{Allowed: d.allowed}, nil
+}
+
+// Brancher une base exige AUSSI le droit sur les variables du conteneur.
+func TestAttachChecksWorkloadPermission(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s, _ := svc(&fakeClusters{state: ClusterState{Exists: true, ReadyInstance: true}})
+	s.Workloads = &fakeWorkloads{set: map[string]string{}}
+	h := &Controller{Service: s, IAM: denyAll{allowed: false}}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("POST", "/", nil)
+	c.Set("userID", uuid.NewString())
+	_, err := h.Attach(c, &domain.AttachRequest{ProjectID: uuid.NewString(), DatabaseID: uuid.NewString(), WorkloadID: uuid.NewString()})
+	if err == nil || !strings.Contains(err.Error(), "workloads.variables.update") {
+		t.Fatalf("refus attendu : %v", err)
 	}
 }

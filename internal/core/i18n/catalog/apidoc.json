@@ -1142,5 +1142,21 @@
  {
   "fr": "Créer une base Postgres",
   "en": "Create a Postgres database"
+ },
+ {
+  "fr": "Variable qui reçoit l'URI de connexion (défaut : DATABASE_URL)",
+  "en": "Variable that receives the connection URI (default: DATABASE_URL)"
+ },
+ {
+  "fr": "ID du conteneur qui utilisera la base",
+  "en": "ID of the container that will use the database"
+ },
+ {
+  "fr": "Brancher la base sur un conteneur (URI posée en variable secrète, conteneur redéployé)",
+  "en": "Attach the database to a container (URI set as a secret variable, container redeployed)"
+ },
+ {
+  "fr": "Brancher la base sur un conteneur",
+  "en": "Attach the database to a container"
  }
 ]

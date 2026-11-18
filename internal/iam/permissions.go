@@ -65,10 +65,13 @@ const (
 	SitesDelete Permission = "sites.sites.delete"
 
 	// Bases de données gérées (Postgres).
-	DatabasesList         Permission = "databases.databases.list"
-	DatabasesGet          Permission = "databases.databases.get"
-	DatabasesCreate       Permission = "databases.databases.create"
-	DatabasesDelete       Permission = "databases.databases.delete"
+	DatabasesList   Permission = "databases.databases.list"
+	DatabasesGet    Permission = "databases.databases.get"
+	DatabasesCreate Permission = "databases.databases.create"
+	DatabasesDelete Permission = "databases.databases.delete"
+	// DatabasesConnect : brancher une base sur un conteneur (il reçoit l'URI
+	// de connexion, mot de passe compris).
+	DatabasesConnect      Permission = "databases.databases.connect"
 	SiteDeploymentsList   Permission = "sites.deployments.list"
 	SiteDeploymentsCreate Permission = "sites.deployments.create"
 	SiteDeploymentsActive Permission = "sites.deployments.activate"
@@ -173,6 +176,7 @@ var catalog = map[Permission]PermissionInfo{
 	DatabasesGet:          {Title: "Voir une base de données", CustomRoles: true},
 	DatabasesCreate:       {Title: "Créer une base de données", CustomRoles: true},
 	DatabasesDelete:       {Title: "Supprimer une base de données (ses données sont perdues)", CustomRoles: true, Sensitive: true},
+	DatabasesConnect:      {Title: "Brancher une base de données sur un conteneur", CustomRoles: true},
 	SitesUpdate:           {Title: "Modifier un site", CustomRoles: true},
 	SitesDelete:           {Title: "Supprimer un site", CustomRoles: true},
 	SiteDeploymentsList:   {Title: "Voir les déploiements d'un site", CustomRoles: true},

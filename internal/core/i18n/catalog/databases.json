@@ -42,5 +42,25 @@
  {
   "fr": "La base de données n'a pas pu être supprimée : %w",
   "en": "the database could not be deleted: %w"
+ },
+ {
+  "fr": "Le secret de connexion n'est pas encore créé",
+  "en": "connection secret not created yet"
+ },
+ {
+  "fr": "Permission refusée : workloads.variables.update sur ce conteneur",
+  "en": "permission denied: workloads.variables.update on this container"
+ },
+ {
+  "fr": "La base de données n'est pas encore prête",
+  "en": "the database is not ready yet"
+ },
+ {
+  "fr": "Nom de variable invalide : majuscules, chiffres et tirets bas",
+  "en": "invalid variable name: uppercase letters, digits and underscores"
+ },
+ {
+  "fr": "Conteneur introuvable dans ce projet",
+  "en": "container not found in this project"
  }
 ]

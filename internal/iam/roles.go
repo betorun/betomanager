@@ -42,6 +42,7 @@ var (
 		WorkloadsCreate, WorkloadsUpdate, WorkloadsStart, WorkloadsStop,
 		WorkloadsRestart, WorkloadsRollback, WorkloadVariablesUpdate, WorkloadDomainsUpdate, BuildsCreate, BuildsCancel,
 		RegistriesList,
+		DatabasesConnect,
 		SitesCreate, SitesUpdate, SiteDeploymentsCreate, SiteDeploymentsActive,
 		SiteDomainsCreate, SiteDomainsVerify,
 		ServiceAccountsActAs,

@@ -35,6 +35,9 @@ type Clusters interface {
 	Create(ctx context.Context, ns string, spec ClusterSpec) error
 	State(ctx context.Context, ns, name string) (ClusterState, error)
 	Delete(ctx context.Context, ns, name string) error
+	// AppURI : URI de connexion de l'utilisateur « app » (secret <cluster>-app
+	// créé par CloudNativePG). Mot de passe compris : ne jamais la renvoyer.
+	AppURI(ctx context.Context, ns, name string) (string, error)
 }
 
 // ClusterSpec : une base à créer.
@@ -162,3 +165,20 @@ func (c *CNPG) Delete(ctx context.Context, ns, name string) error {
 	}
 	return nil
 }
+
+func (c *CNPG) AppURI(ctx context.Context, ns, name string) (string, error) {
+	sec, err := c.Kube.CoreV1().Secrets(ns).Get(ctx, name+"-app", metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return "", errAppSecretMissing
+	}
+	if err != nil {
+		return "", err
+	}
+	uri := string(sec.Data["uri"])
+	if uri == "" {
+		return "", errAppSecretMissing
+	}
+	return uri, nil
+}
+
+var errAppSecretMissing = errors.New("connection secret not created yet")
