@@ -89,6 +89,9 @@ func (a *App) buildActivities() *buildActs.Activities {
 		Deployer:   a.WorkloadDeployer,
 		Logger:     a.Logger,
 	}
+	if n := a.alertNotifier(); n != nil {
+		acts.Alerts = n
+	}
 	if a.GitHub.Enabled() {
 		acts.Git = a.GitHub
 	}
