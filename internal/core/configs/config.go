@@ -47,6 +47,47 @@ type GlobalConfig struct {
 	// GitHubApp : connexion GitHub des conteneurs (dépôts privés, déploiement
 	// à chaque push). Désactivée tant qu'elle est incomplète.
 	GitHubApp GitHubAppConfig `mapstructure:"github_app"`
+	// LLM : modèles de langage (Copilot). Désactivé par défaut.
+	LLM LLMConfig `mapstructure:"llm"`
+}
+
+// LLMConfig : accès aux modèles de langage (internal/infrastructure/llm,
+// docs/adr/0008-llm-provider-layer.md). Deux emplacements fixes plutôt
+// qu'une liste : chaque champ reste réglable par une variable
+// KUBEMANAGER_LLM_PRIMARY_* / KUBEMANAGER_LLM_FALLBACK_* (la prod se règle
+// par l'environnement, et viper ne lie pas les listes).
+type LLMConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// Primary est obligatoire si Enabled ; Fallback est facultatif (BaseURL vide = absent).
+	Primary  LLMProviderConfig `mapstructure:"primary"`
+	Fallback LLMProviderConfig `mapstructure:"fallback"`
+	// DailyBudgetMicroUSD : plafond de dépense par organisation et par jour
+	// (UTC), en micro-dollars. 2 000 000 = 2 $.
+	DailyBudgetMicroUSD int64 `mapstructure:"daily_budget_micro_usd"`
+	// BreakerFailures / BreakerCooldown : disjoncteur par fournisseur.
+	BreakerFailures int           `mapstructure:"breaker_failures"`
+	BreakerCooldown time.Duration `mapstructure:"breaker_cooldown"`
+}
+
+// LLMProviderConfig : un fournisseur compatible OpenAI (OpenAI, vLLM, Groq,
+// Gemini, Mistral…).
+type LLMProviderConfig struct {
+	// Name : nom court et stable (labels de métriques), ex. "qwen", "groq".
+	Name    string `mapstructure:"name"`
+	BaseURL string `mapstructure:"base_url"`
+	// APIKey : secret. Prod : KUBEMANAGER_LLM_PRIMARY_API_KEY.
+	APIKey  string        `mapstructure:"api_key"`
+	Model   string        `mapstructure:"model"`
+	Timeout time.Duration `mapstructure:"timeout"`
+	// MaxTokensField : "max_tokens" (défaut) ou "max_completion_tokens".
+	MaxTokensField string `mapstructure:"max_tokens_field"`
+	// ExtraBodyJSON : objet JSON fusionné dans chaque requête, ex.
+	// {"chat_template_kwargs":{"enable_thinking":false}} pour Qwen sur vLLM.
+	ExtraBodyJSON string `mapstructure:"extra_body_json"`
+	// Prix en micro-dollars par million de jetons (budget). Un modèle
+	// auto-hébergé reçoit un prix interne, sinon rien n'est plafonné.
+	InputMicroUSDPerMTok  int64 `mapstructure:"input_micro_usd_per_mtok"`
+	OutputMicroUSDPerMTok int64 `mapstructure:"output_micro_usd_per_mtok"`
 }
 
 // GitHubAppConfig : application GitHub de betorun.
@@ -279,13 +320,13 @@ type ServerConfig struct {
 }
 
 type DBConfig struct {
-	Driver         string `mapstructure:"driver"`
-	Host           string `mapstructure:"host"`
-	Port           int    `mapstructure:"port"`
-	User           string `mapstructure:"user"`
-	Password       string `mapstructure:"password"`
-	Name           string `mapstructure:"name"`
-	SSLMode        string `mapstructure:"sslmode"`
+	Driver   string `mapstructure:"driver"`
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Name     string `mapstructure:"name"`
+	SSLMode  string `mapstructure:"sslmode"`
 	// Pool par processus (0 : défauts de database.PoolDefaults). La somme des
 	// processus doit rester sous max_connections de Postgres.
 	MaxOpenConns    int           `mapstructure:"max_open_conns"`
