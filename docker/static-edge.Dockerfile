@@ -1,6 +1,6 @@
 # static-edge : binaire minimal servant les sites statiques (voir cmd/static-edge).
 # Alpine plutôt que distroless : le healthcheck a besoin de wget.
-FROM golang:1.27.3-alpine3.23 AS build
+FROM golang:1.27.4-alpine3.23 AS build
 ARG GOMAXPROCS=
 ARG GOMEMLIMIT=
 ARG GOFLAGS=
