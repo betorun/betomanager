@@ -2,10 +2,12 @@ package activities
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/projects/repository"
@@ -18,8 +20,10 @@ type ProjectDBActivities struct {
 	Logger       *zap.SugaredLogger
 }
 
-// CreateProjectInDB : projectID est choisi par l'appelant (CreateProject le
-// renvoie avant la fin du workflow) ; vide : généré ici.
+// CreateProjectInDB : projectID est choisi par l'appelant. CreateProject
+// écrit désormais la ligne (et le rôle owner) avant de lancer le workflow :
+// elle existe déjà, on la renvoie. Les workflows plus anciens, lancés sans
+// ligne, la créent ici.
 func (a *ProjectDBActivities) CreateProjectInDB(ctx context.Context, projectID, name, description, ownerID string) (*dauth.Project, error) {
 	project := &dauth.Project{
 		Name:        name,
@@ -27,6 +31,13 @@ func (a *ProjectDBActivities) CreateProjectInDB(ctx context.Context, projectID, 
 	}
 	if id, err := uuid.Parse(projectID); err == nil {
 		project.ID = id
+		existing, err := a.Repo.GetProjectByID(ctx, projectID)
+		if err == nil {
+			return existing, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
 	}
 
 	err := a.Repo.CreateProject(ctx, project, ownerID)

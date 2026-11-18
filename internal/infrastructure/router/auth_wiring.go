@@ -6,7 +6,6 @@ import (
 	"github.com/thekrauss/kubemanager/internal/auth"
 	"github.com/thekrauss/kubemanager/internal/auth/social"
 	"github.com/thekrauss/kubemanager/internal/core/configs"
-	"github.com/thekrauss/kubemanager/internal/infrastructure/mail"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
 )
 
@@ -29,15 +28,13 @@ func (a *App) authDeps(deps *identitySvc.Deps) error {
 	deps.Identities = &auth.Identities{DB: a.DB}
 	deps.SocialProviders = socialProviders(a.Config.Social)
 
-	m := a.Config.Mail
-	if !m.Enabled {
-		a.Logger.Warnw("auth: mail disabled — registration, email verification and password reset are unavailable")
-		return nil
-	}
-	sender, err := mail.NewSMTP(mail.Config{Host: m.SMTPHost, Port: m.SMTPPort, User: m.SMTPUser, Password: m.SMTPPassword,
-		FromEmail: m.FromEmail, FromName: m.FromName})
+	sender, err := a.mailSender()
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
+	}
+	if sender == nil {
+		a.Logger.Warnw("auth: mail disabled — registration, email verification and password reset are unavailable")
+		return nil
 	}
 	deps.Mailer = sender
 	return nil

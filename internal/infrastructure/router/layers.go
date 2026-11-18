@@ -105,7 +105,11 @@ func (a *App) initDomainLayers() error {
 	realtimeController := realtimeCtrl.NewController(a.Config.Centrifugo, a.RealtimeSigner, a.IAM)
 
 	clusterRepo := clustersCtrl.NewClusterRepository(a.DB)
-	clustersService := clustersCtrl.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger)
+	var clusterOpts []clustersCtrl.Option
+	if n := a.alertNotifier(); n != nil {
+		clusterOpts = append(clusterOpts, clustersCtrl.WithAlerts(n))
+	}
+	clustersService := clustersCtrl.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger, clusterOpts...)
 	clustersController := clustersCtrl.NewController(clustersService)
 
 	// Sites statiques : actifs seulement si l'object store est configuré.

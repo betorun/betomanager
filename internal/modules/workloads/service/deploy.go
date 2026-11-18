@@ -163,8 +163,9 @@ func (s *WorkloadService) warn(msg string, kv ...any) {
 }
 
 // startDeploy : passe le conteneur à STARTING (écriture conditionnelle, refusée
-// s'il est en suppression) puis lance le workflow de mise à jour. S'il ne démarre
-// pas, le statut précédent est rétabli.
+// s'il est en suppression) puis lance le workflow de mise à jour. Si Temporal
+// le refuse, le statut précédent est rétabli ; si un autre déploiement est déjà
+// lancé, son statut est laissé tel quel.
 func (s *WorkloadService) startDeploy(ctx context.Context, w *domain.Workload, in workflows.DeployWorkloadInput) error {
 	if err := s.Repo.UpdateStatus(ctx, w.ID, utils.WorkloadStarting, utils.PhaseHelmChartLoading); err != nil {
 		return err
@@ -175,18 +176,21 @@ func (s *WorkloadService) startDeploy(ctx context.Context, w *domain.Workload, i
 	if err == nil {
 		return nil
 	}
+	if temporal.IsAlreadyStarted(err) {
+		// Un autre déploiement a pris la place : le statut lui appartient
+		// (il a écrit le même STARTING et écrira l'état final). Rétablir
+		// l'état lu avant la course afficherait RUNNING pendant son
+		// déploiement.
+		return domain.ErrDeployInProgress
+	}
 	status, phase := w.Status, w.CurrentPhase
-	alreadyStarted := temporal.IsAlreadyStarted(err)
-	if !alreadyStarted && status == utils.WorkloadStarting {
+	if status == utils.WorkloadStarting {
 		// Aucun workflow ne terminera ce STARTING.
 		status, phase = utils.WorkloadFailed, utils.PhaseHelmError
 	}
 	s.compensate(ctx, "workload status not restored", w.ID, func(ctx context.Context) error {
 		return s.Repo.UpdateStatus(ctx, w.ID, status, phase)
 	})
-	if alreadyStarted {
-		return domain.ErrDeployInProgress
-	}
 	return err
 }
 

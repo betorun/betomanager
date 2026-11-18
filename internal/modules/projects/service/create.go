@@ -13,6 +13,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
+	authdomain "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	typesproject "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/projects/workflows"
@@ -71,6 +72,9 @@ const (
 // ErrInvalidProjectLimits : limite CPU ou mémoire illisible.
 var ErrInvalidProjectLimits = errors.New("invalid project limits: use Kubernetes quantities (e.g. 2000m, 4Gi)")
 
+// ErrProjectNameTaken : nom déjà utilisé par un autre projet.
+var ErrProjectNameTaken = errors.New("a project with this name already exists")
+
 func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.CreateProjectRequest, ownerID string) (*typesproject.ProjectResponse, error) {
 	// Sans limites fournies (inscription), les défauts du projet ; une valeur
 	// illisible est refusée ici plutôt qu'au milieu du workflow.
@@ -86,9 +90,24 @@ func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.Cre
 	if _, err := resource.ParseQuantity(req.MemoryLimit); err != nil {
 		return nil, ErrInvalidProjectLimits
 	}
-	// Identifiant choisi ici : l'appelant (bootstrap, console) le reçoit tout
-	// de suite, alors que le workflow ne crée la ligne qu'ensuite.
-	projectID := uuid.New().String()
+	// La ligne et le rôle owner sont écrits avant la réponse : l'appelant peut
+	// lire l'état du projet tout de suite (PROVISIONING), et un nom déjà pris
+	// est refusé ici plutôt qu'au milieu du workflow.
+	id := uuid.New()
+	projectID := id.String()
+	if err := s.Repos.CreateProject(ctx, &authdomain.Project{
+		ID:          id,
+		Name:        req.Name,
+		Description: req.Description,
+		CpuLimit:    req.CpuLimit,
+		MemoryLimit: req.MemoryLimit,
+		Status:      utils.ProjectStatusProvisioning,
+	}, ownerID); err != nil {
+		if errors.Is(err, repository.ErrNameTaken) {
+			return nil, ErrProjectNameTaken
+		}
+		return nil, err
+	}
 	input := workflows.CreateProjectInput{
 		ProjectID:   projectID,
 		Name:        req.Name,
@@ -104,6 +123,10 @@ func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.Cre
 	)
 	if err != nil {
 		s.Logger.Errorw("Failed to start project workflow", "error", err)
+		// Sans workflow, personne ne finirait le projet : on retire la ligne.
+		if dErr := s.Repos.DeleteProject(context.WithoutCancel(ctx), projectID); dErr != nil {
+			s.Logger.Errorw("Failed to remove project after workflow start error", "projectID", projectID, "error", dErr)
+		}
 		return nil, err
 	}
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
+	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
 	"net/http"
 	"os"
 	"os/signal"
@@ -150,6 +151,17 @@ func (a *App) RunWorker(ctx context.Context) error {
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Retour à RUNNING après un incident signalé par le cluster.
+	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
+		recoverer := &workloadsSvc.Recoverer{
+			Store:     workloadsRepo.NewIncidentStore(a.DB),
+			K8s:       a.K8sProvider.Client,
+			Publisher: a.Publisher,
+			Logger:    a.Logger.With("component", "workload-recovery"),
+		}
+		go recoverer.Run(ctx, workloadsSvc.DefaultRecoverEvery)
+	}
 
 	// Une panne du worker doit sortir en erreur : sinon le code 0 ne déclenche
 	// aucun redémarrage selon la politique du conteneur, et rien ne la signale.
