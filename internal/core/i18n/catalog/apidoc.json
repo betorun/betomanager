@@ -1050,5 +1050,49 @@
  {
   "fr": "tout utilisateur authentifié, ou le Copilot en son nom (données de l'appelant uniquement)",
   "en": "any authenticated user, or the Copilot on their behalf (the caller's own data only)"
+ },
+ {
+  "fr": "Suivre jusqu'à la fin du build",
+  "en": "Follow until the build ends"
+ },
+ {
+  "fr": "Flux texte, une ligne par entrée (HTTP chunked)",
+  "en": "Text stream, one line per entry (HTTP chunked)"
+ },
+ {
+  "fr": "Archive .tar.gz du code source",
+  "en": "Source code as a .tar.gz archive"
+ },
+ {
+  "fr": "Chemin du Dockerfile dans l'archive (sinon détection automatique)",
+  "en": "Path of the Dockerfile in the archive (otherwise detected automatically)"
+ },
+ {
+  "fr": "Nom de l'image à construire",
+  "en": "Name of the image to build"
+ },
+ {
+  "fr": "Archive .zip du site (index.html à la racine)",
+  "en": "Site as a .zip archive (index.html at the root)"
+ },
+ {
+  "fr": "Nombre de lignes depuis la fin (défaut : 500)",
+  "en": "Number of lines from the end (default: 500)"
+ },
+ {
+  "fr": "Période à remonter, en secondes (défaut : 24 h)",
+  "en": "How far back to read, in seconds (default: 24 h)"
+ },
+ {
+  "fr": "Suivre le flux en direct",
+  "en": "Follow the live stream"
+ },
+ {
+  "fr": "Journaux de l'instance précédente (après un redémarrage)",
+  "en": "Logs of the previous instance (after a restart)"
+ },
+ {
+  "fr": "Préfixer chaque ligne de son horodatage",
+  "en": "Prefix each line with its timestamp"
  }
 ]

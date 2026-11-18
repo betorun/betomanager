@@ -32,6 +32,8 @@ type Route struct {
 	Responses   map[int]interface{}
 	// Access : contrôle d'accès, obligatoire (voir access.go).
 	Access Access
+	// Raw : documentation d'une route brute (rawdoc.go), nil pour tonic.
+	Raw *RawDoc
 }
 
 type RouteGroup struct {
@@ -142,6 +144,7 @@ func RegisterRoutes(app *fizz.Fizz) error {
 	for _, g := range AllGroups {
 		registerGroup(app.Group(g.Path, g.tag.name, g.tag.description), g, g.Path, g.internal)
 	}
+	documentRawRoutes(app.Generator(), AllGroups)
 	return nil
 }
 

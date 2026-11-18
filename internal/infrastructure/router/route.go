@@ -2,7 +2,10 @@ package router
 
 import (
 	"errors"
+	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
+	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
+	workloadsCtrl "github.com/thekrauss/kubemanager/internal/modules/workloads"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -212,7 +215,8 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("/:id/events", http.MethodGet, "Événements récents du conteneur", on(iam.WorkloadsGet), tonic.Handler(r.GetWorkloadEvents, http.StatusOK))
 	WorkloadGroup.AddRoute("/:id/metrics", http.MethodGet, "Consommation CPU et mémoire en direct, et ressources réservées", on(iam.WorkloadMetrics), tonic.Handler(r.GetWorkloadMetrics, http.StatusOK))
 	// Logs : streaming direct sur c.Writer (pas tonic — on contrôle la réponse).
-	WorkloadGroup.AddRoute("/:id/logs", http.MethodGet, "Journaux du conteneur, en flux (HTTP chunked)", on(iam.WorkloadLogsRead), wrapRawHandler(r.GetWorkloadLogs))
+	WorkloadGroup.AddRoute("/:id/logs", http.MethodGet, "Journaux du conteneur, en flux (HTTP chunked)", on(iam.WorkloadLogsRead), wrapRawHandler(r.GetWorkloadLogs)).
+		Documented(RawDoc{Input: workloadsCtrl.LogsRequest{}, Produces: MIMETextStream})
 }
 
 // workloadResource : "projects/{p}/workloads/{id}" pour le workload ":id".
@@ -254,7 +258,9 @@ func addSiteRoutes(app *App) {
 
 	sites.AddRoute("/:siteID/deployments", http.MethodGet, "Historique des déploiements", on(iam.SiteDeploymentsList), tonic.Handler(r.ListDeployments, http.StatusOK))
 	// Upload multipart (champ "archive") : hors tonic.
-	sites.AddRoute("/:siteID/deployments", http.MethodPost, "Déployer une archive .zip (multipart, champ archive)", on(iam.SiteDeploymentsCreate), wrapRawHandler(r.UploadDeployment))
+	sites.AddRoute("/:siteID/deployments", http.MethodPost, "Déployer une archive .zip (multipart, champ archive)", on(iam.SiteDeploymentsCreate), wrapRawHandler(r.UploadDeployment)).
+		Documented(RawDoc{Input: sitesDomain.UploadPath{}, Status: http.StatusAccepted, Produces: MIMEJSON, Output: sitesDomain.SiteDeployment{},
+			Multipart: []FormField{{Name: sitesDomain.ArchiveFormField, Description: "Archive .zip du site (index.html à la racine)", File: true, Required: true}}})
 	sites.AddRoute("/:siteID/deployments/:deploymentID/activate", http.MethodPost, "Activer un déploiement (retour arrière)", on(iam.SiteDeploymentsActive), tonic.Handler(r.ActivateDeployment, http.StatusOK))
 
 	sites.AddRoute("/:siteID/domains", http.MethodGet, "Domaines personnalisés du site", on(iam.SiteDomainsList), tonic.Handler(r.ListDomains, http.StatusOK))
@@ -278,9 +284,16 @@ func addBuildRoutes(app *App) {
 	b.AddRoute("", http.MethodGet, "Lister les builds récents", g.Perm(iam.BuildsList, project), tonic.Handler(r.List, http.StatusOK))
 	b.AddRoute("", http.MethodPost, "Construire depuis un dépôt Git public", g.Perm(iam.BuildsCreate, project), tonic.Handler(r.CreateFromGit, http.StatusAccepted))
 	// Upload multipart (champs archive, name, dockerfile) : hors tonic.
-	b.AddRoute("/upload", http.MethodPost, "Construire depuis une archive .tar.gz (multipart : archive, name, dockerfile)", g.Perm(iam.BuildsCreate, project), wrapRawHandler(r.Upload))
+	b.AddRoute("/upload", http.MethodPost, "Construire depuis une archive .tar.gz (multipart : archive, name, dockerfile)", g.Perm(iam.BuildsCreate, project), wrapRawHandler(r.Upload)).
+		Documented(RawDoc{Input: buildsDomain.UploadPath{}, Status: http.StatusAccepted, Produces: MIMEJSON, Output: buildsDomain.Build{},
+			Multipart: []FormField{
+				{Name: buildsDomain.ArchiveFormField, Description: "Archive .tar.gz du code source", File: true, Required: true},
+				{Name: "name", Description: "Nom de l'image à construire"},
+				{Name: "dockerfile", Description: "Chemin du Dockerfile dans l'archive (sinon détection automatique)"},
+			}})
 	b.AddRoute("/:buildID", http.MethodGet, "Détails d'un build", g.Perm(iam.BuildsGet, build), tonic.Handler(r.Get, http.StatusOK))
-	b.AddRoute("/:buildID/logs", http.MethodGet, "Journal du build, en flux (?follow=true jusqu'à la fin)", g.Perm(iam.BuildsGet, build), wrapRawHandler(r.Logs))
+	b.AddRoute("/:buildID/logs", http.MethodGet, "Journal du build, en flux (?follow=true jusqu'à la fin)", g.Perm(iam.BuildsGet, build), wrapRawHandler(r.Logs)).
+		Documented(RawDoc{Input: buildsDomain.LogsRequest{}, Produces: MIMETextStream})
 	b.AddRoute("/:buildID/cancel", http.MethodPost, "Annuler un build en cours", g.Perm(iam.BuildsCancel, build), tonic.Handler(r.Cancel, http.StatusNoContent))
 
 	// Internes, sans session : les Jobs et le registre y accèdent avec leurs
