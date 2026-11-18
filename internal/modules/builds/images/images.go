@@ -63,6 +63,15 @@ func (k *Keeper) CheckQuota(ctx context.Context, project uuid.UUID) error {
 	return nil
 }
 
+// Usage : octets d'images du projet au registre et quota (0 : sans quota).
+func (k *Keeper) Usage(ctx context.Context, project uuid.UUID) (used, quota int64, err error) {
+	used, err = k.Store.Usage(ctx, project)
+	if q := k.quota(); q > 0 {
+		quota = q
+	}
+	return used, quota, err
+}
+
 func (k *Keeper) compact(ctx context.Context, project uuid.UUID) error {
 	names, err := k.Store.Names(ctx, project)
 	if err != nil {
