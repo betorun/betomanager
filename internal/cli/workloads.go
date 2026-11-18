@@ -32,7 +32,7 @@ func newWorkloads() *cobra.Command {
 			"# " + i18n.T("ex.wl.follow") + "\n" +
 			"betorun workloads logs web --follow"}
 	c.AddCommand(newWorkloadsList(), newWorkloadsDeploy(), newWorkloadsUpdate(), newWorkloadsLogs(), newWorkloadsStatus(),
-		newWorkloadAction("restart"), newWorkloadAction("stop"), newWorkloadAction("start"), newWorkloadsDelete(),
+		newWorkloadAction("restart"), newWorkloadAction("stop"), newWorkloadAction("start"), newWorkloadsRun(), newWorkloadsDelete(),
 		newWorkloadsEnv(), newWorkloadsSecrets(), newWorkloadsDomains(), newWorkloadsGit())
 	return c
 }
@@ -92,7 +92,7 @@ func newWorkloadsList() *cobra.Command {
 				if w.ExternalURL != "" {
 					url = p.Link(w.ExternalURL)
 				}
-				t.Row(p.Bold(w.Name), workloadStatus(p, w.Status), fmt.Sprint(w.Replicas), w.Image, url)
+				t.Row(p.Bold(w.Name)+kindTag(p, &w), workloadStatus(p, w.Status), fmt.Sprint(w.Replicas), w.Image, url)
 			}
 			return t.Flush()
 		},
@@ -106,6 +106,7 @@ func newWorkloadsDeploy() *cobra.Command {
 		noWait bool
 		src    buildSource
 		secret []string
+		proc   processFlags
 	)
 	c := &cobra.Command{
 		Use:   "deploy",
@@ -119,11 +120,18 @@ func newWorkloadsDeploy() *cobra.Command {
 			"# " + i18n.T("ex.wl.from_image") + "\n" +
 			"betorun workloads deploy --name web --image nginx:1.27 --port 80\n" +
 			"betorun workloads deploy -n api -i ghcr.io/acme/api:1.4 -e DATABASE_URL=postgres://… --tls\n" +
-			"betorun workloads deploy -n worker -i acme/worker:2 --replicas 2 --cpu 500m --memory 512Mi",
+			"betorun workloads deploy -n worker -i acme/worker:2 --replicas 2 --cpu 500m --memory 512Mi\n" +
+			"# " + i18n.T("ex.wl.worker") + "\n" +
+			"betorun workloads deploy -n queue --source . --kind worker --command \"node queue.js\"\n" +
+			"# " + i18n.T("ex.wl.cron") + "\n" +
+			"betorun workloads deploy -n nightly --source . --kind cron --schedule \"0 2 * * *\" --timezone Africa/Dakar --command \"python backup.py\"",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if req.Name == "" || src.count(req.Image) != 1 {
 				return errors.New(i18n.T("wl.deploy.need"))
+			}
+			if err := proc.applyCreate(cmd, &req); err != nil {
+				return err
 			}
 			vars, err := parseEnv(env)
 			if err != nil {
@@ -175,6 +183,7 @@ func newWorkloadsDeploy() *cobra.Command {
 	f.StringArrayVar(&secret, "secret", nil, i18n.T("flag.wl.secret"))
 	f.StringVar(&req.ServiceAccount, "service-account", "", i18n.T("flag.wl.sa"))
 	f.BoolVar(&req.TLSEnabled, "tls", false, i18n.T("flag.wl.tls"))
+	proc.addCreateFlags(f)
 	f.BoolVar(&noWait, "no-wait", false, i18n.T("flag.no_wait"))
 	return c
 }
@@ -227,19 +236,24 @@ func newWorkloadsUpdate() *cobra.Command {
 	var noWait bool
 	var src buildSource
 	var secret []string
+	var proc processFlags
 	c := &cobra.Command{
 		Use: "update " + i18n.T("arg.name"),
 		Example: "betorun workloads update api --source .  # " + i18n.T("ex.wl.update_source") + "\n" +
 			"betorun workloads update web --image nginx:1.28  # " + i18n.T("ex.wl.update_image") + "\n" +
-			"betorun workloads update api -e LOG_LEVEL=debug -e PORT=8080  # " + i18n.T("ex.wl.update_env"),
+			"betorun workloads update api -e LOG_LEVEL=debug -e PORT=8080  # " + i18n.T("ex.wl.update_env") + "\n" +
+			"betorun workloads update nightly --schedule \"30 3 * * *\"  # " + i18n.T("ex.wl.update_schedule"),
 		Short: i18n.T("wl.update.short"),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if src.count(image) > 1 || (src.count(image) == 0 && len(env) == 0 && len(secret) == 0) {
+			if src.count(image) > 1 || (src.count(image) == 0 && len(env) == 0 && len(secret) == 0 && !proc.changed(cmd)) {
 				return errors.New(i18n.T("wl.update.need"))
 			}
 			var req api.UpdateWorkloadRequest
 			req.Image = image
+			if err := proc.applyUpdate(cmd, &req); err != nil {
+				return err
+			}
 			if len(env) > 0 {
 				vars, err := parseEnv(env)
 				if err != nil {
@@ -278,6 +292,7 @@ func newWorkloadsUpdate() *cobra.Command {
 	src.addFlags(f)
 	f.StringArrayVarP(&env, "env", "e", nil, i18n.T("flag.wl.env_replace"))
 	f.StringArrayVar(&secret, "secret", nil, i18n.T("flag.wl.secret"))
+	proc.addUpdateFlags(f)
 	f.BoolVar(&noWait, "no-wait", false, i18n.T("flag.no_wait"))
 	return c
 }
@@ -349,9 +364,17 @@ func newWorkloadsStatus() *cobra.Command {
 				[2]string{i18n.T("wl.col.status"), workloadStatus(p, w.Status) + " " + p.Dim("("+phaseLabel(w.CurrentPhase)+")")},
 				[2]string{i18n.T("wl.col.image"), w.Image},
 				[2]string{i18n.T("wl.col.replicas"), fmt.Sprint(w.Replicas)},
+				[2]string{i18n.T("wl.col.kind"), kindLabel(w.Kind)},
 				[2]string{i18n.T("wl.col.url"), url},
 				[2]string{i18n.T("wl.col.identity"), identity},
 			)
+			if spec := workloadSpec(w); spec.Schedule != "" {
+				tz := spec.TimeZone
+				if tz == "" {
+					tz = "UTC"
+				}
+				p.Fields([2]string{i18n.T("wl.col.schedule"), spec.Schedule + " " + p.Dim("("+tz+")")})
+			}
 			return nil
 		},
 	}
@@ -371,7 +394,11 @@ func newWorkloadAction(action string) *cobra.Command {
 			if err := cl.WorkloadAction(cmd.Context(), w.ID.String(), action); err != nil {
 				return err
 			}
-			printer(cmd).Success(i18n.T("wl."+action+".ok", w.Name))
+			key := "wl." + action + ".ok"
+			if w.Kind == kindCron {
+				key = "wl." + action + ".ok_cron" // suspendre, reprendre, exécuter maintenant
+			}
+			printer(cmd).Success(i18n.T(key, w.Name))
 			return nil
 		},
 	}

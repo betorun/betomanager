@@ -46,6 +46,11 @@ const (
 	WorkloadConfigError     = "CONFIG_ERROR"
 	WorkloadOOMKilled       = "OOM_KILLED"
 	WorkloadEvicted         = "EVICTED"
+
+	// WorkloadRunFailed : cron dont la dernière exécution a échoué (code de
+	// sortie, durée maximale dépassée, mémoire). Posé par la surveillance des
+	// crons, levé à la prochaine exécution réussie.
+	WorkloadRunFailed = "RUN_FAILED"
 )
 
 // Phases d'un workload (colonne workloads.current_phase).
@@ -65,6 +70,9 @@ const (
 	PhaseStarted           = "STARTED"
 	PhaseRolloutRestart    = "ROLLOUT_RESTART"
 	PhaseRolledBack        = "ROLLED_BACK"
+	PhaseCronSuspended     = "CRON_SUSPENDED"
+	PhaseCronResumed       = "CRON_RESUMED"
+	PhaseCronRunNow        = "CRON_RUN_NOW"
 	PhaseImageParseError   = "IMAGE_PARSE_ERROR"
 	PhaseSecretCreateError = "SECRET_CREATION_ERROR"
 	PhaseHelmError         = "HELM_ERROR"

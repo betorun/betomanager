@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -32,8 +33,16 @@ const (
 	PhaseRecovered = "RECOVERED"
 )
 
+// IncidentAlerter : prévient les owners d'un passage en incident
+// (alerts.Notifier).
+type IncidentAlerter interface {
+	WorkloadIncident(ctx context.Context, project, workload uuid.UUID, name, status string)
+}
+
 // Recoverer : remet RUNNING les conteneurs dont l'incident signalé par le
-// cluster (CRASHLOOP, OOM_KILLED…) est terminé. Le watcher ne signale que les
+// cluster (CRASHLOOP, OOM_KILLED…) est terminé. Il surveille aussi les crons :
+// une exécution échouée ne laisse aucun pod en panne à signaler (le watcher
+// ne voit qu'un pod terminé), c'est donc cette passe qui pose RUN_FAILED. Le watcher ne signale que les
 // pannes, jamais le retour à la normale ; sans cette passe, le statut
 // d'incident restait affiché pour toujours.
 type Recoverer struct {
@@ -41,6 +50,8 @@ type Recoverer struct {
 	K8s       kubernetes.Interface
 	Publisher realtime.Publisher
 	Logger    *zap.SugaredLogger
+	// Alerts : alertes email des crons en échec (facultatif).
+	Alerts IncidentAlerter
 	// StableFor : DefaultRecoverStableFor si nul.
 	StableFor time.Duration
 	// Now : horloge (tests) ; time.Now si nil.
@@ -95,14 +106,61 @@ func (r *Recoverer) Sweep(ctx context.Context) (int, error) {
 		}
 		recovered++
 		r.Logger.Infow("workload recovered", "workload", w.ID, "from", w.Status, "phase", w.CurrentPhase)
-		r.publish(ctx, &w)
+		r.publish(ctx, &w, utils.WorkloadRunning, PhaseRecovered)
+	}
+	if _, err := r.SweepCrons(ctx); err != nil && ctx.Err() == nil {
+		r.Logger.Warnw("cron watch pass failed", "error", err)
 	}
 	return recovered, nil
+}
+
+// SweepCrons : passe RUN_FAILED les crons dont la dernière exécution a échoué ;
+// renvoie leur nombre.
+func (r *Recoverer) SweepCrons(ctx context.Context) (int, error) {
+	rows, err := r.Store.ListRunningCrons(ctx, recoverBatch)
+	if err != nil {
+		return 0, err
+	}
+	failed := 0
+	for _, w := range rows {
+		if ctx.Err() != nil {
+			return failed, ctx.Err()
+		}
+		outcome, reason, err := latestRun(ctx, r.K8s, &w)
+		if err != nil {
+			r.Logger.Debugw("cron run lookup failed", "workload", w.ID, "error", err)
+			continue
+		}
+		if outcome != RunFailed {
+			continue
+		}
+		phase := utils.PhasePodEventPrefix + reason
+		ok, err := r.Store.MarkRunFailed(ctx, w.ID, w.CurrentPhase, phase)
+		if err != nil {
+			r.Logger.Warnw("cron failure not recorded", "workload", w.ID, "error", err)
+			continue
+		}
+		if !ok {
+			continue // statut changé entre-temps (arrêt, déploiement)
+		}
+		failed++
+		r.Logger.Infow("cron run failed", "workload", w.ID, "reason", reason)
+		r.publish(ctx, &w, utils.WorkloadRunFailed, phase)
+		if r.Alerts != nil {
+			r.Alerts.WorkloadIncident(ctx, w.ProjectID, w.ID, w.Name, utils.WorkloadRunFailed)
+		}
+	}
+	return failed, nil
 }
 
 // healthy : déploiement à jour, toutes ses répliques prêtes, et chaque pod
 // actif prêt depuis au moins StableFor sans redémarrage.
 func (r *Recoverer) healthy(ctx context.Context, w *domain.Workload) (bool, error) {
+	if isCron(w) {
+		// Cron : guéri quand sa dernière exécution (planifiée ou manuelle) a réussi.
+		outcome, _, err := latestRun(ctx, r.K8s, w)
+		return outcome == RunSucceeded, err
+	}
 	dep, err := r.K8s.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{})
 	if kerrors.IsNotFound(err) {
 		return false, nil
@@ -166,7 +224,7 @@ func podStableSince(p *corev1.Pod, cutoff time.Time) bool {
 	return true
 }
 
-func (r *Recoverer) publish(ctx context.Context, w *domain.Workload) {
+func (r *Recoverer) publish(ctx context.Context, w *domain.Workload, status, phase string) {
 	if r.Publisher == nil {
 		return
 	}
@@ -174,8 +232,8 @@ func (r *Recoverer) publish(ctx context.Context, w *domain.Workload) {
 	event := map[string]any{
 		"workload_id": w.ID.String(),
 		"project_id":  w.ProjectID.String(),
-		"status":      utils.WorkloadRunning,
-		"phase":       PhaseRecovered,
+		"status":      status,
+		"phase":       phase,
 		"at":          r.now().UTC(),
 	}
 	for _, ch := range []string{realtime.DeploymentChannel(w.ProjectID.String(), w.ID.String()), realtime.ProjectChannel(w.ProjectID.String())} {

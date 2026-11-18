@@ -192,6 +192,13 @@ var workloadCopies = map[string]map[i18n.Locale]alertCopy{
 		alertCopy{"\"{{.Name}}\" stopped", "Your container stopped",
 			"The container \"{{.Name}}\" of project \"{{.Project}}\" stopped with an error. Its logs, in the console, usually show the cause.",
 			"View the container"}),
+	utils.WorkloadRunFailed: pair(
+		alertCopy{"La tâche « {{.Name}} » a échoué", "Votre tâche planifiée a échoué",
+			"La dernière exécution de la tâche « {{.Name}} » du projet « {{.Project}} » n'a pas réussi (erreur, durée maximale dépassée ou manque de mémoire). Ses journaux, dans la console, montrent cette exécution ; « Exécuter maintenant » permet de réessayer.",
+			"Voir la tâche"},
+		alertCopy{"The task \"{{.Name}}\" failed", "Your scheduled task failed",
+			"The last run of the task \"{{.Name}}\" of project \"{{.Project}}\" did not succeed (error, maximum duration exceeded or out of memory). Its logs, in the console, show that run; \"Run now\" tries again.",
+			"View the task"}),
 }
 
 // Échecs de build signalés ; les autres (SUPERSEDED, TOO_MANY_BUILDS) ne le

@@ -9,7 +9,7 @@ Activé uniquement si pdb.enabled ET replicaCount >= 2 OU autoscaling actif
 {{- if .Values.autoscaling.enabled }}
 {{- $minReplicas = int .Values.autoscaling.minReplicas -}}
 {{- end }}
-{{- if and .Values.pdb.enabled (ge $minReplicas 2) }}
+{{- if and .Values.pdb.enabled (ge $minReplicas 2) (ne (include "standard-app.kind" .) "cron") }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

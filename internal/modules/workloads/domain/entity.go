@@ -18,6 +18,9 @@ type Workload struct {
 
 	Image string `gorm:"not null"` //  "nginx:latest"
 
+	// Kind : web, worker ou cron (voir kind.go). Immuable après la création.
+	Kind string `gorm:"type:varchar(10);not null;default:'web'"`
+
 	// Engine State
 	Status       string `gorm:"not null;default:'STARTING'"`
 	CurrentPhase string `gorm:"not null;default:'HELM_CHART_LOADING'"`

@@ -8,6 +8,17 @@ type CreateWorkloadRequest struct {
 	Image     string `json:"image" binding:"required" description:"Image Docker (ex: nginx:latest)"`
 	Replicas  int    `json:"replicas" default:"1"`
 
+	// Sorte et processus.
+	Kind string `json:"kind" description:"Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)"`
+	// Command / Args : commande de démarrage (remplace l'ENTRYPOINT / le CMD
+	// de l'image), ex. une image pour le web et le worker.
+	Command []string `json:"command,omitempty" description:"Commande de démarrage (remplace l'ENTRYPOINT de l'image)"`
+	Args    []string `json:"args,omitempty" description:"Arguments de la commande (remplacent le CMD de l'image)"`
+	// Cron : horaire (5 champs), fuseau IANA (défaut UTC), durée maximale.
+	Schedule           string `json:"schedule,omitempty" description:"Horaire d'un cron (5 champs, ex. 0 2 * * *, ou @daily)"`
+	TimeZone           string `json:"time_zone,omitempty" description:"Fuseau de l'horaire (ex. Africa/Dakar ; défaut UTC)"`
+	MaxDurationSeconds int    `json:"max_duration_seconds,omitempty" description:"Durée maximale d'une exécution, en secondes (défaut 3600)"`
+
 	// Resources
 	CPURequest    string `json:"cpu_request" default:"100m"`
 	MemoryRequest string `json:"memory_request" default:"128Mi"`
@@ -95,6 +106,10 @@ type UpdateWorkloadRequest struct {
 	CPULimit    string `json:"cpu_limit" description:"Limite CPU (ex: 500m)"`
 	MemoryLimit string `json:"memory_limit" description:"Limite mémoire (ex: 512Mi)"`
 	TLSEnabled  *bool  `json:"tls_enabled" description:"Certificat HTTPS"`
+	// Processus : absents = inchangés ; liste vide = commande de l'image.
+	Command  *[]string `json:"command" description:"Commande de démarrage (liste vide : celle de l'image)"`
+	Args     *[]string `json:"args" description:"Arguments (liste vide : ceux de l'image)"`
+	Schedule string    `json:"schedule" description:"Nouvel horaire (cron)"`
 }
 
 // ── Observabilité ────────────────────────────────────────────────────────
@@ -113,8 +128,22 @@ type LiveStatus struct {
 	AvailableReplicas int32       `json:"available_replicas"`
 	Pods              []PodStatus `json:"pods,omitempty"`
 	// Disk : disque persistant, absent sans stockage.
-	Disk      *DiskStatus `json:"disk,omitempty"`
+	Disk *DiskStatus `json:"disk,omitempty"`
+	// Kind : web, worker ou cron.
+	Kind string `json:"kind"`
+	// Cron : état de la tâche planifiée (cron seulement).
+	Cron      *CronStatus `json:"cron,omitempty"`
 	UpdatedAt time.Time   `json:"updated_at"`
+}
+
+// CronStatus : état d'une tâche planifiée.
+type CronStatus struct {
+	Schedule           string     `json:"schedule"`
+	TimeZone           string     `json:"time_zone,omitempty"`
+	Suspended          bool       `json:"suspended"`
+	Running            int        `json:"running"` // exécutions en cours
+	LastScheduleTime   *time.Time `json:"last_schedule_time,omitempty"`
+	LastSuccessfulTime *time.Time `json:"last_successful_time,omitempty"`
 }
 
 // DiskStatus : disque persistant d'un conteneur.

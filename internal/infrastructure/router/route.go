@@ -199,8 +199,11 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("", http.MethodPost, "Déployer un nouveau conteneur",
 		g.Perm(iam.WorkloadsCreate, security.ProjectJSONBody("project_id")), tonic.Handler(r.CreateWorkload, http.StatusAccepted)).
 		ForCopilot(CopilotTool{Name: "create_workload", Write: true, Risk: tools.RiskLow,
-			Only: []string{"project_id", "name", "image", "target_port", "env_vars", "replicas", "health_path"},
-			Hint: "Deploys a new container from an image. For an image built by betorun, use the build's image field and target_port 8080 (betorun builds listen on 8080). Secrets are set by the person in the console."})
+			Only: []string{"project_id", "name", "image", "target_port", "env_vars", "replicas", "health_path", "kind", "command", "args", "schedule", "time_zone", "max_duration_seconds"},
+			Hint: "Deploys a new container from an image. For an image built by betorun, use the build's image field and target_port 8080 (betorun builds listen on 8080). " +
+				"kind: web (default, HTTP service with a URL), worker (long-running process without a port: queue consumer, bot) or cron (scheduled task: schedule required, e.g. \"0 2 * * *\" or \"@daily\", time_zone optional, one run at a time). " +
+				"Worker and cron take no target_port or health_path. command/args replace the image's start command (e.g. command [\"node\",\"queue.js\"]): use them to run a worker or a job from the same image as the web app. " +
+				"The kind cannot change later. Secrets are set by the person in the console."})
 	WorkloadGroup.AddRoute("", http.MethodGet, "Lister les conteneurs d'un projet",
 		g.Perm(iam.WorkloadsList, security.ProjectQuery("project_id")), tonic.Handler(r.ListWorkloads, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "list_workloads", Hint: "project_id is required (see list_projects)."})
@@ -222,11 +225,14 @@ func addWorkloadRoutes(app *App) {
 		ForCopilot(CopilotTool{Name: "update_workload_variables", Write: true, Risk: tools.RiskMedium, Omit: []string{"secrets"},
 			Hint: "Plain variables only: secrets are never set by the Copilot (the person sets them in the console). Changing a value redeploys the container."})
 	WorkloadGroup.AddRoute("/:id/stop", http.MethodPost, "Arrêter un conteneur (plus aucune réplique en service)", on(iam.WorkloadsStop), tonic.Handler(r.StopWorkload, http.StatusOK)).
-		ForCopilot(CopilotTool{Name: "stop_workload", Write: true, Risk: tools.RiskMedium, Undo: "start_workload"})
+		ForCopilot(CopilotTool{Name: "stop_workload", Write: true, Risk: tools.RiskMedium, Undo: "start_workload",
+			Hint: "For a cron container: suspends its scheduled runs (a run in progress finishes)."})
 	WorkloadGroup.AddRoute("/:id/start", http.MethodPost, "Démarrer un conteneur (retour au nombre de répliques configuré)", on(iam.WorkloadsStart), tonic.Handler(r.StartWorkload, http.StatusOK)).
-		ForCopilot(CopilotTool{Name: "start_workload", Write: true, Risk: tools.RiskLow, Undo: "stop_workload"})
+		ForCopilot(CopilotTool{Name: "start_workload", Write: true, Risk: tools.RiskLow, Undo: "stop_workload",
+			Hint: "For a cron container: resumes its scheduled runs."})
 	WorkloadGroup.AddRoute("/:id/restart", http.MethodPost, "Redémarrer un conteneur (remplacement progressif des répliques)", on(iam.WorkloadsRestart), tonic.Handler(r.RestartWorkload, http.StatusOK)).
-		ForCopilot(CopilotTool{Name: "restart_workload", Write: true, Risk: tools.RiskLow})
+		ForCopilot(CopilotTool{Name: "restart_workload", Write: true, Risk: tools.RiskLow,
+			Hint: "For a cron container: runs it now, outside its schedule (its logs then show this run)."})
 	WorkloadGroup.AddRoute("/:id/rollback", http.MethodPost, "Revenir à une révision précédente", on(iam.WorkloadsRollback), tonic.Handler(r.RollbackWorkload, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "rollback_workload", Write: true, Risk: tools.RiskMedium})
 

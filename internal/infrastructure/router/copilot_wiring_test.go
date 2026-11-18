@@ -35,6 +35,14 @@ func TestCopilotToolsBuildFromPublicSpec(t *testing.T) {
 	require.True(t, ok)
 	require.NotContains(t, string(logs.Schema), `"follow"`, "follow est imposé, pas exposé")
 	require.Contains(t, string(logs.Schema), `"maximum":300`)
+
+	// Workers et crons : le Copilot peut choisir la sorte, la commande et l'horaire.
+	create, ok := cat.Lookup("create_workload")
+	require.True(t, ok)
+	for _, field := range []string{`"kind"`, `"command"`, `"args"`, `"schedule"`, `"time_zone"`, `"max_duration_seconds"`} {
+		require.Contains(t, string(create.Schema), field)
+	}
+	require.NotContains(t, string(create.Schema), `"secret_data"`)
 }
 
 // Lectures en GET ; écritures déclarées Write, jamais DELETE ni sensibles, avec

@@ -427,6 +427,8 @@ func (s *Service) CreateWorkload(ctx context.Context, caller iam.Principal, proj
 		PersistenceEnabled: in.PersistenceEnabled, StorageSize: in.StorageSize, StorageClass: in.StorageClass, EnvVars: in.EnvVars,
 		SecretData: in.SecretData, PDBEnabled: in.PDBEnabled, TLSEnabled: in.TLSEnabled, HealthPath: in.HealthPath,
 		ReadinessPath: in.ReadinessPath, ServiceAccount: in.ServiceAccount,
+		Kind: in.Kind, Command: in.Command, Args: in.Args, Schedule: in.Schedule, TimeZone: in.TimeZone,
+		MaxDurationSeconds: in.MaxDurationSeconds,
 	}})
 	if err != nil {
 		return nil, err

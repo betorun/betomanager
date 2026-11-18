@@ -62,3 +62,11 @@ nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 nginx.ingress.kubernetes.io/ssl-redirect: {{ .tls | quote }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Sorte du conteneur : web (Service, ingress, sondes HTTP), worker (processus
+continu sans port) ou cron (CronJob). Absente : web (conteneurs antérieurs).
+*/}}
+{{- define "standard-app.kind" -}}
+{{- .Values.kind | default "web" -}}
+{{- end -}}

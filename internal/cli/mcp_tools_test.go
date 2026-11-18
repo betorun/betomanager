@@ -29,6 +29,7 @@ type fakeBetorun struct {
 	buildPolls  int
 	buildFails  bool
 	existing    bool
+	kind        string // sorte du conteneur existant
 	created     map[string]any
 	updated     map[string]any
 	uploadNames []string
@@ -64,7 +65,7 @@ func (f *fakeBetorun) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"id":%q,"project_id":%q,"name":"app","status":%q,"image":"registry/app:1","detected":"next","failure":"BUILD_FAILED"}`, tBuild, tProject, status)
 	case p == "/workloads" && r.Method == "GET":
 		if f.existing {
-			fmt.Fprintf(w, `[{"id":%q,"name":"app","status":"RUNNING"}]`, tWorkload)
+			fmt.Fprintf(w, `[{"id":%q,"name":"app","status":"RUNNING","Kind":%q}]`, tWorkload, f.kind)
 		} else {
 			fmt.Fprint(w, `[]`)
 		}
@@ -186,6 +187,61 @@ func TestDeployRefusesBadInput(t *testing.T) {
 		if res := callTool(t, e, "deploy", args); !res.IsError {
 			t.Errorf("%s : refus attendu, eu %s", name, res.Text)
 		}
+	}
+}
+
+func TestDeployCronWithoutPort(t *testing.T) {
+	f := &fakeBetorun{}
+	e := testEnv(t, f)
+	res := callTool(t, e, "deploy", fmt.Sprintf(`{"path":%q,"name":"app","kind":"cron","schedule":"0 2 * * *","time_zone":"Africa/Dakar","command":["node","job.js"]}`, project(t)))
+	if res.IsError {
+		t.Fatalf("déploiement : %s", res.Text)
+	}
+	if f.created["kind"] != "cron" || f.created["schedule"] != "0 2 * * *" || f.created["time_zone"] != "Africa/Dakar" || f.created["target_port"] != float64(0) {
+		t.Fatalf("création : %v", f.created)
+	}
+	if cmd, _ := f.created["command"].([]any); len(cmd) != 2 || cmd[1] != "job.js" {
+		t.Fatalf("commande : %v", f.created["command"])
+	}
+	if !strings.Contains(res.Text, "schedule") {
+		t.Fatalf("résumé : %s", res.Text)
+	}
+}
+
+func TestDeployKindChecksBeforeBuild(t *testing.T) {
+	for name, tc := range map[string]struct {
+		f    *fakeBetorun
+		args string
+	}{
+		"cron sans horaire":      {&fakeBetorun{}, `"kind":"cron"`},
+		"horaire hors cron":      {&fakeBetorun{}, `"schedule":"@daily"`},
+		"sorte inconnue":         {&fakeBetorun{}, `"kind":"batch"`},
+		"sorte qui change":       {&fakeBetorun{existing: true, kind: "web"}, `"kind":"worker"`},
+		"commande non textuelle": {&fakeBetorun{}, `"command":"node job.js"`},
+	} {
+		e := testEnv(t, tc.f)
+		res := callTool(t, e, "deploy", fmt.Sprintf(`{"path":%q,"name":"app",%s}`, project(t), tc.args))
+		if !res.IsError {
+			t.Errorf("%s : refus attendu, eu %s", name, res.Text)
+		}
+		if len(tc.f.uploadNames) > 0 {
+			t.Errorf("%s : aucun build ne doit partir", name)
+		}
+	}
+}
+
+func TestDeployExistingWorkerKeepsKind(t *testing.T) {
+	f := &fakeBetorun{existing: true, kind: "worker"}
+	e := testEnv(t, f)
+	res := callTool(t, e, "deploy", fmt.Sprintf(`{"path":%q,"name":"app"}`, project(t)))
+	if res.IsError {
+		t.Fatalf("déploiement : %s", res.Text)
+	}
+	if f.updated["target_port"] != nil && f.updated["target_port"] != float64(0) {
+		t.Fatalf("un worker ne reçoit pas de port : %v", f.updated)
+	}
+	if res.Structured.(DeployResult).Kind != "worker" {
+		t.Fatalf("sorte : %+v", res.Structured)
 	}
 }
 

@@ -155,6 +155,12 @@ func (s *WorkloadService) Stop(ctx context.Context, id uuid.UUID) error {
 	if err := ensureBuilt(w); err != nil {
 		return err
 	}
+	if isCron(w) {
+		if err := suspendCron(ctx, s.K8sClient, w, true); err != nil {
+			return fmt.Errorf("suspend cronjob: %w", err)
+		}
+		return s.Repo.UpdateStatus(ctx, id, utils.WorkloadStopped, utils.PhaseCronSuspended)
+	}
 	if err := s.scaleTo(ctx, w, 0); err != nil {
 		return fmt.Errorf("scale to 0: %w", err)
 	}
@@ -172,6 +178,12 @@ func (s *WorkloadService) Start(ctx context.Context, id uuid.UUID) error {
 	}
 	if err := ensureBuilt(w); err != nil {
 		return err
+	}
+	if isCron(w) {
+		if err := suspendCron(ctx, s.K8sClient, w, false); err != nil {
+			return fmt.Errorf("resume cronjob: %w", err)
+		}
+		return s.Repo.UpdateStatus(ctx, id, utils.WorkloadRunning, utils.PhaseCronResumed)
 	}
 	target := int32(w.Replicas)
 	if target <= 0 {
@@ -195,6 +207,14 @@ func (s *WorkloadService) Restart(ctx context.Context, id uuid.UUID) error {
 	}
 	if err := ensureBuilt(w); err != nil {
 		return err
+	}
+	if isCron(w) {
+		// Cron : « redémarrer » = exécuter tout de suite. Le statut ne change
+		// pas (un cron suspendu reste suspendu).
+		if _, err := runCronNow(ctx, s.K8sClient, w, time.Now()); err != nil {
+			return fmt.Errorf("run cronjob now: %w", err)
+		}
+		return nil
 	}
 	patch := fmt.Sprintf(
 		`{"spec":{"template":{"metadata":{"annotations":{%q:%q}}}}}`,
@@ -261,6 +281,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 		Image:       w.Image,
 		Replicas:    int32(w.Replicas),
 		UpdatedAt:   w.UpdatedAt,
+		Kind:        kindOf(w),
 	}
 	if w.PersistenceEnabled {
 		status.Disk = &domain.DiskStatus{Size: w.StorageSize, BackedUp: false}
@@ -268,8 +289,16 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 
 	// Best-effort : si le deployment n'existe pas encore (en cours de déploiement)
 	// on retourne juste l'état DB sans la partie K8s.
-	dep, err := s.K8sClient.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{})
-	if err == nil {
+	if isCron(w) {
+		cron, _, err := cronStatus(ctx, s.K8sClient, w)
+		if err != nil {
+			s.Logger.Warnw("cronjob lookup failed", "workload", id, "error", err)
+		}
+		status.Cron = cron
+		if cron != nil {
+			status.ReadyReplicas = int32(cron.Running)
+		}
+	} else if dep, err := s.K8sClient.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{}); err == nil {
 		status.ReadyReplicas = dep.Status.ReadyReplicas
 		status.AvailableReplicas = dep.Status.AvailableReplicas
 	} else if !kerrors.IsNotFound(err) {
@@ -320,14 +349,7 @@ func (s *WorkloadService) Logs(ctx context.Context, id uuid.UUID, opts LogOption
 		return nil, betoerrors.New(betoerrors.CodeNotFound, "no pods found for workload")
 	}
 
-	// Priorité : premier pod Running, sinon n'importe lequel.
-	target := pods.Items[0]
-	for _, p := range pods.Items {
-		if p.Status.Phase == corev1.PodRunning {
-			target = p
-			break
-		}
-	}
+	target := pickLogPod(pods.Items, isCron(w))
 
 	podOpts := &corev1.PodLogOptions{
 		Follow:     opts.Follow,

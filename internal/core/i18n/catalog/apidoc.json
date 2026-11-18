@@ -1174,5 +1174,41 @@
  {
   "fr": "Restaurer dans une nouvelle base",
   "en": "Restore into a new database"
+ },
+ {
+  "fr": "Arguments (liste vide : ceux de l'image)",
+  "en": "Arguments (empty list: the image's own)"
+ },
+ {
+  "fr": "Arguments de la commande (remplacent le CMD de l'image)",
+  "en": "Command arguments (replace the image's CMD)"
+ },
+ {
+  "fr": "Commande de démarrage (liste vide : celle de l'image)",
+  "en": "Start command (empty list: the image's own)"
+ },
+ {
+  "fr": "Commande de démarrage (remplace l'ENTRYPOINT de l'image)",
+  "en": "Start command (replaces the image's ENTRYPOINT)"
+ },
+ {
+  "fr": "Durée maximale d'une exécution, en secondes (défaut 3600)",
+  "en": "Maximum duration of a run, in seconds (default: 3600)"
+ },
+ {
+  "fr": "Fuseau de l'horaire (ex. Africa/Dakar ; défaut UTC)",
+  "en": "Schedule time zone (e.g. Africa/Dakar; default: UTC)"
+ },
+ {
+  "fr": "Horaire d'un cron (5 champs, ex. 0 2 * * *, ou @daily)",
+  "en": "Cron schedule (5 fields, e.g. 0 2 * * *, or @daily)"
+ },
+ {
+  "fr": "Nouvel horaire (cron)",
+  "en": "New schedule (cron)"
+ },
+ {
+  "fr": "Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)",
+  "en": "Kind: web (default, HTTP service), worker (long-running process without a port) or cron (scheduled task)"
  }
 ]

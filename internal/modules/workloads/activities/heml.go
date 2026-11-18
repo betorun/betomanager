@@ -52,8 +52,28 @@ type WorkloadIdentity struct {
 	TokenURI       string
 }
 
+// ProcessSpec : sorte du conteneur et processus lancé (vide : web, commande
+// de l'image). Ajouté aux entrées des workflows : les historiques en cours,
+// qui ne le portent pas, restent des conteneurs web.
+type ProcessSpec struct {
+	Kind    string   `json:",omitempty"` // web | worker | cron
+	Command []string `json:",omitempty"`
+	Args    []string `json:",omitempty"`
+	// Cron
+	Schedule           string `json:",omitempty"`
+	TimeZone           string `json:",omitempty"`
+	MaxDurationSeconds int    `json:",omitempty"`
+	// Suspend : cron arrêté (statut STOPPED) ; rendu à chaque déploiement
+	// pour qu'une mise à jour ne le réactive pas.
+	Suspend bool `json:",omitempty"`
+}
+
+// IsWeb : conteneur web (y compris sorte absente des entrées antérieures).
+func (p ProcessSpec) IsWeb() bool { return p.Kind == "" || p.Kind == "web" }
+
 type InstallWorkloadInput struct {
 	Identity *WorkloadIdentity
+	Process  ProcessSpec
 
 	ProjectID    string
 	WorkloadID   string
@@ -302,7 +322,17 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 	healthPath := fallback(input.HealthPath, defaultHealthPath)
 	readinessPath := fallback(input.ReadinessPath, healthPath)
 
+	// Sorte : worker et cron n'ont ni port, ni Service, ni ingress, ni sondes
+	// HTTP (sans port à interroger, les sondes tueraient le pod en boucle).
+	proc := input.Process
+	web := proc.IsWeb()
+	externalURL := input.ExternalURL
+	if !web {
+		externalURL = ""
+	}
+
 	vals := map[string]any{
+		"kind":         defaultIfEmptyKind(proc.Kind),
 		"replicaCount": input.Replicas,
 		"commonLabels": map[string]any{
 			"projectID":  input.ProjectID,
@@ -320,9 +350,9 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 			"protocol":   defaultServiceProtocol,
 		},
 		"ingress": map[string]any{
-			"enabled":   input.ExternalURL != "", // sans URL publique : pas d'ingress
+			"enabled":   externalURL != "", // sans URL publique : pas d'ingress
 			"className": fallback(input.IngressClass, defaultIngressClass),
-			"host":      input.ExternalURL,
+			"host":      externalURL,
 			"tls": map[string]any{
 				"enabled":       input.TLSEnabled,
 				"clusterIssuer": defaultClusterIssuer,
@@ -361,13 +391,13 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 		},
 		"probes": map[string]any{
 			"startup": map[string]any{
-				"enabled":          true,
+				"enabled":          web,
 				"httpGet":          map[string]any{"path": healthPath, "port": containerPortName},
 				"periodSeconds":    startupProbePeriodSeconds,
 				"failureThreshold": startupProbeFailureThreshold,
 			},
 			"readiness": map[string]any{
-				"enabled":             true,
+				"enabled":             web,
 				"httpGet":             map[string]any{"path": readinessPath, "port": containerPortName},
 				"initialDelaySeconds": readinessProbeInitialDelaySeconds,
 				"periodSeconds":       readinessProbePeriodSeconds,
@@ -375,7 +405,7 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 				"failureThreshold":    readinessProbeFailureThreshold,
 			},
 			"liveness": map[string]any{
-				"enabled":             true,
+				"enabled":             web,
 				"httpGet":             map[string]any{"path": healthPath, "port": containerPortName},
 				"initialDelaySeconds": livenessProbeInitialDelaySeconds,
 				"periodSeconds":       livenessProbePeriodSeconds,
@@ -410,8 +440,42 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 		// relance rien, et le nom du Secret, lui, ne change jamais).
 		"envChecksum": strconv.FormatInt(input.EnvRevision, 10),
 	}
-
+	if len(proc.Command) > 0 {
+		vals["command"] = proc.Command
+	}
+	if len(proc.Args) > 0 {
+		vals["args"] = proc.Args
+	}
+	if !web {
+		vals["customDomains"] = []any{}
+	}
+	if proc.Kind == "cron" {
+		maxDuration := proc.MaxDurationSeconds
+		if maxDuration <= 0 {
+			maxDuration = defaultCronMaxDurationSeconds
+		}
+		vals["cron"] = map[string]any{
+			"schedule":              proc.Schedule,
+			"timeZone":              proc.TimeZone,
+			"suspend":               proc.Suspend,
+			"activeDeadlineSeconds": maxDuration,
+		}
+		// Une exécution à la fois : ni autoscaling, ni PDB, une réplique.
+		vals["replicaCount"] = 1
+		vals["autoscaling"].(map[string]any)["enabled"] = false
+		vals["pdb"].(map[string]any)["enabled"] = false
+	}
 	return vals
+}
+
+// defaultCronMaxDurationSeconds : durée maximale d'une exécution (1 h).
+const defaultCronMaxDurationSeconds = 3600
+
+func defaultIfEmptyKind(k string) string {
+	if k == "" {
+		return "web"
+	}
+	return k
 }
 
 // defaultEgressPublicPorts : ports TCP sortants autorisés vers Internet
