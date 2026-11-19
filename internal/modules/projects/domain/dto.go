@@ -2,19 +2,11 @@ package domain
 
 import "time"
 
-// Limites par défaut d'un projet (identiques aux défauts de la table
-// projects), fixées par la plateforme.
-const (
-	DefaultProjectCPU    = "2000m"
-	DefaultProjectMemory = "4Gi"
-)
-
 type CreateProjectRequest struct {
 	Name        string `json:"name" binding:"required,min=3,max=30"`
 	Description string `json:"description"`
-	// Pas de limites ici : elles sont fixées par la plateforme (défauts du
-	// projet), jamais par le client. Un champ cpu_limit ou memory_limit
-	// envoyé est ignoré.
+	// Pas de limites : elles sont fixées par la plateforme, jamais par le
+	// client (sinon chacun se donnerait les ressources qu'il veut).
 }
 
 type ProjectResponse struct {
@@ -87,3 +79,19 @@ type ListProjectsResponse struct {
 
 // MaxListedProjects : borne de GET /projects.
 const MaxListedProjects = 200
+
+// ProjectLimits : plafonds d'un projet, en quantités Kubernetes ; un champ
+// vide garde la valeur actuelle.
+type ProjectLimits struct {
+	CPU     string `json:"cpu_limit,omitempty" description:"Plafond CPU (ex. 4000m)"`
+	Memory  string `json:"memory_limit,omitempty" description:"Plafond mémoire (ex. 8Gi)"`
+	Storage string `json:"storage_limit,omitempty" description:"Plafond de stockage (ex. 20Gi)"`
+}
+
+// ProjectLimitsResponse : limites enregistrées ; le quota Kubernetes suit
+// via le workflow WorkflowID.
+type ProjectLimitsResponse struct {
+	ProjectID  string   `json:"project_id"`
+	Limits     UsageDTO `json:"limits"`
+	WorkflowID string   `json:"workflow_id"`
+}

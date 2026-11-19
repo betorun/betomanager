@@ -123,7 +123,7 @@ main() {
 
   log "1. create project name=${PROJECT_NAME}"
   local project_resp project_id wf_id
-  project_resp="$(api POST "/projects" "$(jq -n --arg n "$PROJECT_NAME" --arg d "e2e smoke" --arg c "2000m" --arg m "2Gi" '{name:$n, description:$d, cpu_limit:$c, memory_limit:$m}')")"
+  project_resp="$(api POST "/projects" "$(jq -n --arg n "$PROJECT_NAME" --arg d "e2e smoke" '{name:$n, description:$d}')")"
   echo "$project_resp" | jq -r '.'
   project_id="$(echo "$project_resp" | jq -r '.project_id // empty')"
   wf_id="$(echo "$project_resp" | jq -r '.workflow_id // empty')"

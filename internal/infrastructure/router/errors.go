@@ -202,6 +202,8 @@ var sentinelErrors = []sentinelMapping{
 	{workloadsSvc.ErrWorkloadNameTaken, http.StatusConflict, betoerrors.CodeConflict, false},
 	{projectsSvc.ErrProjectNameTaken, http.StatusConflict, betoerrors.CodeConflict, false},
 	{projectsSvc.ErrInvalidProjectLimits, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{projectsSvc.ErrLimitsBelowUsage, http.StatusConflict, "FAILED_PRECONDITION", false},
+	{projectsSvc.ErrLimitsUpdateInProgress, http.StatusConflict, betoerrors.CodeConflict, false},
 }
 
 // classifyError : statut, code et message sûr à exposer.

@@ -115,6 +115,9 @@ const (
 	PlatformClusterKeysCreate Permission = "platform.clusterKeys.create"
 	PlatformClusterKeysRotate Permission = "platform.clusterKeys.rotate"
 	PlatformClusterKeysRevoke Permission = "platform.clusterKeys.revoke"
+	// PlatformProjectsSetLimits : changer les plafonds de ressources d'un
+	// projet (jamais fixés par le client).
+	PlatformProjectsSetLimits Permission = "platform.projects.setLimits"
 	// PlatformClustersReport : le watcher d'un cluster rend compte de son
 	// cluster (enrôlement, configuration, événements des pods).
 	PlatformClustersReport Permission = "platform.clusters.report"
@@ -220,6 +223,7 @@ var catalog = map[Permission]PermissionInfo{
 	PlatformClusterKeysRotate: {Title: "Faire tourner une clé de cluster", PlatformOnly: true, Sensitive: true},
 	PlatformClusterKeysRevoke: {Title: "Révoquer une clé de cluster", PlatformOnly: true, Sensitive: true},
 	PlatformClustersReport:    {Title: "Rendre compte de son cluster (watcher)", PlatformOnly: true},
+	PlatformProjectsSetLimits: {Title: "Changer les limites de ressources d'un projet", PlatformOnly: true, Sensitive: true},
 }
 
 // Known : la permission figure au catalogue.

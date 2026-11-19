@@ -69,6 +69,11 @@ func (f *fakeDistributor) TerminateWorkflow(_ context.Context, _ string, _ strin
 
 func (f *fakeProjectRepo) UpdateProjectStatus(context.Context, string, string) error { return nil }
 
+func (f *fakeProjectRepo) UpdateProjectLimits(_ context.Context, id, cpu, memory, storage string) error {
+	f.limits = append(f.limits, [4]string{id, cpu, memory, storage})
+	return nil
+}
+
 func (f *fakeProjectRepo) ListProjects(_ context.Context, orgIDs, ids []uuid.UUID, limit int) ([]authdomain.Project, error) {
 	f.listed = append(f.listed, listCall{orgIDs, ids, limit})
 	if len(f.rows) > limit {
@@ -83,13 +88,14 @@ type listCall struct {
 }
 
 type fakeProjectRepo struct {
+	limits    [][4]string
 	project   *authdomain.Project
 	getErr    error
 	createErr error
-	created   []*authdomain.Project
-	deleted   []string
-	rows      []authdomain.Project
-	listed    []listCall
+	created []*authdomain.Project
+	deleted []string
+	rows    []authdomain.Project
+	listed  []listCall
 }
 
 func (f *fakeProjectRepo) CreateProject(_ context.Context, p *authdomain.Project, _ string) error {
@@ -199,23 +205,6 @@ func TestCreateProject_ReturnsIDAndDefaults(t *testing.T) {
 	assert.Equal(t, "project-create-"+resp.ProjectID, dist.gotOpts.WorkflowID)
 	assert.Equal(t, DefaultProjectCPU, input.CpuLimit)
 	assert.Equal(t, DefaultProjectMemory, input.MemoryLimit)
-
-}
-
-// Les limites ne viennent jamais du client : un champ cpu_limit envoyé dans
-// le JSON est ignoré (faille : n'importe quel compte se donnait 100 CPU).
-func TestCreateProject_IgnoresClientLimits(t *testing.T) {
-	dist := &fakeDistributor{handle: temporal.WorkflowHandle{WorkflowID: "wf"}}
-	repo := &fakeProjectRepo{}
-	svc := newProjectServiceForTest(dist, repo)
-	var req typesproject.CreateProjectRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"name":"gros","cpu_limit":"100","memory_limit":"512Gi"}`), &req))
-	_, err := svc.CreateProject(context.Background(), req, "owner-42")
-	require.NoError(t, err)
-	input := dist.gotArgs[0].(workflows.CreateProjectInput)
-	assert.Equal(t, DefaultProjectCPU, input.CpuLimit)
-	assert.Equal(t, DefaultProjectMemory, input.MemoryLimit)
-	assert.Equal(t, DefaultProjectCPU, repo.created[0].CpuLimit)
 }
 
 // Deuxième demande de suppression : déjà en cours, même réponse (l'option
@@ -290,4 +279,24 @@ func TestCreateProject_NameTaken(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrProjectNameTaken)
 	assert.Nil(t, dist.gotWorkflow, "pas de workflow pour un nom déjà pris")
+}
+
+// Les limites d'un projet viennent de la plateforme : celles qu'un client
+// glisse dans sa requête sont ignorées.
+func TestCreateProject_IgnoresClientLimits(t *testing.T) {
+	dist := &fakeDistributor{handle: temporal.WorkflowHandle{WorkflowID: "wf"}}
+	repo := &fakeProjectRepo{}
+	svc := newProjectServiceForTest(dist, repo)
+
+	var req typesproject.CreateProjectRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"name":"alpha","cpu_limit":"100","memory_limit":"512Gi"}`), &req))
+	_, err := svc.CreateProject(context.Background(), req, uuid.NewString())
+
+	require.NoError(t, err)
+	require.Len(t, repo.created, 1)
+	assert.Equal(t, DefaultProjectCPU, repo.created[0].CpuLimit)
+	assert.Equal(t, DefaultProjectMemory, repo.created[0].MemoryLimit)
+	in := dist.gotArgs[0].(workflows.CreateProjectInput)
+	assert.Equal(t, DefaultProjectCPU, in.CpuLimit)
+	assert.Equal(t, DefaultProjectMemory, in.MemoryLimit)
 }

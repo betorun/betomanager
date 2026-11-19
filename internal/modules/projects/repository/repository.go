@@ -23,6 +23,8 @@ type ProjectRepository interface {
 	GetProjectByID(ctx context.Context, id string) (*dauth.Project, error)
 	// UpdateProjectStatus : statut de provisionnement (PENDING, READY, ERROR).
 	UpdateProjectStatus(ctx context.Context, id, status string) error
+	// UpdateProjectLimits : plafonds CPU, mémoire et stockage du projet.
+	UpdateProjectLimits(ctx context.Context, id, cpu, memory, storage string) error
 	// ListProjects : projets de ids, ou des organisations orgIDs, les plus
 	// récents d'abord, au plus limit (+1 pour savoir s'il en reste).
 	ListProjects(ctx context.Context, orgIDs, ids []uuid.UUID, limit int) ([]dauth.Project, error)
@@ -104,6 +106,18 @@ func (r *pgProjectRepo) GetProjectByID(ctx context.Context, id string) (*dauth.P
 func (r *pgProjectRepo) UpdateProjectStatus(ctx context.Context, id, status string) error {
 	return r.db.WithContext(ctx).Model(&dauth.Project{}).Where("id = ?", id).
 		Updates(map[string]any{"status": status, "updated_at": time.Now()}).Error
+}
+
+func (r *pgProjectRepo) UpdateProjectLimits(ctx context.Context, id, cpu, memory, storage string) error {
+	res := r.db.WithContext(ctx).Model(&dauth.Project{}).Where("id = ?", id).
+		Updates(map[string]any{"cpu_limit": cpu, "memory_limit": memory, "storage_limit": storage, "updated_at": time.Now()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *pgProjectRepo) ListProjects(ctx context.Context, orgIDs, ids []uuid.UUID, limit int) ([]dauth.Project, error) {

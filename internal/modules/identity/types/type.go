@@ -22,7 +22,6 @@ type BootstrapRequest struct {
 	Country            string `json:"country,omitempty"`
 	ProjectName        string `json:"project_name,omitempty"`
 	ProjectDescription string `json:"project_description,omitempty"`
-	// Les limites du projet ne viennent jamais du client (champs ignorés).
 }
 
 type ProjectDTO struct {

@@ -166,5 +166,13 @@
  {
   "fr": "Un projet porte déjà ce nom",
   "en": "a project with this name already exists"
+ },
+ {
+  "fr": "La nouvelle limite est inférieure à ce que les conteneurs du projet réservent déjà",
+  "en": "the new limit is below what the project's containers already reserve"
+ },
+ {
+  "fr": "Une modification des limites de ce projet est déjà en cours",
+  "en": "a limits update is already in progress for this project"
  }
 ]

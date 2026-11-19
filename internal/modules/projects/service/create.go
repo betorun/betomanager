@@ -27,6 +27,8 @@ type IProjectService interface {
 	// ListProjects : projets accessibles, donnés par l'IAM (organisations et
 	// projets où l'appelant détient resourcemanager.projects.get).
 	ListProjects(ctx context.Context, orgIDs, projectIDs []uuid.UUID) (*typesproject.ListProjectsResponse, error)
+	// SetLimits : plafonds du projet (staff de la plateforme uniquement).
+	SetLimits(ctx context.Context, projectID string, in typesproject.ProjectLimits) (*typesproject.ProjectLimitsResponse, error)
 }
 
 var _ IProjectService = (*ProjectService)(nil)
@@ -71,19 +73,15 @@ func NewProjectService(
 
 // Limites par défaut d'un projet (identiques aux défauts de la table projects).
 const (
-	DefaultProjectCPU    = typesproject.DefaultProjectCPU
-	DefaultProjectMemory = typesproject.DefaultProjectMemory
+	DefaultProjectCPU    = "2000m"
+	DefaultProjectMemory = "4Gi"
 )
-
-// ErrInvalidProjectLimits : limite CPU ou mémoire illisible.
-var ErrInvalidProjectLimits = errors.New("invalid project limits: use Kubernetes quantities (e.g. 2000m, 4Gi)")
 
 // ErrProjectNameTaken : nom déjà utilisé par un autre projet.
 var ErrProjectNameTaken = errors.New("a project with this name already exists")
 
 func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.CreateProjectRequest, ownerID string) (*typesproject.ProjectResponse, error) {
-	// Limites : toujours celles de la plateforme. Les prendre du client
-	// laissait n'importe quel compte se créer un projet de 100 CPU.
+	// Limites fixées par la plateforme : la requête n'en porte pas.
 	cpuLimit, memoryLimit := DefaultProjectCPU, DefaultProjectMemory
 	// La ligne et le rôle owner sont écrits avant la réponse : l'appelant peut
 	// lire l'état du projet tout de suite (PROVISIONING), et un nom déjà pris

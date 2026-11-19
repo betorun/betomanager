@@ -18,6 +18,7 @@ type IProjectController interface {
 	DeleteProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectResponse, error)
 	GetProjectMetrics(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.NamespaceMetrics, error)
 	ListProjects(c *gin.Context) (*typeiam.ListProjectsResponse, error)
+	SetProjectLimits(c *gin.Context, in *SetProjectLimitsRequest) (*typeiam.ProjectLimitsResponse, error)
 }
 
 // ProjectAccess : où l'appelant détient une permission (iam.Engine).
@@ -78,4 +79,16 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context, in *GetProjectStatusReque
 
 func (h *ProjectHandler) GetProjectMetrics(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.NamespaceMetrics, error) {
 	return h.ProjectService.GetMetrics(c.Request.Context(), in.ProjectID)
+}
+
+// SetProjectLimitsRequest : nouvelles limites d'un projet ; un champ vide
+// garde la valeur actuelle.
+type SetProjectLimitsRequest struct {
+	ProjectID string `path:"id" description:"ID du projet"`
+	typeiam.ProjectLimits
+}
+
+// SetProjectLimits : réservé au staff de la plateforme (garde de la route).
+func (h *ProjectHandler) SetProjectLimits(c *gin.Context, in *SetProjectLimitsRequest) (*typeiam.ProjectLimitsResponse, error) {
+	return h.ProjectService.SetLimits(c.Request.Context(), in.ProjectID, in.ProjectLimits)
 }

@@ -390,8 +390,8 @@ func (s *service) ensureProject(ctx context.Context, user *domain.User, req iden
 		return nil, nil, false, err
 	}
 	dto := &identitytypes.ProjectDTO{ID: projectResp.ProjectID, Name: projectName,
-		Description: strings.TrimSpace(req.ProjectDescription), CpuLimit: projectsTypes.DefaultProjectCPU,
-		MemoryLimit: projectsTypes.DefaultProjectMemory, Status: projectResp.Status, CreatedAt: now, UpdatedAt: now}
+		Description: strings.TrimSpace(req.ProjectDescription), CpuLimit: projectsSvc.DefaultProjectCPU,
+		MemoryLimit: projectsSvc.DefaultProjectMemory, Status: projectResp.Status, CreatedAt: now, UpdatedAt: now}
 	return member, dto, true, nil
 }
 

@@ -31,6 +31,9 @@ func (f *fakeRepo) GetProjectByID(_ context.Context, id string) (*dauth.Project,
 	return nil, gorm.ErrRecordNotFound
 }
 func (f *fakeRepo) UpdateProjectStatus(context.Context, string, string) error { return nil }
+func (f *fakeRepo) UpdateProjectLimits(context.Context, string, string, string, string) error {
+	return nil
+}
 func (f *fakeRepo) ListProjects(context.Context, []uuid.UUID, []uuid.UUID, int) ([]dauth.Project, error) {
 	return nil, nil
 }

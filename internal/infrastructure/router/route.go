@@ -172,6 +172,13 @@ func addProjectRoutes(app *App) {
 	g := newGuards(app)
 	project := security.ProjectParam("id")
 
+	// Limites d'un projet : staff de la plateforme seulement ; jamais le client
+	// (ni à la création, ni après).
+	adminProjects := RootGroup.NewGroup("/admin/projects", "Admin — limites de ressources des projets").Internal()
+	adminProjects.AddRoute("/:id/limits", http.MethodPatch,
+		"Changer les limites CPU, mémoire et stockage d'un projet (base puis quota Kubernetes)",
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetProjectLimits, http.StatusOK))
+
 	// Création dans l'organisation personnelle de l'appelant, qui en devient owner.
 	ProjectGroup.AddRoute("", http.MethodPost, "Créer un projet", Authenticated(), tonic.Handler(r.CreateProject, http.StatusCreated))
 	// Liste filtrée par l'IAM : resourcemanager.projects.get sur le projet ou

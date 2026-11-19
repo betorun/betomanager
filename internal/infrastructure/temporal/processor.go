@@ -190,6 +190,7 @@ func (p *TemporalProcessor) Worker() worker.Worker {
 func (p *TemporalProcessor) registerWorkflows(w worker.Worker) {
 	w.RegisterWorkflow(projectWorkflows.CreateProjectWorkflow)
 	w.RegisterWorkflow(projectWorkflows.DeleteProjectWorkflow)
+	w.RegisterWorkflow(projectWorkflows.UpdateProjectLimitsWorkflow)
 	w.RegisterWorkflow(workloadWorkflows.DeployWorkloadWorkflow)
 	w.RegisterWorkflow(workloadWorkflows.DeleteWorkloadWorkflow)
 }
