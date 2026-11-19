@@ -182,6 +182,8 @@ var (
 	ErrImageQuota        = errors.New("the images of this project use all of its image storage, even keeping only the latest version of each: reduce the size of your images")
 	ErrBuildNotFound     = errors.New("build not found")
 	ErrBuildFinished     = errors.New("this build is already finished")
+	ErrNoImage           = errors.New("this build has no image in the registry (failed, cancelled or already deleted)")
+	ErrImageInUse        = errors.New("a container of the project runs this image: deploy another image on it, or delete it, first")
 	ErrBuildsDisabled    = errors.New("builds are not enabled on this platform")
 	ErrForeignImage      = errors.New("this image belongs to another project")
 	ErrRegistryForbidden = errors.New("invalid registry credentials")

@@ -127,6 +127,8 @@ var sentinelErrors = []sentinelMapping{
 	{buildsDomain.ErrImageQuota, http.StatusConflict, "IMAGE_QUOTA", false},
 	{buildsDomain.ErrBuildNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{buildsDomain.ErrBuildFinished, http.StatusConflict, "BUILD_FINISHED", false},
+	{buildsDomain.ErrNoImage, http.StatusConflict, "NO_IMAGE", false},
+	{buildsDomain.ErrImageInUse, http.StatusConflict, "IMAGE_IN_USE", false},
 	{buildsDomain.ErrForeignImage, http.StatusForbidden, "FOREIGN_IMAGE", false},
 	{auth.ErrNoFactor, http.StatusConflict, "MFA_NOT_ENROLLED", false},
 	{auth.ErrFactorExists, http.StatusConflict, "MFA_ALREADY_ENROLLED", false},

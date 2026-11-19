@@ -438,5 +438,9 @@
  {
   "fr": "Importer un dump dans une base de données (ses données peuvent être remplacées)",
   "en": "Import a dump into a database (its data may be replaced)"
+ },
+ {
+  "fr": "Supprimer une image construite",
+  "en": "Delete a built image"
  }
 ]

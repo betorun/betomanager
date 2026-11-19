@@ -127,6 +127,15 @@ func (h *Controller) Cancel(c *gin.Context, in *domain.BuildPath) error {
 	return h.Service.Cancel(c.Request.Context(), project, id)
 }
 
+// DeleteImage : retire l'image d'un build.
+func (h *Controller) DeleteImage(c *gin.Context, in *domain.BuildPath) error {
+	project, id, err := parsePath(in)
+	if err != nil {
+		return err
+	}
+	return h.Service.DeleteImage(c.Request.Context(), project, id)
+}
+
 // Logs : journal, en flux.
 func (h *Controller) Logs(c *gin.Context, in *domain.LogsRequest) {
 	project, id, err := parsePath(&domain.BuildPath{ProjectID: in.ProjectID, BuildID: in.BuildID})

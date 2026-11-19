@@ -54,5 +54,13 @@
  {
   "fr": "registre : image introuvable",
   "en": "registry: manifest not found"
+ },
+ {
+  "fr": "Ce build n'a pas d'image au registre (échoué, annulé ou déjà supprimée)",
+  "en": "this build has no image in the registry (failed, cancelled or already deleted)"
+ },
+ {
+  "fr": "Un conteneur du projet fait tourner cette image : déployez-lui une autre image, ou supprimez-le, d'abord",
+  "en": "a container of the project runs this image: deploy another image on it, or delete it, first"
  }
 ]

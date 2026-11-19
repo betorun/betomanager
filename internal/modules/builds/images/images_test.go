@@ -157,3 +157,39 @@ func TestUsage(t *testing.T) {
 	_, quota, _ = (&Keeper{Store: &fakeStore{}, Quota: -1}).Usage(context.Background(), uuid.New())
 	assert.Zero(t, quota, "sans quota")
 }
+
+func TestRemove(t *testing.T) {
+	project := uuid.New()
+	a, b, c := build(project, 0, "sha256:a"), build(project, 1, "sha256:b"), build(project, 2, "sha256:a")
+	repo := project.String() + "/web"
+
+	t.Run("deletes an unused image", func(t *testing.T) {
+		store, reg := &fakeStore{rows: []domain.Build{a, b}}, &fakeRegistry{}
+		k := &Keeper{Store: store, Registry: reg, Host: host}
+		require.NoError(t, k.Remove(context.Background(), &b))
+		assert.Equal(t, []string{repo + "@sha256:b"}, reg.deleted)
+		assert.Equal(t, []uuid.UUID{b.ID}, store.pruned)
+	})
+	t.Run("refused while a container runs it", func(t *testing.T) {
+		store, reg := &fakeStore{rows: []domain.Build{a, b}, inUse: []string{b.Image}}, &fakeRegistry{}
+		k := &Keeper{Store: store, Registry: reg, Host: host}
+		require.ErrorIs(t, k.Remove(context.Background(), &b), domain.ErrImageInUse)
+		assert.Empty(t, reg.deleted)
+	})
+	t.Run("digest shared with a kept image stays in the registry", func(t *testing.T) {
+		store, reg := &fakeStore{rows: []domain.Build{a, b, c}}, &fakeRegistry{}
+		k := &Keeper{Store: store, Registry: reg, Host: host}
+		require.NoError(t, k.Remove(context.Background(), &c))
+		assert.Empty(t, reg.deleted)
+		assert.Equal(t, []uuid.UUID{c.ID}, store.pruned)
+	})
+	t.Run("no image", func(t *testing.T) {
+		gone := b
+		gone.ImagePrunedAt = b.FinishedAt
+		k := &Keeper{Store: &fakeStore{}, Registry: &fakeRegistry{}, Host: host}
+		require.ErrorIs(t, k.Remove(context.Background(), &gone), domain.ErrNoImage)
+		failed := build(project, 3, "")
+		failed.Status = domain.StatusFailed
+		require.ErrorIs(t, k.Remove(context.Background(), &failed), domain.ErrNoImage)
+	})
+}
