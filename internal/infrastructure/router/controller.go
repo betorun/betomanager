@@ -10,6 +10,7 @@ import (
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
 	"github.com/thekrauss/kubemanager/internal/modules/github"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
@@ -67,6 +68,8 @@ type ControllerContainer struct {
 	Databases  *databases.Controller
 	// Addons : services additionnels (Redis via Valkey…).
 	Addons *addons.Controller
+	// DiskUsage : usage réel des disques des projets.
+	DiskUsage *diskusage.Controller
 	// Billing : facturation (coût estimé, grille de prix).
 	Billing *billing.Controller
 	// DomainSales : revente de noms de domaine.

@@ -1752,6 +1752,14 @@
   "en": "Service ID"
  },
  {
+  "fr": "Usage réel des disques du projet (mesuré toutes les heures)",
+  "en": "Actual disk usage of the project (measured every hour)"
+ },
+ {
+  "fr": "Usage réel des disques du projet",
+  "en": "Actual disk usage of the project"
+ },
+ {
   "fr": "Lister les services du projet (avec le plafond)",
   "en": "List the project's services (with the limit)"
  },

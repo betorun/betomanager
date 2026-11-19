@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
+	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	domainsalesSvc "github.com/thekrauss/kubemanager/internal/modules/domainsales/service"
 	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
@@ -181,6 +182,11 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// Domaines revendus : commandes à passer et à suivre, renouvellements.
 	if sales := a.domainSalesService(); sales != nil && sales.Registrar != nil {
 		go sales.Run(ctx, domainsalesSvc.DefaultEvery)
+	}
+
+	// Usage réel des disques : alertes à 80 et 100 %, arrêt du conteneur à 120 %.
+	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
+		go a.diskUsageService().Run(ctx, diskusage.DefaultEvery)
 	}
 
 	// « Me prévenir » : e-mail quand un service annoncé ouvre (ADR 0013).

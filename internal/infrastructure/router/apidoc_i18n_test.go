@@ -13,6 +13,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
 
@@ -74,6 +75,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				DomainSales: &domainsales.Controller{},
 				Databases:   &databases.Controller{},
 				Addons:      &addons.Controller{},
+				DiskUsage:   &diskusage.Controller{},
 			},
 		}
 		docFizz = fizz.NewFromEngine(gin.New())

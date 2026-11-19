@@ -219,6 +219,10 @@ func addProjectRoutes(app *App) {
 	ProjectGroup.AddRoute("/:id/metrics", http.MethodGet, "Métriques de consommation",
 		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectMetrics, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "get_project_metrics"})
+	if d := app.Controllers.DiskUsage; d != nil {
+		ProjectGroup.AddRoute("/:id/disk-usage", http.MethodGet, "Usage réel des disques du projet (mesuré toutes les heures)",
+			g.Perm(iam.ProjectsGet, project), tonic.Handler(d.List, http.StatusOK))
+	}
 	ProjectGroup.AddRoute("/:id", http.MethodGet, "Lire un projet (nom, organisation, plafonds)",
 		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProject, http.StatusOK))
 	ProjectGroup.AddRoute("/:id", http.MethodPatch, "Renommer un projet ou changer sa description",

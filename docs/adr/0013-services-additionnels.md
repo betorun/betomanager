@@ -258,6 +258,11 @@ l'ouvrir.
   (`local-path`) ne sait pas agrandir un disque ; pas d'agrandissement en V1.
   Piste retenue pour plus tard : migration par copie (nouveau disque, arrêt de
   quelques secondes, copie, redémarrage), ou un stockage extensible.
+- **Usage réel des disques (décision 2026-11-19)** : `local-path` ne plafonne
+  pas non plus la taille demandée. Le module [diskusage](../modules/diskusage.md)
+  mesure chaque disque toutes les heures : alerte à 80 % et 100 %, conteneur
+  arrêté à 120 % (données gardées, délai de grâce de 6 h après relance). Les
+  bases sont mesurées et alertées, jamais arrêtées automatiquement.
 - **CLI** : `betorun addons` (alias `services`) : `catalog`, `list`,
   `create <service> <nom>` (`--mode`, `--size`, `--disk`, `--version`,
   `--attach` répétable, attente du démarrage), `attach`, `upgrade`
