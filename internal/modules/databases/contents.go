@@ -27,6 +27,8 @@ type SnapshotStore interface {
 	GetSnapshot(ctx context.Context, databaseID uuid.UUID) (*domain.Snapshot, error)
 	SaveSnapshot(ctx context.Context, s *domain.Snapshot) error
 	DeleteSnapshot(ctx context.Context, databaseID uuid.UUID) error
+	// MarkSnapshotRestore : import lancé pour restaurer la copie.
+	MarkSnapshotRestore(ctx context.Context, databaseID, importID uuid.UUID) error
 }
 
 func snapshotKey(databaseID uuid.UUID, taskID string) string {
@@ -327,7 +329,16 @@ func (s *Service) UndoReset(ctx context.Context, projectID, id uuid.UUID, actor 
 		return nil, err
 	}
 	defer obj.Close()
-	return s.Import(ctx, projectID, d.ID, obj, info.Size, true, false, actor)
+	imp, err := s.Import(ctx, projectID, d.ID, obj, info.Size, true, false, actor)
+	if err != nil {
+		return nil, err
+	}
+	// Au mieux : sans ce lien, la console ne signale pas que la copie a déjà
+	// été restaurée, mais la restauration elle-même est lancée.
+	if err := s.Snapshots.MarkSnapshotRestore(context.WithoutCancel(ctx), d.ID, imp.ID); err != nil {
+		s.warn("databases: restore not linked to the safety copy", "database", d.ID, "import", imp.ID, "error", err)
+	}
+	return imp, nil
 }
 
 // snapshotView : copie restaurable de la base ; une copie expirée est
@@ -343,6 +354,12 @@ func (s *Service) snapshotView(ctx context.Context, id uuid.UUID) *domain.Snapsh
 	if snap.Expired(s.now()) {
 		s.dropSnapshot(context.WithoutCancel(ctx), id)
 		return nil
+	}
+	if snap.RestoreImportID != nil && s.Imports.ready() {
+		if imp, err := s.Imports.Store.GetImportByID(ctx, *snap.RestoreImportID); err == nil &&
+			imp.Status == domain.ImportSucceeded && imp.FinishedAt != nil {
+			snap.RestoredAt = imp.FinishedAt
+		}
 	}
 	return snap
 }
@@ -395,6 +412,11 @@ func (r *GormRepository) GetSnapshot(ctx context.Context, databaseID uuid.UUID) 
 
 func (r *GormRepository) SaveSnapshot(ctx context.Context, snap *domain.Snapshot) error {
 	return r.DB.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(snap).Error
+}
+
+func (r *GormRepository) MarkSnapshotRestore(ctx context.Context, databaseID, importID uuid.UUID) error {
+	return r.DB.WithContext(ctx).Model(&domain.Snapshot{}).
+		Where("database_id = ?", databaseID).Update("restore_import_id", importID).Error
 }
 
 func (r *GormRepository) DeleteSnapshot(ctx context.Context, databaseID uuid.UUID) error {

@@ -100,6 +100,15 @@ func (m *memSnapshots) SaveSnapshot(_ context.Context, s *domain.Snapshot) error
 	m.rows[s.DatabaseID] = *s
 	return nil
 }
+func (m *memSnapshots) MarkSnapshotRestore(_ context.Context, id, importID uuid.UUID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.rows[id]; ok {
+		s.RestoreImportID = &importID
+		m.rows[id] = s
+	}
+	return nil
+}
 func (m *memSnapshots) DeleteSnapshot(_ context.Context, id uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -177,6 +186,15 @@ func TestUndoReset(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, got.Clean)
 	require.Len(t, imp.started, 1)
+
+	// La copie est liée à l'import : « déjà restaurée » une fois qu'il a réussi.
+	require.Equal(t, got.ID, *snaps.rows[d.ID].RestoreImportID)
+	assert.Nil(t, s.snapshotView(ctx, d.ID).RestoredAt, "import still running")
+	store := s.Imports.Store.(*memImports)
+	done := importNow.Add(time.Minute)
+	store.rows[got.ID].Status, store.rows[got.ID].FinishedAt = domain.ImportSucceeded, &done
+	require.NotNil(t, s.snapshotView(ctx, d.ID).RestoredAt)
+	assert.Equal(t, done, *s.snapshotView(ctx, d.ID).RestoredAt)
 
 	snap := snaps.rows[d.ID]
 	snap.ExpiresAt = importNow
