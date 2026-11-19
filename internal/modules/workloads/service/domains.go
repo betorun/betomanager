@@ -14,6 +14,7 @@ import (
 	registriesDomain "github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
+	"github.com/thekrauss/kubemanager/internal/modules/workloads/activities"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/workflows"
 )
@@ -29,6 +30,7 @@ const domainLookupTimeout = 8 * time.Second
 type DNSResolver interface {
 	LookupTXT(ctx context.Context, name string) ([]string, error)
 	LookupHost(ctx context.Context, host string) ([]string, error)
+	LookupNS(ctx context.Context, name string) ([]*net.NS, error)
 }
 
 // DomainSettings : réglages des domaines.
@@ -52,19 +54,64 @@ func NewResolver(server string) DNSResolver {
 	}}
 }
 
-func (s *WorkloadService) records(d *domain.WorkloadDomain) []domain.DNSRecord {
-	kind := domain.RecordCNAME
-	if net.ParseIP(s.DomainCfg.Target) != nil {
-		kind = domain.RecordA
+// records : preuve (TXT) puis routage. Sous-domaine : CNAME vers la cible
+// (l'adresse peut changer sans rien demander au client) ou A si la cible est
+// une IP. Sommet de zone (exemple.sn) : un CNAME y est interdit, donc A vers
+// les adresses de la cible, et ALIAS proposé à la place quand la cible est un
+// nom (le fournisseur suit alors seul un changement d'adresse).
+func (s *WorkloadService) records(ctx context.Context, d *domain.WorkloadDomain) []domain.DNSRecord {
+	zone := domain.Zone(d.Hostname)
+	rel := func(name string) string { return domain.RelativeHost(name, zone) }
+	challenge := domain.ChallengePrefix + d.Hostname
+	out := []domain.DNSRecord{{Type: domain.RecordTXT, Name: challenge, Host: rel(challenge), Value: d.Token}}
+	target := s.DomainCfg.Target
+	targetIsIP := net.ParseIP(target) != nil
+	switch {
+	case targetIsIP:
+		out = append(out, domain.DNSRecord{Type: domain.RecordA, Name: d.Hostname, Host: rel(d.Hostname), Value: target})
+	case !domain.IsApex(d.Hostname):
+		out = append(out, domain.DNSRecord{Type: domain.RecordCNAME, Name: d.Hostname, Host: rel(d.Hostname), Value: target})
+	default:
+		lookup, cancel := context.WithTimeout(ctx, domainLookupTimeout)
+		ips, _ := s.DomainCfg.Resolver.LookupHost(lookup, target)
+		cancel()
+		for _, ip := range ips {
+			if parsed := net.ParseIP(ip); parsed != nil && parsed.To4() != nil {
+				out = append(out, domain.DNSRecord{Type: domain.RecordA, Name: d.Hostname, Host: rel(d.Hostname), Value: ip})
+			}
+		}
+		out = append(out, domain.DNSRecord{Type: domain.RecordALIAS, Name: d.Hostname, Host: rel(d.Hostname), Value: target, Alternative: true})
 	}
-	return []domain.DNSRecord{
-		{Type: domain.RecordTXT, Name: domain.ChallengePrefix + d.Hostname, Value: d.Token},
-		{Type: kind, Name: d.Hostname, Value: s.DomainCfg.Target},
-	}
+	return out
 }
 
-func (s *WorkloadService) domainView(d *domain.WorkloadDomain, pointing bool) domain.DomainResponse {
-	return domain.DomainResponse{WorkloadDomain: *d, Records: s.records(d), Pointing: pointing}
+func (s *WorkloadService) domainView(ctx context.Context, d *domain.WorkloadDomain, pointing bool, providers map[string]string) domain.DomainResponse {
+	zone := domain.Zone(d.Hostname)
+	return domain.DomainResponse{WorkloadDomain: *d, Records: s.records(ctx, d), Pointing: pointing,
+		Zone: zone, Apex: zone == d.Hostname, DNSProvider: s.dnsProvider(ctx, zone, providers)}
+}
+
+// dnsProvider : fournisseur DNS de la zone (guide de la console) ; providers
+// sert de cache le temps d'une requête (plusieurs domaines, une zone).
+func (s *WorkloadService) dnsProvider(ctx context.Context, zone string, providers map[string]string) string {
+	if p, ok := providers[zone]; ok {
+		return p
+	}
+	lookup, cancel := context.WithTimeout(ctx, domainLookupTimeout)
+	defer cancel()
+	ns, err := s.DomainCfg.Resolver.LookupNS(lookup, zone)
+	provider := ""
+	if err == nil {
+		hosts := make([]string, 0, len(ns))
+		for _, n := range ns {
+			hosts = append(hosts, n.Host)
+		}
+		provider = domain.DNSProviderOf(hosts)
+	}
+	if providers != nil {
+		providers[zone] = provider
+	}
+	return provider
 }
 
 func (s *WorkloadService) domainsReady() error {
@@ -84,14 +131,17 @@ func (s *WorkloadService) ListDomains(ctx context.Context, workload uuid.UUID) (
 		return nil, err
 	}
 	out := make([]domain.DomainResponse, 0, len(list))
+	providers := map[string]string{}
 	for i := range list {
-		out = append(out, s.domainView(&list[i], false))
+		out = append(out, s.domainView(ctx, &list[i], false, providers))
 	}
 	return out, nil
 }
 
 // AddDomain : enregistre la demande, sans effet sur le routage.
-func (s *WorkloadService) AddDomain(ctx context.Context, workload uuid.UUID, hostname string) (*domain.DomainResponse, error) {
+// Un chemin (/auth) partage le nom avec d'autres conteneurs du projet ; si le
+// nom y est déjà prouvé, sa preuve est reprise : rien de plus à créer.
+func (s *WorkloadService) AddDomain(ctx context.Context, workload uuid.UUID, hostname, path string) (*domain.DomainResponse, error) {
 	if err := s.domainsReady(); err != nil {
 		return nil, err
 	}
@@ -109,6 +159,10 @@ func (s *WorkloadService) AddDomain(ctx context.Context, workload uuid.UUID, hos
 	if err != nil {
 		return nil, err
 	}
+	routePath, err := domain.NormalizePath(path)
+	if err != nil {
+		return nil, err
+	}
 	existing, err := s.Domains.List(ctx, workload)
 	if err != nil {
 		return nil, err
@@ -116,15 +170,24 @@ func (s *WorkloadService) AddDomain(ctx context.Context, workload uuid.UUID, hos
 	if len(existing) >= domain.MaxDomainsPerWorkload {
 		return nil, domain.ErrDomainLimit
 	}
-	token, err := auth.RandomToken()
+	token, err := s.Domains.ProjectHostToken(ctx, w.ProjectID, host)
 	if err != nil {
 		return nil, err
 	}
-	d := &domain.WorkloadDomain{ID: uuid.New(), WorkloadID: workload, Hostname: host, Token: "betorun-verify=" + token, CreatedAt: time.Now()}
+	shared := token != ""
+	if !shared {
+		random, err := auth.RandomToken()
+		if err != nil {
+			return nil, err
+		}
+		token = "betorun-verify=" + random
+	}
+	d := &domain.WorkloadDomain{ID: uuid.New(), WorkloadID: workload, Hostname: host, Path: routePath, Token: token, CreatedAt: time.Now()}
 	if err := s.Domains.Create(ctx, d); err != nil {
 		return nil, err
 	}
-	view := s.domainView(d, false)
+	view := s.domainView(ctx, d, false, nil)
+	view.SharedProof = shared
 	return &view, nil
 }
 
@@ -158,11 +221,11 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 		if err := s.Domains.Touch(ctx, d.ID); err != nil {
 			return nil, err
 		}
-		view := s.domainView(d, pointing)
+		view := s.domainView(ctx, d, pointing, nil)
 		return &view, nil
 	}
 	if d.Verified {
-		view := s.domainView(d, pointing)
+		view := s.domainView(ctx, d, pointing, nil)
 		return &view, nil
 	}
 	if w.Status == utils.WorkloadStopped {
@@ -178,15 +241,27 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 	if taken {
 		return nil, domain.ErrDomainClaimed
 	}
-	previous, err := s.Domains.VerifiedOwner(ctx, d.Hostname, d.ID)
+	// Autres routes vérifiées sous ce nom. Un autre projet le garde tant que
+	// sa preuve est en place ; sinon le nom a changé de mains et toutes ses
+	// routes tombent. Dans le projet, seule la route au même chemin cède la
+	// place (déplacée vers ce conteneur) ; les autres chemins restent.
+	claims, err := s.Domains.HostClaims(ctx, d.Hostname, d.ID)
 	if err != nil {
 		return nil, err
 	}
-	if previous != nil {
-		if slices.Contains(txt, previous.Token) {
-			return nil, domain.ErrDomainClaimed
+	var released []domain.HostClaim
+	for _, c := range claims {
+		if c.ProjectID != w.ProjectID {
+			if slices.Contains(txt, c.Token) {
+				return nil, domain.ErrDomainClaimed
+			}
+			released = append(released, c)
+		} else if c.Path == d.Path {
+			released = append(released, c)
 		}
-		if err := s.Domains.SetVerified(ctx, previous.ID, false); err != nil {
+	}
+	for _, c := range released {
+		if err := s.Domains.SetVerified(ctx, c.ID, false); err != nil {
 			return nil, err
 		}
 	}
@@ -196,14 +271,18 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 	if err := s.redeploy(ctx, w); err != nil {
 		return nil, err
 	}
-	if previous != nil {
-		s.releaseFrom(ctx, previous.WorkloadID)
+	seen := map[uuid.UUID]bool{workload: true}
+	for _, c := range released {
+		if !seen[c.WorkloadID] {
+			seen[c.WorkloadID] = true
+			s.releaseFrom(ctx, c.WorkloadID)
+		}
 	}
 	updated, err := s.Domains.Get(ctx, workload, id)
 	if err != nil {
 		return nil, err
 	}
-	view := s.domainView(updated, pointing)
+	view := s.domainView(ctx, updated, pointing, nil)
 	return &view, nil
 }
 
@@ -274,11 +353,14 @@ func (s *WorkloadService) redeploy(ctx context.Context, w *domain.Workload) erro
 func (s *WorkloadService) inputFor(ctx context.Context, w *domain.Workload, spec domain.CreateWorkloadRequest) (workflows.DeployWorkloadInput, error) {
 	in := s.deployInput(w, spec)
 	if s.Domains != nil {
-		hosts, err := s.Domains.VerifiedHosts(ctx, w.ID)
+		routes, err := s.Domains.VerifiedRoutes(ctx, w.ID)
 		if err != nil {
 			return in, err
 		}
-		in.CustomDomains = hosts
+		in.CustomRoutes = make([]activities.DomainRoute, 0, len(routes))
+		for _, r := range routes {
+			in.CustomRoutes = append(in.CustomRoutes, activities.DomainRoute{Host: r.Host, Path: r.Path})
+		}
 		in.CustomDomainTLS = s.DomainCfg != nil && s.DomainCfg.TLS
 	}
 	if s.ExternalRegistries != nil && !in.PlatformImage && w.Image != "" {

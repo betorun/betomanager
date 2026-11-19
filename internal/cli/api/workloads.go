@@ -108,9 +108,9 @@ func (c *Client) ListWorkloadDomains(ctx context.Context, id string) ([]Workload
 }
 
 // AddWorkloadDomain : nouvelle demande.
-func (c *Client) AddWorkloadDomain(ctx context.Context, id, host string) (*WorkloadDomainView, error) {
+func (c *Client) AddWorkloadDomain(ctx context.Context, id, host, path string) (*WorkloadDomainView, error) {
 	var out WorkloadDomainView
-	return &out, c.Do(ctx, http.MethodPost, workloadDomainsPath(id), AddDomainRequest{Hostname: host}, &out)
+	return &out, c.Do(ctx, http.MethodPost, workloadDomainsPath(id), AddDomainRequest{Hostname: host, Path: path}, &out)
 }
 
 // VerifyWorkloadDomain : vérifie la preuve de propriété.

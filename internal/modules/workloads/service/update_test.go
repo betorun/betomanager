@@ -428,7 +428,7 @@ func TestDeletingWorkloadRefusesEverything(t *testing.T) {
 					return err
 				},
 				"AddDomain": func() error {
-					_, err := s.AddDomain(ctx, id, "b.exemple.sn")
+					_, err := s.AddDomain(ctx, id, "b.exemple.sn", "")
 					return err
 				},
 				"VerifyDomain": func() error {

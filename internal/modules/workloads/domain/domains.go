@@ -18,13 +18,19 @@ const (
 	RecordCNAME = "CNAME"
 	RecordA     = "A"
 	RecordTXT   = "TXT"
+	// RecordALIAS : CNAME au sommet d'une zone (ALIAS, ANAME, « CNAME
+	// flattening ») ; proposé à la place des A quand le fournisseur le permet.
+	RecordALIAS = "ALIAS"
 )
 
 // WorkloadDomain : domaine personnalisé d'un conteneur.
 type WorkloadDomain struct {
-	ID         uuid.UUID  `gorm:"type:uuid;primary_key" json:"id"`
-	WorkloadID uuid.UUID  `gorm:"type:uuid;not null" json:"workload_id"`
-	Hostname   string     `gorm:"not null" json:"hostname"`
+	ID         uuid.UUID `gorm:"type:uuid;primary_key" json:"id"`
+	WorkloadID uuid.UUID `gorm:"type:uuid;not null" json:"workload_id"`
+	Hostname   string    `gorm:"not null" json:"hostname"`
+	// Path : préfixe routé vers ce conteneur (« / » : tout le domaine). Un
+	// même nom peut servir plusieurs conteneurs d'un projet, un chemin chacun.
+	Path       string     `gorm:"not null;default:'/'" json:"path"`
 	Token      string     `gorm:"not null" json:"-"`
 	Verified   bool       `gorm:"not null" json:"verified"`
 	VerifiedAt *time.Time `json:"verified_at,omitempty"`
@@ -34,11 +40,30 @@ type WorkloadDomain struct {
 
 func (WorkloadDomain) TableName() string { return "workload_domains" }
 
+// Route : nom et chemin routés vers un conteneur.
+type Route struct {
+	Host string `json:"host"`
+	Path string `json:"path"`
+}
+
+// HostClaim : domaine vérifié portant un nom, avec le projet de son conteneur.
+type HostClaim struct {
+	WorkloadDomain
+	ProjectID uuid.UUID
+}
+
 // DNSRecord : enregistrement à créer chez le fournisseur DNS.
 type DNSRecord struct {
-	Type  string `json:"type"`
-	Name  string `json:"name"`
+	Type string `json:"type"`
+	// Name : nom complet (FQDN).
+	Name string `json:"name"`
+	// Host : nom à saisir chez la plupart des fournisseurs, relatif à la zone
+	// (« @ » pour le sommet, « www », « _betorun-challenge.www »).
+	Host  string `json:"host"`
 	Value string `json:"value"`
+	// Alternative : à créer À LA PLACE des enregistrements A de même nom, si
+	// le fournisseur propose ALIAS / ANAME (l'adresse suit alors la plateforme).
+	Alternative bool `json:"alternative,omitempty"`
 }
 
 // DomainResponse : domaine et instructions.
@@ -49,11 +74,22 @@ type DomainResponse struct {
 	// Pointing : le domaine pointe déjà vers la plateforme (nécessaire au
 	// certificat HTTPS). Connu après une vérification.
 	Pointing bool `json:"pointing"`
+	// Zone : domaine enregistré chez le registraire (ex. exemple.sn).
+	Zone string `json:"zone"`
+	// Apex : le nom est le sommet de sa zone (pas de CNAME possible).
+	Apex bool `json:"apex"`
+	// DNSProvider : fournisseur DNS reconnu par ses serveurs (cloudflare,
+	// ovh…) ; vide si inconnu. Sert au guide pas à pas de la console.
+	DNSProvider string `json:"dns_provider,omitempty"`
+	// SharedProof : la preuve est celle d'un autre chemin du même nom dans le
+	// projet, déjà en place.
+	SharedProof bool `json:"shared_proof,omitempty"`
 }
 
 // AddDomainRequest : nouveau domaine.
 type AddDomainRequest struct {
 	Hostname string `json:"hostname" binding:"required" description:"Domaine (ex: www.exemple.sn)"`
+	Path     string `json:"path" description:"Chemin servi par ce conteneur (défaut /), ex. /auth : le reste du domaine peut aller à un autre conteneur du projet"`
 }
 
 var (
@@ -62,4 +98,5 @@ var (
 	ErrDomainClaimed   = errors.New("this domain is already in use on betorun")
 	ErrDomainLimit     = errors.New("too many domains for this container (10 maximum)")
 	ErrDomainsDisabled = errors.New("custom domains are not available: the platform has no public address")
+	ErrInvalidPath     = errors.New("invalid path: starts with /, at most 100 characters, letters, digits and - . _ ~ / only")
 )

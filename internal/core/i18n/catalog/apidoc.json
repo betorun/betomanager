@@ -1210,5 +1210,9 @@
  {
   "fr": "Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)",
   "en": "Kind: web (default, HTTP service), worker (long-running process without a port) or cron (scheduled task)"
+ },
+ {
+  "fr": "Chemin servi par ce conteneur (défaut /), ex. /auth : le reste du domaine peut aller à un autre conteneur du projet",
+  "en": "Path served by this container (default /), e.g. /auth: the rest of the domain can go to another container of the project"
  }
 ]
