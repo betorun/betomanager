@@ -405,12 +405,7 @@ func (s *WorkloadService) Events(ctx context.Context, id uuid.UUID) ([]domain.Wo
 			Object:  fmt.Sprintf("%s/%s", e.InvolvedObject.Kind, e.InvolvedObject.Name),
 			Count:   e.Count,
 		}
-		if !e.FirstTimestamp.IsZero() {
-			ev.FirstSeen = e.FirstTimestamp.Time
-		}
-		if !e.LastTimestamp.IsZero() {
-			ev.LastSeen = e.LastTimestamp.Time
-		}
+		ev.FirstSeen, ev.LastSeen = eventTimes(e)
 		out = append(out, ev)
 	}
 	return out, nil
@@ -484,4 +479,25 @@ func (s *WorkloadService) newHelmActionConfig(namespace string) (*action.Configu
 	return helm.NewActionConfig(s.K8sConfig, namespace, func(format string, v ...interface{}) {
 		s.Logger.Debugf(format, v...)
 	})
+}
+
+// eventTimes : premier et dernier passage d'un événement. Les événements de
+// l'API events.k8s.io (planificateur, kubelet récents) laissent
+// FirstTimestamp vide et datent dans EventTime / Series : sans repli, la
+// console affichait « 1 janv. 1 ».
+func eventTimes(e corev1.Event) (first, last time.Time) {
+	for _, t := range []time.Time{e.FirstTimestamp.Time, e.EventTime.Time, e.CreationTimestamp.Time} {
+		if !t.IsZero() {
+			first = t
+			break
+		}
+	}
+	last = e.LastTimestamp.Time
+	if last.IsZero() && e.Series != nil {
+		last = e.Series.LastObservedTime.Time
+	}
+	if last.IsZero() {
+		last = first
+	}
+	return first, last
 }

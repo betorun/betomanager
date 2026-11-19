@@ -42,15 +42,40 @@ type DomainSettings struct {
 	TLS bool
 }
 
-// NewResolver : résolveur DNS ; server (hôte:port) pour viser un résolveur
-// précis plutôt que celui de la machine.
-func NewResolver(server string) DNSResolver {
-	if server == "" {
+// DefaultDomainDNSServers : résolveurs publics des vérifications de domaine.
+// Celui de la machine garde en cache une réponse négative (le TXT lu avant
+// sa création), parfois une demi-heure : la preuve publiée restait
+// « introuvable ».
+const DefaultDomainDNSServers = "1.1.1.1:53,8.8.8.8:53"
+
+// NewResolver : résolveur DNS. servers : liste « hôte:port » séparée par des
+// virgules, essayés dans l'ordre ; vide = résolveurs publics par défaut ;
+// « system » = celui de la machine.
+func NewResolver(servers string) DNSResolver {
+	servers = strings.TrimSpace(servers)
+	if servers == "system" {
 		return net.DefaultResolver
+	}
+	if servers == "" {
+		servers = DefaultDomainDNSServers
+	}
+	var list []string
+	for _, s := range strings.Split(servers, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			list = append(list, s)
+		}
 	}
 	return &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
 		var d net.Dialer
-		return d.DialContext(ctx, network, server)
+		var last error
+		for _, s := range list {
+			c, err := d.DialContext(ctx, network, s)
+			if err == nil {
+				return c, nil
+			}
+			last = err
+		}
+		return nil, last
 	}}
 }
 
@@ -170,12 +195,13 @@ func (s *WorkloadService) AddDomain(ctx context.Context, workload uuid.UUID, hos
 	if len(existing) >= domain.MaxDomainsPerWorkload {
 		return nil, domain.ErrDomainLimit
 	}
-	token, err := s.Domains.ProjectHostToken(ctx, w.ProjectID, host)
+	// Même nom déjà demandé dans le projet : même preuve (un seul TXT), qu'elle
+	// soit déjà validée ou encore en attente.
+	token, shared, err := s.Domains.ProjectHostToken(ctx, w.ProjectID, host)
 	if err != nil {
 		return nil, err
 	}
-	shared := token != ""
-	if !shared {
+	if token == "" {
 		random, err := auth.RandomToken()
 		if err != nil {
 			return nil, err
@@ -376,6 +402,11 @@ func (s *WorkloadService) inputFor(ctx context.Context, w *domain.Workload, spec
 func (s *WorkloadService) challengeTXT(ctx context.Context, host string) []string {
 	records, err := s.DomainCfg.Resolver.LookupTXT(ctx, domain.ChallengePrefix+host)
 	if err != nil {
+		// Absent ou résolveur en défaut : la console dit « preuve introuvable »,
+		// le journal dit pourquoi.
+		if s.Logger != nil {
+			s.Logger.Infow("domain proof lookup failed", "name", domain.ChallengePrefix+host, "error", err)
+		}
 		return nil
 	}
 	for i := range records {

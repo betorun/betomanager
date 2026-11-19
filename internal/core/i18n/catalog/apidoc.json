@@ -1242,5 +1242,13 @@
  {
   "fr": "État d'un import",
   "en": "State of an import"
+ },
+ {
+  "fr": "Délai de démarrage toléré, en secondes (défaut 150, 600 au plus), pour une application lente à démarrer",
+  "en": "Tolerated startup time, in seconds (default 150, at most 600), for an application that is slow to start"
+ },
+ {
+  "fr": "Nouveau délai de démarrage toléré, en secondes (600 au plus)",
+  "en": "New tolerated startup time, in seconds (at most 600)"
  }
 ]

@@ -166,5 +166,9 @@
  {
   "fr": "Chemin invalide : commence par /, 100 caractères au plus, lettres, chiffres et - . _ ~ / seulement",
   "en": "invalid path: starts with /, at most 100 characters, letters, digits and - . _ ~ / only"
+ },
+ {
+  "fr": "startup_timeout_seconds : entre 10 et 600 secondes",
+  "en": "startup_timeout_seconds: between 10 and 600 seconds"
  }
 ]

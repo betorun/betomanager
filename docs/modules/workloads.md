@@ -65,11 +65,17 @@ Les conteneurs d'un même projet se joignent directement ([network-policy.yaml](
 
 Adresse interne d'un conteneur web : `http://<nom>.<espace>.svc` (Service, port 80), renvoyée par `LiveStatus.internal_url` et affichée par la CLI et la console. Worker et cron n'en ont pas. Un conteneur existant reçoit les règles à son prochain déploiement.
 
+## Retours du test Bomba (19/11)
+
+- **Déploiement en délai dépassé** : un conteneur `FAILED` / `HELM_ERROR` dont les pods finissent par démarrer (application lente) repasse `RUNNING` par la passe de récupération, à condition que le Deployment porte la version voulue (image et révision des variables) ; sinon l'échec reste.
+- **Délai de démarrage** : `startup_timeout_seconds` (création, mise à jour, GitHub, console, `betorun.yaml` `startup_timeout`), 10 à 600 s, défaut 150 s ; règle le seuil de la sonde de démarrage (essais de 5 s).
+- **Événements** : date prise dans `FirstTimestamp`, sinon `EventTime`, sinon la création de l'objet (les événements récents du planificateur laissaient « 1 janv. 1 »).
+
 ## Domaines personnalisés
 
-Un domaine se prouve par un TXT `_betorun-challenge.<nom>` propre à la demande, puis pointe vers la plateforme (A, CNAME ou ALIAS). Rien n'est routé avant la preuve ([service/domains.go](../../internal/modules/workloads/service/domains.go)).
+Les TXT sont lus par des résolveurs publics (`kubernetes.domain_dns_server`, défaut `1.1.1.1:53,8.8.8.8:53` ; `system` pour celui de la machine, sujet au cache négatif : une preuve lue avant sa création restait « introuvable » jusqu'à 30 min). Un échec de lecture est journalisé. Un domaine se prouve par un TXT `_betorun-challenge.<nom>` propre à la demande, puis pointe vers la plateforme (A, CNAME ou ALIAS). Rien n'est routé avant la preuve ([service/domains.go](../../internal/modules/workloads/service/domains.go)).
 
-- **Chemin** (migration 000029) : une route = nom + chemin (`/` par défaut). Plusieurs conteneurs d'un même projet partagent un nom, un chemin chacun (ex. `/auth` vers Keycloak, `/` vers le site) ; Traefik sert la règle la plus longue. Une route vérifiée n'a qu'un conteneur (`UNIQUE (hostname, path) WHERE verified`). Un nom déjà prouvé dans le projet transmet sa preuve aux nouveaux chemins. Un autre projet garde le nom tant que sa preuve est en place ; sinon toutes ses routes tombent (changement de mains). L'application doit savoir servir sous son préfixe (pas de réécriture).
+- **Chemin** (migration 000029) : une route = nom + chemin (`/` par défaut). Plusieurs conteneurs d'un même projet partagent un nom, un chemin chacun (ex. `/auth` vers Keycloak, `/` vers le site) ; Traefik sert la règle la plus longue. Une route vérifiée n'a qu'un conteneur (`UNIQUE (hostname, path) WHERE verified`). Un nom déjà demandé dans le projet (prouvé, ou encore en attente) transmet son jeton aux nouveaux chemins : un seul TXT. Un autre projet garde le nom tant que sa preuve est en place ; sinon toutes ses routes tombent (changement de mains). L'application doit savoir servir sous son préfixe (pas de réécriture).
 - **Enregistrements** : chaque enregistrement porte `name` (complet) et `host` (relatif à la zone, `@` au sommet ; zone = domaine enregistré, liste des suffixes publics). Sous-domaine : CNAME si la cible (`kubernetes.ingress_target`) est un nom, A si c'est une IP. Domaine nu : A vers les adresses IPv4 de la cible, plus un ALIAS proposé `alternative` (le fournisseur suit alors un changement d'adresse). Recommandé : une cible par nom, pour qu'un changement d'IP ne demande rien aux clients en sous-domaine.
 - **Fournisseur DNS** : reconnu par les serveurs NS de la zone (`dns_provider` : cloudflare, ovh, godaddy, namecheap, gandi, google, route53, ionos, hostinger, lws…) ; la console et la CLI affichent le guide correspondant.
 - Chart : un Ingress et un certificat par route (`customDomains` = `{host, path}`) ; une route `/` garde le nom d'Ingress d'avant les chemins.

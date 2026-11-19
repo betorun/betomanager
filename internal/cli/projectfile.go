@@ -55,8 +55,11 @@ type projectFile struct {
 	MaxDuration string   `yaml:"max_duration,omitempty"`
 	// HealthPath : chemin des sondes HTTP d'un conteneur web (défaut /), ex.
 	// /healthz. Pris en compte à la création.
-	HealthPath string            `yaml:"health_path,omitempty"`
-	Env        map[string]string `yaml:"env,omitempty"`
+	HealthPath string `yaml:"health_path,omitempty"`
+	// StartupTimeout : délai de démarrage toléré (ex. 5m) pour une application
+	// lente (Keycloak, JVM) ; défaut 150 s, 10 min au plus.
+	StartupTimeout string            `yaml:"startup_timeout,omitempty"`
+	Env            map[string]string `yaml:"env,omitempty"`
 	// Secrets : noms ; chaque valeur est lue dans l'environnement au déploiement.
 	Secrets []string `yaml:"secrets,omitempty"`
 }
@@ -207,6 +210,9 @@ func newDeploy() *cobra.Command {
 			if req.MaxDurationSeconds, err = pf.maxDurationSeconds(); err != nil {
 				return err
 			}
+			if req.StartupTimeoutSeconds, err = pf.startupTimeoutSeconds(); err != nil {
+				return err
+			}
 			if pf.Kind != "" && pf.Kind != kindWeb {
 				req.TargetPort = 0 // pas de port hors web
 			}
@@ -299,6 +305,18 @@ func (pf *projectFile) maxDurationSeconds() (int, error) {
 	d, err := time.ParseDuration(pf.MaxDuration)
 	if err != nil || d < time.Second {
 		return 0, errors.New(i18n.T("pf.max_duration.invalid", pf.MaxDuration))
+	}
+	return int(d / time.Second), nil
+}
+
+// startupTimeoutSeconds : startup_timeout (ex. 5m) en secondes ; 0 = défaut.
+func (pf *projectFile) startupTimeoutSeconds() (int, error) {
+	if pf.StartupTimeout == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(pf.StartupTimeout)
+	if err != nil || d < 10*time.Second || d > 10*time.Minute {
+		return 0, errors.New(i18n.T("pf.startup_timeout.invalid", pf.StartupTimeout))
 	}
 	return int(d / time.Second), nil
 }

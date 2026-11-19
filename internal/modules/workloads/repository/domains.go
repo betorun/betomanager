@@ -24,9 +24,10 @@ type DomainStore interface {
 	// HostClaims : domaines vérifiés portant ce nom (tous chemins), hors du
 	// domaine donné, avec le projet de leur conteneur.
 	HostClaims(ctx context.Context, hostname string, except uuid.UUID) ([]domain.HostClaim, error)
-	// ProjectHostToken : preuve d'un nom déjà vérifié dans ce projet (un autre
-	// chemin) ; "" si aucun.
-	ProjectHostToken(ctx context.Context, project uuid.UUID, hostname string) (string, error)
+	// ProjectHostToken : preuve d'un nom déjà demandé dans ce projet (un autre
+	// chemin) : vérifiée de préférence, sinon la plus ancienne en attente ; ""
+	// si aucune. verified : la preuve est déjà validée.
+	ProjectHostToken(ctx context.Context, project uuid.UUID, hostname string) (token string, verified bool, err error)
 	// HostnameTaken : nom déjà réservé par un site statique vérifié.
 	SiteHostnameTaken(ctx context.Context, hostname string) (bool, error)
 	// SetVerified : ErrDomainClaimed si le nom a été pris entre-temps.
@@ -100,16 +101,16 @@ func (s *gormDomainStore) HostClaims(ctx context.Context, hostname string, excep
 	return out, nil
 }
 
-func (s *gormDomainStore) ProjectHostToken(ctx context.Context, project uuid.UUID, hostname string) (string, error) {
+func (s *gormDomainStore) ProjectHostToken(ctx context.Context, project uuid.UUID, hostname string) (string, bool, error) {
 	var d domain.WorkloadDomain
 	err := s.db.WithContext(ctx).Table("workload_domains AS d").Select("d.*").
 		Joins("JOIN workloads w ON w.id = d.workload_id").
-		Where("w.project_id = ? AND d.hostname = ? AND d.verified", project, hostname).
-		Order("d.verified_at").First(&d).Error
+		Where("w.project_id = ? AND d.hostname = ?", project, hostname).
+		Order("d.verified DESC, d.created_at").First(&d).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", nil
+		return "", false, nil
 	}
-	return d.Token, err
+	return d.Token, d.Verified, err
 }
 
 func (s *gormDomainStore) SiteHostnameTaken(ctx context.Context, hostname string) (bool, error) {
