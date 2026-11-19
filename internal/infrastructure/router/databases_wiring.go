@@ -10,8 +10,10 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	databasesDomain "github.com/thekrauss/kubemanager/internal/modules/databases/domain"
 	workloadsDomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
@@ -38,6 +40,7 @@ func (a *App) newDatabasesController() *databases.Controller {
 				a.Logger.Warnw("databases: no backup storage configured (databases.backup.*): new databases will have NO backups")
 			}
 			s.Clusters = cnpg
+			s.Imports = a.databaseImports(cnpg)
 		}
 	}
 	ctl := databases.NewController(s)
@@ -45,6 +48,30 @@ func (a *App) newDatabasesController() *databases.Controller {
 		ctl.IAM = a.IAM
 	}
 	return ctl
+}
+
+// defaultImportFetchImage : télécharge le dump dans le Job d'import.
+const defaultImportFetchImage = "curlimages/curl:8.11.1"
+
+// databaseImports : import de dumps. Il faut le stockage d'objets (le dump y
+// attend le Job), l'API joignable des pods et le secret de signature des
+// builds (URL signées) ; sinon la fonction est indisponible.
+func (a *App) databaseImports(importer databases.Importer) *databases.ImportConfig {
+	c := a.Config.Builds.WithDefaults()
+	if a.ObjectStore == nil || c.Secret == "" || c.PublicAPIURL == "" {
+		a.Logger.Warnw("databases: dump import disabled (object store, builds.secret or builds.public_api_url missing)")
+		return nil
+	}
+	fetch := a.Config.Databases.ImportFetchImage
+	if fetch == "" {
+		fetch = defaultImportFetchImage
+	}
+	return &databases.ImportConfig{
+		Store: &databases.GormRepository{DB: a.DB}, Dumps: a.ObjectStore,
+		Signer: registry.Credentials{Secret: []byte(c.Secret)}, Importer: importer,
+		PublicAPIURL: c.PublicAPIURL, FetchImage: fetch, EgressAllow: c.EgressAllowCIDRs,
+		MaxBytes: a.Config.Databases.ImportMaxBytes,
+	}
 }
 
 // databaseWorkloads : les conteneurs vus par le module des bases.
@@ -104,4 +131,21 @@ func addDatabaseRoutes(app *App) {
 			Hint: "Creates a NEW database from the backups of this one (latest state, or target_time in RFC 3339). The source is never changed. Then attach_database switches a container to the copy."})
 	dbs.AddRoute("/:databaseID", http.MethodDelete, "Supprimer une base (ses données sont perdues)", g.Perm(iam.DatabasesDelete, db),
 		tonic.Handler(r.Delete, http.StatusNoContent))
+
+	// Import d'un dump (multipart : dump, clean) : hors tonic, lu en flux.
+	dbs.AddRoute("/:databaseID/import", http.MethodPost, "Importer un dump pg_dump -Fc dans la base (restauré par un Job du projet)",
+		g.Perm(iam.DatabasesImport, db), wrapRawHandler(r.Import)).
+		Documented(RawDoc{Input: databasesDomain.ImportUploadPath{}, Status: http.StatusAccepted, Produces: MIMEJSON, Output: databasesDomain.DatabaseImport{},
+			Multipart: []FormField{
+				{Name: databasesDomain.DumpFormField, Description: "Dump au format personnalisé de pg_dump (-Fc)", File: true, Required: true},
+				{Name: "clean", Description: "true : supprimer d'abord les objets existants du dump"},
+			}})
+	dbs.AddRoute("/:databaseID/imports", http.MethodGet, "Imports récents d'une base", g.Perm(iam.DatabasesGet, db),
+		tonic.Handler(r.ListImports, http.StatusOK))
+	dbs.AddRoute("/:databaseID/imports/:importID", http.MethodGet, "État d'un import (journal de pg_restore en cas d'échec)", g.Perm(iam.DatabasesGet, db),
+		tonic.Handler(r.GetImport, http.StatusOK))
+
+	// Interne, sans session : le Job d'import lit le dump par une URL signée.
+	internal := RootGroup.NewGroup("/databases/imports", "Dump d'un import pour son Job").Internal()
+	internal.AddRoute("/:importID/dump", http.MethodGet, "Dump d'un import (URL signée)", Public(), wrapRawHandler(r.Dump))
 }

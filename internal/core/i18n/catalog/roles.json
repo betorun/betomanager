@@ -434,5 +434,9 @@
  {
   "fr": "Brancher une base de données sur un conteneur",
   "en": "Attach a database to a container"
+ },
+ {
+  "fr": "Importer un dump dans une base de données (ses données peuvent être remplacées)",
+  "en": "Import a dump into a database (its data may be replaced)"
  }
 ]

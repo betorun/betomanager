@@ -3,6 +3,7 @@ package databases
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +48,14 @@ func apiError(err error) error {
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
 	case errors.Is(err, domain.ErrNameTaken):
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
+	case errors.Is(err, domain.ErrNotADump), errors.Is(err, domain.ErrDumpTooLarge):
+		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
+	case errors.Is(err, domain.ErrImportNotFound):
+		return betoerrors.New(betoerrors.CodeNotFound, err.Error())
+	case errors.Is(err, domain.ErrImportRunning):
+		return betoerrors.New(betoerrors.CodeConflict, err.Error())
+	case errors.Is(err, domain.ErrImportsDisabled):
+		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	case errors.Is(err, domain.ErrUnavailable):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	case strings.HasPrefix(err.Error(), "at most "), strings.HasPrefix(err.Error(), "project is not ready"):
@@ -157,4 +166,99 @@ func (h *Controller) Restore(c *gin.Context, in *domain.RestoreRequest) (*domain
 	}
 	out, err := h.Service.Restore(c.Request.Context(), p, d, in.Name, in.TargetTime, string(principal))
 	return out, apiError(err)
+}
+
+//  Import d'un dump
+
+// multipartOverhead : marge de l'enveloppe multipart autour du fichier.
+const multipartOverhead = 1 << 20
+
+// Import : envoi d'un dump (multipart : dump, clean=true pour remplacer les
+// objets existants). Hors tonic : le fichier est lu en flux.
+func (h *Controller) Import(c *gin.Context, in *domain.ImportUploadPath) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	max := h.Service.MaxDumpBytes()
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, max+multipartOverhead)
+	fh, err := c.FormFile(domain.DumpFormField)
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			h.writeError(c, betoerrors.New(betoerrors.CodeInvalidInput, domain.ErrDumpTooLarge.Error()))
+			return
+		}
+		h.writeError(c, betoerrors.New(betoerrors.CodeInvalidInput, `missing "dump" file (pg_dump -Fc)`))
+		return
+	}
+	if c.Request.MultipartForm != nil {
+		defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
+	}
+	f, err := fh.Open()
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	defer f.Close()
+	creator := ""
+	if principal, ok := security.PrincipalFromContext(c); ok {
+		creator = string(principal)
+	}
+	clean := strings.EqualFold(c.PostForm("clean"), "true")
+	imp, err := h.Service.Import(c.Request.Context(), p, d, f, fh.Size, clean, creator)
+	if err != nil {
+		h.writeError(c, apiError(err))
+		return
+	}
+	c.JSON(http.StatusAccepted, imp)
+}
+
+// ListImports : imports récents d'une base.
+func (h *Controller) ListImports(c *gin.Context, in *domain.DatabasePath) ([]domain.DatabaseImport, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := h.Service.ListImports(c.Request.Context(), p, d)
+	return out, apiError(err)
+}
+
+// GetImport : un import, état à jour.
+func (h *Controller) GetImport(c *gin.Context, in *domain.ImportPath) (*domain.DatabaseImport, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	id, err := uuid.Parse(in.ImportID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeNotFound, domain.ErrImportNotFound.Error())
+	}
+	out, err := h.Service.GetImport(c.Request.Context(), p, d, id)
+	return out, apiError(err)
+}
+
+// Dump : fichier d'un import, lu par le Job (URL signée, sans session).
+func (h *Controller) Dump(c *gin.Context, in *domain.DumpPath) {
+	id, err := uuid.Parse(in.ImportID)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	obj, size, err := h.Service.Dump(c.Request.Context(), id, in.Expires, in.Sig)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	defer obj.Close()
+	c.DataFromReader(http.StatusOK, size, "application/octet-stream", obj, nil)
+}
+
+func (h *Controller) writeError(c *gin.Context, err error) {
+	status, body := betoerrors.ToHTTPError(err)
+	if status >= http.StatusInternalServerError && h.Service.Logger != nil {
+		h.Service.Logger.Errorw("database import failed", "error", err)
+	}
+	c.Data(status, "application/json; charset=utf-8", body)
 }

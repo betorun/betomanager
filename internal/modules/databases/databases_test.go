@@ -456,7 +456,7 @@ func TestImageVersion(t *testing.T) {
 	for in, want := range map[string]string{
 		"ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie": "18.6",
 		"ghcr.io/cloudnative-pg/postgresql:17.6":               "17.6",
-		"localhost:5000/pg": "", "": "",
+		"localhost:5000/pg":                                    "", "": "",
 	} {
 		if got := imageVersion(in); got != want {
 			t.Errorf("%q → %q, attendu %q", in, got, want)

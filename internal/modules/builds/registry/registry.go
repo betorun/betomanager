@@ -111,6 +111,17 @@ func (c Credentials) SourceSignature(build uuid.UUID, expires int64) string {
 	return c.sign("source", build.String(), strconv.FormatInt(expires, 10))
 }
 
+// DumpSignature : URL signée du dump d'un import de base (même secret, autre
+// usage : une signature de source ne vaut pas pour un dump).
+func (c Credentials) DumpSignature(importID uuid.UUID, expires int64) string {
+	return c.sign("db-dump", importID.String(), strconv.FormatInt(expires, 10))
+}
+
+// VerifyDump : URL de dump encore valable.
+func (c Credentials) VerifyDump(importID uuid.UUID, expires int64, sig string, now time.Time) bool {
+	return now.Unix() <= expires && hmac.Equal([]byte(c.DumpSignature(importID, expires)), []byte(sig))
+}
+
 // VerifySource : URL signée encore valable.
 func (c Credentials) VerifySource(build uuid.UUID, expires int64, sig string, now time.Time) bool {
 	return now.Unix() <= expires && hmac.Equal([]byte(c.SourceSignature(build, expires)), []byte(sig))

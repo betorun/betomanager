@@ -82,5 +82,29 @@
  {
   "fr": "L'instant à restaurer doit être dans le passé",
   "en": "the restore time must be in the past"
+ },
+ {
+  "fr": "Un import est déjà en cours sur cette base",
+  "en": "an import is already running on this database"
+ },
+ {
+  "fr": "L'import de dumps n'est pas disponible sur cette plateforme",
+  "en": "dump import is not available on this platform"
+ },
+ {
+  "fr": "Dump trop volumineux : 2 Go au plus",
+  "en": "dump too large: 2 GB at most"
+ },
+ {
+  "fr": "Import introuvable",
+  "en": "import not found"
+ },
+ {
+  "fr": "Fichier « dump » manquant (pg_dump -Fc)",
+  "en": "missing \"dump\" file (pg_dump -Fc)"
+ },
+ {
+  "fr": "Ce n'est pas un dump au format personnalisé de pg_dump : créez-le avec pg_dump -Fc (les dumps SQL bruts ne sont pas acceptés)",
+  "en": "not a pg_dump custom-format file: create it with pg_dump -Fc (plain SQL dumps are not accepted)"
  }
 ]
