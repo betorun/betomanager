@@ -4,21 +4,31 @@
 
 ## Responsabilités
 
-- CRUD projet (create, get, delete, status, metrics).
+- CRUD projet (create, list, delete, status, metrics).
+- Limites de ressources : posées par défaut à la création, modifiées seulement par le staff (`PATCH /admin/projects/:id/limits`).
 - Saga Temporal `CreateProjectWorkflow` : DB → namespace K8s → quota → owner.
-- Saga Temporal `DeleteProjectWorkflow` : namespace → workloads DB → project DB.
+- Saga Temporal `DeleteProjectWorkflow` : namespace → workloads DB → objets des sites → project DB (cascade : bases, membres, builds, sites…).
 - Lecture des metrics via le Metrics Server K8s (CPU/RAM/Storage par namespace).
 
 ## Endpoints HTTP
 
-Sous `/kmanager/v1/projects`. Voir [route.go:128-134](../../internal/infrastructure/router/route.go#L128).
+Sous `/kmanager/v1`. Voir `addProjectRoutes` dans [route.go](../../internal/infrastructure/router/route.go).
 
-| Méthode | Chemin | Description |
-|---------|--------|-------------|
-| `POST` | `/` | Créer un projet (déclenche `CreateProjectWorkflow`) |
-| `GET` | `/:id/status` | Statut DB + état K8s (namespace exists) |
-| `GET` | `/:id/metrics` | CPU/RAM/Storage live (Metrics Server) + réservé (DB) |
-| `DELETE` | `/:id` | Supprimer (déclenche `DeleteProjectWorkflow`) |
+| Méthode | Chemin | Permission | Description |
+|---------|--------|-----------|-------------|
+| `POST` | `/projects` | authentifié | Créer un projet (déclenche `CreateProjectWorkflow`), toujours avec les limites par défaut |
+| `GET` | `/projects` | authentifié (filtré par les droits) | Projets accessibles (200 plus récents) |
+| `GET` | `/projects/:id/status` | `resourcemanager.projects.get` | Statut DB + état K8s |
+| `GET` | `/projects/:id/metrics` | `resourcemanager.projects.get` | Consommation live (Metrics Server), réservé, limites, images |
+| `DELETE` | `/projects/:id` | `resourcemanager.projects.delete` (sensible) | Supprimer (déclenche `DeleteProjectWorkflow`) ; la console le propose sur la page Projet, nom à retaper |
+| `PATCH` | `/admin/projects/:id/limits` | `platform.projects.setLimits` (staff, sensible) | Nouvelles limites `{cpu_limit, memory_limit, storage_limit}` ; un champ vide garde la valeur |
+
+## Limites et quota
+
+- **À la création** : `DefaultProjectCPU` (`2000m`) et `DefaultProjectMemory` (`4Gi`) ([service/create.go](../../internal/modules/projects/service/create.go)). Le client ne choisit pas ses limites ; le bootstrap n'en accepte pas.
+- **Changement (staff)** : [service/limits.go](../../internal/modules/projects/service/limits.go). Quantités Kubernetes positives, refusées sous ce que les conteneurs réservent déjà (`ErrLimitsBelowUsage`). La base est mise à jour d'abord (l'API s'y réfère pour accepter un déploiement), puis `UpdateProjectLimitsWorkflow` (ID `project-limits-<id>`, un seul à la fois) ajuste le ResourceQuota ; le rappeler avec les mêmes valeurs reprend un ajustement échoué.
+- **Ce qui compte** : l'API refuse un déploiement qui dépasserait la limite. Comptent les conteneurs dans tous les états sauf supprimés (un conteneur en échec garde sa réservation), et pour le stockage les disques des bases.
+- **ResourceQuota Kubernetes** : garde-fou posé avec une marge au-dessus de la limite (`withRollingMargin`), pour qu'une mise à jour progressive (un pod de plus pendant le déploiement) ne reste pas bloquée.
 
 ## Tables DB
 
@@ -66,7 +76,8 @@ Ordre **namespace first, DB second** — même logique que le delete workload. E
 ## Pitfalls
 
 - **Namespace orphelin** — si le workflow plante entre `CreateNamespace` et `ReconcileProjectResources`, le namespace existe sans quota. La saga n'auto-répare pas ça — un admin doit retry. À suivre dans Grafana "Projects in PROVISIONING state".
-- **Delete race** — si un user POST un workload dans un project pendant que le delete workflow tourne, le workload peut être créé après la suppression du namespace → erreur à l'InstallChart. Atténuation : marquer le project `status=DELETING` avant le workflow (à faire — TODO si pas encore présent).
+- **Delete race** — `DeleteProject` ne passe pas le projet en `DELETING` en base (seule la réponse 202 le dit). Un workload créé pendant la suppression peut l'être après celle du namespace → erreur à l'InstallChart. Effet de bord connu : `GET /identity/bootstrap-status` garde le projet jusqu'à la dernière étape ; la console attend donc la fin (écran « Suppression du projet en cours »).
+- **Recréer un projet du même nom** juste après une suppression : le namespace `km-<nom>` peut être encore en cours de suppression côté Kubernetes (non testé).
 - **Name collision** — `projects.name` est `UNIQUE`. Les conflits renvoient 409 — le handler doit mapper proprement.
 
 ## Tests
@@ -83,7 +94,8 @@ Ordre **namespace first, DB second** — même logique que le delete workload. E
 - [service/get.go](../../internal/modules/projects/service/get.go) — GetProjectStatus + GetMetrics (Metrics Server).
 - [activities/db.go](../../internal/modules/projects/activities/db.go) — CreateProjectInDB, DeleteProjectDBActivity, DeleteProjectWorkloadsActivity.
 - [activities/k8s.go](../../internal/modules/projects/activities/k8s.go) — CreateNamespace, DeleteNamespace, ReconcileProjectResources, AssignDefaultOwner.
-- [workflows/](../../internal/modules/projects/workflows/) — create.go, delete.go.
+- [service/limits.go](../../internal/modules/projects/service/limits.go) — SetLimits (staff).
+- [workflows/](../../internal/modules/projects/workflows/) — create.go, delete.go, limits.go.
 
 ## Points d'attention ajout de feature
 

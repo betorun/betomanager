@@ -1,5 +1,5 @@
 // Package registries : API des accès d'un projet à ses registres d'images
-// externes (docs/adr/0008-registres-externes.md).
+// externes (docs/adr/0011-registres-externes.md).
 package registries
 
 import (

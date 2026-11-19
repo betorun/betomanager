@@ -26,22 +26,22 @@ graph LR
 
 ## Endpoints HTTP
 
-Sous `/kmanager/v1/projects/:id/sites` (`:id` = projet). Chaque groupe est protégé par `RequireProjectPermission`.
+Sous `/kmanager/v1/projects/:id/sites` (`:id` = projet). Déclarées dans `addSiteRoutes` ([route.go](../../internal/infrastructure/router/route.go)) ; chaque route porte sa permission IAM (`g.Perm`), vérifiée sur le projet (liste, création) ou sur `projects/<id>/sites/<siteID>`.
 
 | Méthode | Chemin | Permission | Description |
 |---------|--------|-----------|-------------|
-| `GET` | `/` | `project:view` | Lister les sites |
-| `GET` | `/:siteID` | `project:view` | Détails + URL publique |
-| `GET` | `/:siteID/deployments` | `project:view` | Historique (50 derniers) |
-| `GET` | `/:siteID/domains` | `project:view` | Domaines personnalisés + cible CNAME |
-| `POST` | `/` | `k8s:workload:create` | Créer un site `{name, subdomain?, spa_fallback}` |
-| `PATCH` | `/:siteID` | `k8s:workload:create` | Modifier `spa_fallback` |
-| `POST` | `/:siteID/deployments` | `k8s:workload:create` | Upload multipart, champ `archive` (.zip) → 202 |
-| `POST` | `/:siteID/deployments/:deploymentID/activate` | `k8s:workload:create` | Rollback vers un déploiement `READY` |
-| `POST` | `/:siteID/domains` | `k8s:workload:create` | Ajouter un domaine `{hostname}` |
-| `POST` | `/:siteID/domains/:domainID/verify` | `k8s:workload:create` | Vérifier le DNS |
-| `DELETE` | `/:siteID` | `k8s:workload:delete` | Supprimer (workflow : fichiers puis DB) |
-| `DELETE` | `/:siteID/domains/:domainID` | `k8s:workload:delete` | Retirer un domaine |
+| `GET` | `/` | `sites.sites.list` | Lister les sites |
+| `POST` | `/` | `sites.sites.create` | Créer un site `{name, subdomain?, spa_fallback}` |
+| `GET` | `/:siteID` | `sites.sites.get` | Détails + URL publique |
+| `PATCH` | `/:siteID` | `sites.sites.update` | Modifier `spa_fallback` |
+| `DELETE` | `/:siteID` | `sites.sites.delete` | Supprimer (workflow : fichiers puis DB) |
+| `GET` | `/:siteID/deployments` | `sites.deployments.list` | Historique (50 derniers) |
+| `POST` | `/:siteID/deployments` | `sites.deployments.create` | Upload multipart, champ `archive` (.zip) → 202 |
+| `POST` | `/:siteID/deployments/:deploymentID/activate` | `sites.deployments.activate` | Rollback vers un déploiement `READY` |
+| `GET` | `/:siteID/domains` | `sites.domains.list` | Domaines personnalisés + enregistrements DNS (TXT de preuve, CNAME) |
+| `POST` | `/:siteID/domains` | `sites.domains.create` | Ajouter un domaine `{hostname}` |
+| `POST` | `/:siteID/domains/:domainID/verify` | `sites.domains.verify` | Vérifier la preuve de propriété (TXT) |
+| `DELETE` | `/:siteID/domains/:domainID` | `sites.domains.delete` | Retirer un domaine (204) |
 
 ```sh
 curl -X POST -H "Authorization: Bearer $TOKEN" \
@@ -51,7 +51,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 ## Tables DB
 
-[migrations/000002_sites.up.sql](../../migrations/000002_sites.up.sql) : `sites`, `site_deployments`, `site_domains`.
+[migrations/000002_sites.up.sql](../../migrations/000002_sites.up.sql) : `sites`, `site_deployments`, `site_domains` ; preuve de propriété des domaines (`token`, unicité des seuls domaines vérifiés) : [000020_site_domain_proof.up.sql](../../migrations/000020_site_domain_proof.up.sql).
 
 ## Stockage
 
@@ -73,7 +73,7 @@ Le préfixe est construit des deux côtés : `domain.ObjectPrefix` (API) et `edg
 1. **Zip-slip** : les chemins absolus ou contenant `..` font refuser l'archive entière, avant toute écriture.
 2. **Limites** : 100 Mio d'archive, 500 Mio décompressés, 10 000 fichiers (`sites.*` dans la config), vérifiées sur l'en-tête **et** à la lecture.
 3. **`index.html` obligatoire** à la racine. Un dossier racine unique (`dist/`) est retiré automatiquement.
-4. **Domaine perso servi seulement si vérifié** : CNAME vers `edge_target` ou le sous-domaine du site, ou (apex) toutes ses IP égales à celles de l'edge. Sans ça, n'importe qui pourrait capter un domaine et faire émettre des certificats.
+4. **Domaine perso servi seulement si vérifié** par une **preuve de propriété** : TXT `_betorun-challenge.<domaine>` contenant le jeton propre à la demande (`betorun-verify=…`). Pointer vers la plateforme ne suffit pas (n'importe quel client pourrait capter un domaine qui nous vise déjà) : `pointing` (CNAME vers `edge_target` ou le sous-domaine du site, ou toutes les IP égales à celles de l'edge) n'est qu'une information pour la console. Une demande ne réserve pas le nom ; seul un domaine vérifié le réserve. Un domaine vérifié reste servi si la preuve disparaît, jusqu'à ce qu'un autre apporte la sienne (changement de mains). Un nom déjà vérifié ailleurs sur la plateforme (conteneur) est refusé (`HostnameInUse`, 409).
 5. **L'edge ne sert que** les sites `LIVE` avec un déploiement actif. Cache nom d'hôte → site de 10 s : un déploiement est visible au plus 10 s après son activation. Le HTML est servi avec `max-age=0, must-revalidate`, le reste avec 1 h de cache.
 6. **Identifiants de l'edge en lecture seule** (stockage et DB). En dev : identité `edge` de [docker/seaweedfs/s3.json](../../docker/seaweedfs/s3.json).
 
@@ -99,7 +99,9 @@ Le préfixe est construit des deux côtés : `domain.ObjectPrefix` (API) et `edg
 ## Tests
 
 - [activities/archive_test.go](../../internal/modules/sites/activities/archive_test.go) : zip-slip, limites, dossier racine, fichiers parasites.
-- [service/verify_test.go](../../internal/modules/sites/service/verify_test.go) : vérification DNS.
+- [service/verify_test.go](../../internal/modules/sites/service/verify_test.go) : `pointing` (CNAME, IP), pointer n'est pas une preuve, propriété par TXT.
+- [service/compensate_test.go](../../internal/modules/sites/service/compensate_test.go) : compensation si le workflow ne démarre pas.
+- [hsites_upload_test.go](../../internal/modules/sites/hsites_upload_test.go) : fichiers temporaires de l'upload supprimés.
 - [workflows/workflows_test.go](../../internal/modules/sites/workflows/workflows_test.go) : saga, message utilisateur.
 - [internal/edge/server_test.go](../../internal/edge/server_test.go) : résolution des chemins, SPA, 404, `/check`, cache.
 - [e2e_test.go](../../internal/modules/sites/e2e_test.go) : vrai Postgres + S3, de l'upload au service (`SITES_E2E=1`, voir l'en-tête du fichier).

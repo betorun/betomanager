@@ -120,6 +120,16 @@ billing.accounts.get   billing.accounts.update   billing.payments.create
 logging.auditLogs.read
 ```
 
+Familles ajoutées depuis (liste complète et titres dans le catalogue) :
+
+```
+workloads.variables.*   workloads.domains.*   workloads.builds.*   workloads.github.manage
+workloads.registries.*
+databases.databases.list/get/create/delete/connect/import/reset
+iam.groups.*
+platform.clusters.*   platform.clusterKeys.*   platform.projects.setLimits
+```
+
 - Le **catalogue** est un fichier Go unique (`internal/iam/permissions.go`), source de vérité, exporté pour la doc et l'UI.
 - **Chaque route déclare une permission** (`.Permission(iam.SitesDeploymentsCreate, resolver)`). Un test parcourt toutes les routes enregistrées et échoue si l'une n'en a pas (exceptions explicites et listées : login, health, edge…).
 - Une permission n'est **jamais supprimée** ni renommée une fois publiée (les rôles personnalisés des clients la référencent). Elle peut être dépréciée.
@@ -278,7 +288,7 @@ Les clés existantes (`km_…`, rattachées à des utilisateurs) restent valides
 `internal/middleware/security/mfa.go`, `internal/iam/orgpolicy.go`, migration 000011.
 
 - **Signal** : claims Keycloak `acr` (niveau atteint) et `auth_time`. `iam.mfa_acr_values` liste les valeurs qui attestent un MFA (ex. `gold`). Vide : rien n'est exigé et une organisation ne peut pas imposer le MFA (`FAILED_PRECONDITION`).
-- **Step-up** : 17 permissions marquées `Sensitive` (policies, suppression de projet, clés, rôles personnalisés, groupes, facturation, clés de cluster) exigent un MFA de moins de `iam.step_up_max_age` (10 min). Seules les personnes sont concernées (jeton Keycloak). Les comptes de service, clés API et jetons STS ne le sont pas.
+- **Step-up** : 21 permissions marquées `Sensitive` (policies, suppression de projet, clés, rôles personnalisés, groupes, facturation, clés de cluster, suppression, import et remise à zéro d'une base, limites d'un projet) exigent un MFA de moins de `iam.step_up_max_age` (10 min). Seules les personnes sont concernées (jeton Keycloak). Les comptes de service, clés API et jetons STS ne le sont pas.
 - **`iam.requireMfa`** : politique d'organisation (`GET/PUT /organizations/{id}/securityPolicy`). Toute action d'une personne sur l'organisation ou ses projets exige un MFA, sans contrainte de fraîcheur. La modifier est sensible, donc personne ne l'active sans être en MFA. Prise d'effet en 30 s au plus sur les autres réplicas.
 - **Refus** : RFC 9470. Réponse 401, `WWW-Authenticate: Bearer error="insufficient_user_authentication", acr_values="gold"[, max_age=600]`, corps `code: STEP_UP_REQUIRED`. La console relance la connexion avec `GET /identity/oidc/authorize?step_up=true` (`acr_values` + `max_age=0`, ré-authentification forcée), puis l'utilisateur refait l'action.
 - **Console** : `GET /iam/session` indique l'état MFA de la session, la validité du step-up et le lien vers la page Sécurité du compte Keycloak (gestion TOTP/passkeys).
@@ -299,7 +309,8 @@ Les clés existantes (`km_…`, rattachées à des utilisateurs) restent valides
 
 Les rôles Keycloak `SUPER_ADMIN`/`ADMIN` ne donnent plus de contournement global :
 
-- Le staff a des **rôles plateforme** explicites sur la ressource `platform` (`roles/platform.support` en lecture, `roles/platform.operator`…), vérifiés par le même `iam.Check`.
+- Le staff a des **rôles plateforme** explicites sur la ressource `platform` (`roles/platform.support` en lecture, `roles/platform.admin`), vérifiés par le même `iam.Check`. Ils sont attribués par la configuration (`iam.platform_admins`, `iam.platform_support` : listes d'e-mails), réconciliée toutes les 10 min ; un e-mail retiré perd son rôle.
+- `roles/platform.admin` porte les clés de cluster et `platform.projects.setLimits` : `PATCH /admin/projects/{id}/limits` (CPU, mémoire, stockage ; sensible). Un client ne choisit pas ses limites : un projet naît avec les valeurs par défaut, seul le staff les change.
 - Accéder aux données d'un client exige une **justification** (ticket) et produit une entrée d'audit **visible par le client** (équivalent « Access Transparency » de Google).
 - Accès d'urgence (*break-glass*) : temporaire (1 h), à double validation, alerte immédiate.
 
