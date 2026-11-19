@@ -208,26 +208,56 @@ func (s *Service) reset(ctx context.Context, t *target, actor string) (*domain.S
 			strings.TrimRight(s.Imports.PublicAPIURL, "/"), taskID, exp, s.Imports.Signer.SnapshotSignature(taskID, exp)),
 		FetchImage: s.Imports.FetchImage, EgressAllow: s.Imports.EgressAllow,
 	}
-	if err := s.Shell.Reset(ctx, t.ns, t.TaskTarget, upload); err != nil {
-		s.deleteObject(context.WithoutCancel(ctx), key)
-		return nil, fmt.Errorf("the database was not emptied: %w", err)
+	// La ligne de la copie est enregistrée AVANT le Job : quoi qu'il arrive
+	// après le vidage (base indisponible, délai dépassé, API relancée), la
+	// copie reste restaurable depuis la console. Rien d'enregistrable : rien
+	// n'est vidé.
+	now := s.now()
+	snap := &domain.Snapshot{DatabaseID: t.db.ID, ObjectKey: key, TakenBy: actor, TakenAt: now, ExpiresAt: now.Add(domain.SnapshotRetention)}
+	if err := s.Snapshots.SaveSnapshot(ctx, snap); err != nil {
+		return nil, fmt.Errorf("the safety copy could not be recorded, nothing was emptied: %w", err)
 	}
+	resetErr := s.Shell.Reset(ctx, t.ns, t.TaskTarget, upload)
 	up.mu.Lock()
 	size, received := up.size, up.done
 	up.mu.Unlock()
+	keep := context.WithoutCancel(ctx)
 	if !received {
-		// Ne devrait pas arriver : le Job n'a pas d'issue sans l'envoi.
-		return nil, errors.New("the safety copy did not reach the API")
+		// Pas de copie : le Job n'a rien vidé (le vidage suit l'envoi). On
+		// remet la copie précédente.
+		s.restoreSnapshotRow(keep, t.db.ID, prev)
+		s.deleteObject(keep, key)
+		if resetErr == nil {
+			resetErr = errors.New("the safety copy did not reach the API")
+		}
+		return nil, fmt.Errorf("the database was not emptied: %w", resetErr)
 	}
-	now := s.now()
-	snap := &domain.Snapshot{DatabaseID: t.db.ID, ObjectKey: key, SizeBytes: size, TakenBy: actor, TakenAt: now, ExpiresAt: now.Add(domain.SnapshotRetention)}
-	if err := s.Snapshots.SaveSnapshot(ctx, snap); err != nil {
-		return nil, err
+	// La copie est arrivée : elle devient la copie de la base, même si la
+	// suite échoue (vidage incertain, délai dépassé).
+	snap.SizeBytes = size
+	if err := s.Snapshots.SaveSnapshot(keep, snap); err != nil {
+		s.warn("safety copy size not recorded", "database", t.db.ID, "error", err)
 	}
 	if prev != nil && prev.ObjectKey != key {
-		s.deleteObject(ctx, prev.ObjectKey)
+		s.deleteObject(keep, prev.ObjectKey)
+	}
+	if resetErr != nil {
+		return nil, fmt.Errorf("the safety copy is kept (restorable for 24 h), but emptying the database failed: %w", resetErr)
 	}
 	return snap, nil
+}
+
+// restoreSnapshotRow : remet la copie précédente (ou aucune).
+func (s *Service) restoreSnapshotRow(ctx context.Context, id uuid.UUID, prev *domain.Snapshot) {
+	var err error
+	if prev != nil {
+		err = s.Snapshots.SaveSnapshot(ctx, prev)
+	} else {
+		err = s.Snapshots.DeleteSnapshot(ctx, id)
+	}
+	if err != nil {
+		s.warn("previous safety copy row not restored", "database", id, "error", err)
+	}
 }
 
 // ReceiveSnapshot : la copie envoyée par le Job (URL signée, sans session),

@@ -26,8 +26,10 @@ type fakeShell struct {
 	svc     *Service
 	tables  int
 	dumpErr error
-	dumps   int
-	resets  int
+	// emptyErr : la copie part, puis le vidage échoue.
+	emptyErr error
+	dumps    int
+	resets   int
 }
 
 func (f *fakeShell) Contents(context.Context, string, TaskTarget) (domain.Contents, error) {
@@ -64,6 +66,9 @@ func (f *fakeShell) Reset(ctx context.Context, _ string, _ TaskTarget, snap *Sna
 			return errors.New("second envoi accepté")
 		}
 	}
+	if f.emptyErr != nil {
+		return f.emptyErr
+	}
 	f.resets++
 	f.tables = 0
 	return nil
@@ -72,6 +77,9 @@ func (f *fakeShell) Reset(ctx context.Context, _ string, _ TaskTarget, snap *Sna
 type memSnapshots struct {
 	mu   sync.Mutex
 	rows map[uuid.UUID]domain.Snapshot
+	// failSave : numéros des enregistrements (1, 2…) qui échouent.
+	failSave map[int]bool
+	saves    int
 }
 
 func (m *memSnapshots) GetSnapshot(_ context.Context, id uuid.UUID) (*domain.Snapshot, error) {
@@ -85,6 +93,10 @@ func (m *memSnapshots) GetSnapshot(_ context.Context, id uuid.UUID) (*domain.Sna
 func (m *memSnapshots) SaveSnapshot(_ context.Context, s *domain.Snapshot) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.saves++
+	if m.failSave[m.saves] {
+		return errors.New("column \"object_key\" does not exist")
+	}
 	m.rows[s.DatabaseID] = *s
 	return nil
 }
@@ -247,4 +259,59 @@ func TestResetJobSpec(t *testing.T) {
 	require.NotNil(t, pw)
 	assert.Equal(t, "db-main-app", pw.ValueFrom.SecretKeyRef.Name)
 	assert.False(t, *spec.AutomountServiceAccountToken)
+}
+
+// Incident du 19 nov. : l'enregistrement de la copie échouait APRÈS le
+// vidage. Désormais la ligne est écrite avant : si elle ne peut pas l'être,
+// rien n'est vidé.
+func TestReset_RecordFailsBeforeEmptying(t *testing.T) {
+	s, d, sh, snaps, _, _ := resetSvc(t, 24)
+	snaps.failSave = map[int]bool{1: true}
+	_, err := s.Reset(context.Background(), d.ProjectID, d.ID, "main", "u")
+	require.Error(t, err)
+	assert.Zero(t, sh.resets, "rien n'est vidé")
+	assert.Equal(t, 24, sh.tables)
+}
+
+// Après le vidage, un échec d'écriture ne fait plus perdre la copie.
+func TestReset_CopyRestorableEvenIfLaterWriteFails(t *testing.T) {
+	ctx := context.Background()
+	s, d, sh, snaps, objs, _ := resetSvc(t, 24)
+	snaps.failSave = map[int]bool{2: true} // mise à jour de la taille
+	_, err := s.Reset(ctx, d.ProjectID, d.ID, "main", "u")
+	require.NoError(t, err)
+	assert.Equal(t, 1, sh.resets)
+	require.Contains(t, snaps.rows, d.ID, "la copie est enregistrée")
+	assert.Len(t, objs.data[snaps.rows[d.ID].ObjectKey], 15)
+	_, err = s.UndoReset(ctx, d.ProjectID, d.ID, "u")
+	assert.NoError(t, err)
+}
+
+// Copie arrivée, vidage en échec : la copie est gardée et l'erreur le dit.
+func TestReset_EmptyFailsKeepsCopy(t *testing.T) {
+	s, d, sh, snaps, objs, _ := resetSvc(t, 24)
+	sh.emptyErr = errors.New("lock timeout")
+	_, err := s.Reset(context.Background(), d.ProjectID, d.ID, "main", "u")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "safety copy is kept")
+	require.Contains(t, snaps.rows, d.ID)
+	assert.Equal(t, int64(15), snaps.rows[d.ID].SizeBytes)
+	assert.Len(t, objs.data[snaps.rows[d.ID].ObjectKey], 15)
+}
+
+// Copie jamais arrivée : la copie précédente est remise, rien n'est vidé.
+func TestReset_NoUploadRestoresPreviousCopy(t *testing.T) {
+	ctx := context.Background()
+	s, d, sh, snaps, objs, _ := resetSvc(t, 24)
+	_, err := s.Reset(ctx, d.ProjectID, d.ID, "main", "u")
+	require.NoError(t, err)
+	prev := snaps.rows[d.ID]
+
+	sh.tables = 5
+	sh.dumpErr = errors.New("pg_dump: boom")
+	_, err = s.Reset(ctx, d.ProjectID, d.ID, "main", "u")
+	require.Error(t, err)
+	assert.Equal(t, 5, sh.tables, "rien n'est vidé")
+	assert.Equal(t, prev, snaps.rows[d.ID])
+	assert.Len(t, objs.data[prev.ObjectKey], 15)
 }
