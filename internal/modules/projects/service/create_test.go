@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/thekrauss/kubemanager/internal/modules/projects/workflows"
@@ -85,10 +86,10 @@ type fakeProjectRepo struct {
 	project   *authdomain.Project
 	getErr    error
 	createErr error
-	created []*authdomain.Project
-	deleted []string
-	rows    []authdomain.Project
-	listed  []listCall
+	created   []*authdomain.Project
+	deleted   []string
+	rows      []authdomain.Project
+	listed    []listCall
 }
 
 func (f *fakeProjectRepo) CreateProject(_ context.Context, p *authdomain.Project, _ string) error {
@@ -128,8 +129,6 @@ func TestCreateProject_StartsWorkflowAndReturnsProvisioning(t *testing.T) {
 	req := typesproject.CreateProjectRequest{
 		Name:        "alpha",
 		Description: "demo",
-		CpuLimit:    "1000m",
-		MemoryLimit: "2Gi",
 	}
 	resp, err := svc.CreateProject(context.Background(), req, "owner-42")
 
@@ -201,8 +200,22 @@ func TestCreateProject_ReturnsIDAndDefaults(t *testing.T) {
 	assert.Equal(t, DefaultProjectCPU, input.CpuLimit)
 	assert.Equal(t, DefaultProjectMemory, input.MemoryLimit)
 
-	_, err = svc.CreateProject(context.Background(), typesproject.CreateProjectRequest{Name: "beta", CpuLimit: "beaucoup"}, "owner-42")
-	assert.ErrorIs(t, err, ErrInvalidProjectLimits)
+}
+
+// Les limites ne viennent jamais du client : un champ cpu_limit envoyé dans
+// le JSON est ignoré (faille : n'importe quel compte se donnait 100 CPU).
+func TestCreateProject_IgnoresClientLimits(t *testing.T) {
+	dist := &fakeDistributor{handle: temporal.WorkflowHandle{WorkflowID: "wf"}}
+	repo := &fakeProjectRepo{}
+	svc := newProjectServiceForTest(dist, repo)
+	var req typesproject.CreateProjectRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"name":"gros","cpu_limit":"100","memory_limit":"512Gi"}`), &req))
+	_, err := svc.CreateProject(context.Background(), req, "owner-42")
+	require.NoError(t, err)
+	input := dist.gotArgs[0].(workflows.CreateProjectInput)
+	assert.Equal(t, DefaultProjectCPU, input.CpuLimit)
+	assert.Equal(t, DefaultProjectMemory, input.MemoryLimit)
+	assert.Equal(t, DefaultProjectCPU, repo.created[0].CpuLimit)
 }
 
 // Deuxième demande de suppression : déjà en cours, même réponse (l'option

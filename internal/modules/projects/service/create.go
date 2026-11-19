@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"k8s.io/apimachinery/pkg/api/resource"
-	"strings"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -73,8 +71,8 @@ func NewProjectService(
 
 // Limites par défaut d'un projet (identiques aux défauts de la table projects).
 const (
-	DefaultProjectCPU    = "2000m"
-	DefaultProjectMemory = "4Gi"
+	DefaultProjectCPU    = typesproject.DefaultProjectCPU
+	DefaultProjectMemory = typesproject.DefaultProjectMemory
 )
 
 // ErrInvalidProjectLimits : limite CPU ou mémoire illisible.
@@ -84,20 +82,9 @@ var ErrInvalidProjectLimits = errors.New("invalid project limits: use Kubernetes
 var ErrProjectNameTaken = errors.New("a project with this name already exists")
 
 func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.CreateProjectRequest, ownerID string) (*typesproject.ProjectResponse, error) {
-	// Sans limites fournies (inscription), les défauts du projet ; une valeur
-	// illisible est refusée ici plutôt qu'au milieu du workflow.
-	if strings.TrimSpace(req.CpuLimit) == "" {
-		req.CpuLimit = DefaultProjectCPU
-	}
-	if strings.TrimSpace(req.MemoryLimit) == "" {
-		req.MemoryLimit = DefaultProjectMemory
-	}
-	if _, err := resource.ParseQuantity(req.CpuLimit); err != nil {
-		return nil, ErrInvalidProjectLimits
-	}
-	if _, err := resource.ParseQuantity(req.MemoryLimit); err != nil {
-		return nil, ErrInvalidProjectLimits
-	}
+	// Limites : toujours celles de la plateforme. Les prendre du client
+	// laissait n'importe quel compte se créer un projet de 100 CPU.
+	cpuLimit, memoryLimit := DefaultProjectCPU, DefaultProjectMemory
 	// La ligne et le rôle owner sont écrits avant la réponse : l'appelant peut
 	// lire l'état du projet tout de suite (PROVISIONING), et un nom déjà pris
 	// est refusé ici plutôt qu'au milieu du workflow.
@@ -107,8 +94,8 @@ func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.Cre
 		ID:          id,
 		Name:        req.Name,
 		Description: req.Description,
-		CpuLimit:    req.CpuLimit,
-		MemoryLimit: req.MemoryLimit,
+		CpuLimit:    cpuLimit,
+		MemoryLimit: memoryLimit,
 		Status:      utils.ProjectStatusProvisioning,
 	}, ownerID); err != nil {
 		if errors.Is(err, repository.ErrNameTaken) {
@@ -121,8 +108,8 @@ func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.Cre
 		Name:        req.Name,
 		Description: req.Description,
 		OwnerID:     ownerID,
-		CpuLimit:    req.CpuLimit,
-		MemoryLimit: req.MemoryLimit,
+		CpuLimit:    cpuLimit,
+		MemoryLimit: memoryLimit,
 	}
 
 	handle, err := s.Distributor.ExecuteWorkflow(ctx,
