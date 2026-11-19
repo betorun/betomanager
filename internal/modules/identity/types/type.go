@@ -22,9 +22,6 @@ type BootstrapRequest struct {
 	Country            string `json:"country,omitempty"`
 	ProjectName        string `json:"project_name,omitempty"`
 	ProjectDescription string `json:"project_description,omitempty"`
-	CpuLimit           string `json:"cpu_limit,omitempty"`
-	MemoryLimit        string `json:"memory_limit,omitempty"`
-	StorageLimit       string `json:"storage_limit,omitempty"`
 }
 
 type ProjectDTO struct {

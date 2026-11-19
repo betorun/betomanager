@@ -6,12 +6,16 @@ import "time"
 const (
 	CreateProjectWorkflowName = "CreateProjectWorkflow"
 	DeleteProjectWorkflowName = "DeleteProjectWorkflow"
+	// UpdateProjectLimitsWorkflowName : quota Kubernetes après un changement
+	// des limites du projet.
+	UpdateProjectLimitsWorkflowName = "UpdateProjectLimitsWorkflow"
 )
 
 // Préfixes des identifiants de workflow (suivis de l'identifiant du projet).
 const (
 	WorkflowIDCreatePrefix = "project-create-"
 	WorkflowIDDeletePrefix = "project-delete-"
+	WorkflowIDLimitsPrefix = "project-limits-"
 )
 
 // Politique d'exécution des activities des workflows de projet.

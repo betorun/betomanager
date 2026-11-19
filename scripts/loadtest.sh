@@ -31,7 +31,7 @@ if [[ -z "${PROJECT_ID:-}" ]]; then
   echo "[loadtest] creating project..."
   PROJECT_ID="$(curl -sS -X POST -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
     "${BASE_URL}${API_PREFIX}/projects" \
-    -d '{"name":"loadtest-'$(date +%s)'","description":"k6","cpu_limit":"10000m","memory_limit":"32Gi"}' \
+    -d '{"name":"loadtest-'$(date +%s)'","description":"k6"}' \
     | jq -r '.project_id // .id')"
   echo "[loadtest] project_id=${PROJECT_ID}"
   sleep 10 # let the workflow settle

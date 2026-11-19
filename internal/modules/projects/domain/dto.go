@@ -5,9 +5,8 @@ import "time"
 type CreateProjectRequest struct {
 	Name        string `json:"name" binding:"required,min=3,max=30"`
 	Description string `json:"description"`
-
-	CpuLimit    string `json:"cpu_limit"`
-	MemoryLimit string `json:"memory_limit"`
+	// Pas de limites : elles sont fixées par la plateforme, jamais par le
+	// client (sinon chacun se donnerait les ressources qu'il veut).
 }
 
 type ProjectResponse struct {
@@ -80,3 +79,19 @@ type ListProjectsResponse struct {
 
 // MaxListedProjects : borne de GET /projects.
 const MaxListedProjects = 200
+
+// ProjectLimits : plafonds d'un projet, en quantités Kubernetes ; un champ
+// vide garde la valeur actuelle.
+type ProjectLimits struct {
+	CPU     string `json:"cpu_limit,omitempty" description:"Plafond CPU (ex. 4000m)"`
+	Memory  string `json:"memory_limit,omitempty" description:"Plafond mémoire (ex. 8Gi)"`
+	Storage string `json:"storage_limit,omitempty" description:"Plafond de stockage (ex. 20Gi)"`
+}
+
+// ProjectLimitsResponse : limites enregistrées ; le quota Kubernetes suit
+// via le workflow WorkflowID.
+type ProjectLimitsResponse struct {
+	ProjectID  string   `json:"project_id"`
+	Limits     UsageDTO `json:"limits"`
+	WorkflowID string   `json:"workflow_id"`
+}
