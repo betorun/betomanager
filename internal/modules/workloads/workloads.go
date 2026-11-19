@@ -153,7 +153,7 @@ func (h *WorkloadController) AddDomain(c *gin.Context, in *AddDomainParams) (*do
 	if err != nil {
 		return nil, err
 	}
-	return h.WorkloadService.AddDomain(c.Request.Context(), id, in.Hostname)
+	return h.WorkloadService.AddDomain(c.Request.Context(), id, in.Hostname, in.Path)
 }
 
 // VerifyDomain : vérifie la preuve TXT et, si elle est là, route le domaine.

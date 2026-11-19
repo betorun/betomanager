@@ -162,5 +162,9 @@
  {
   "fr": "max_duration_seconds : 86400 au plus (24 heures)",
   "en": "max_duration_seconds: at most 86400 (24 hours)"
+ },
+ {
+  "fr": "Chemin invalide : commence par /, 100 caractères au plus, lettres, chiffres et - . _ ~ / seulement",
+  "en": "invalid path: starts with /, at most 100 characters, letters, digits and - . _ ~ / only"
  }
 ]

@@ -93,7 +93,9 @@ type InstallWorkloadInput struct {
 	EnvRevision int64
 
 	// CustomDomains : un Ingress par nom (voir le chart).
-	CustomDomains   []string
+	CustomDomains []string
+	// CustomRoutes : nom + chemin (prioritaire sur CustomDomains).
+	CustomRoutes    []DomainRoute
 	CustomDomainTLS bool
 
 	PersistenceEnabled bool
@@ -358,7 +360,7 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 				"clusterIssuer": defaultClusterIssuer,
 			},
 		},
-		"customDomains":            customDomainValues(input.CustomDomains),
+		"customDomains":            customDomainValues(input.CustomRoutes, input.CustomDomains),
 		"customDomainTLS":          input.CustomDomainTLS,
 		"customDomainIssuer":       defaultClusterIssuer,
 		"resources":                resources,
@@ -512,10 +514,27 @@ func requestWithin(requested, def, limit string) string {
 	return def
 }
 
-func customDomainValues(hosts []string) []any {
-	out := make([]any, 0, len(hosts))
-	for _, h := range hosts {
-		out = append(out, h)
+// DomainRoute : domaine personnalisé vérifié et chemin routé (« / » : tout).
+type DomainRoute struct {
+	Host string
+	Path string
+}
+
+// customDomainValues : une entrée {host, path} par Ingress. hosts : entrée
+// d'un workflow antérieur aux chemins (tout le domaine).
+func customDomainValues(routes []DomainRoute, hosts []string) []any {
+	out := make([]any, 0, len(routes)+len(hosts))
+	if len(routes) == 0 {
+		for _, h := range hosts {
+			routes = append(routes, DomainRoute{Host: h, Path: "/"})
+		}
+	}
+	for _, r := range routes {
+		path := r.Path
+		if path == "" {
+			path = "/"
+		}
+		out = append(out, map[string]any{"host": r.Host, "path": path})
 	}
 	return out
 }

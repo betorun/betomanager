@@ -1,10 +1,24 @@
 {{- /*
-Un Ingress et un certificat par domaine personnalisé : un domaine qui ne pointe
-plus vers nous n'empêche pas de renouveler le certificat des autres.
+Un Ingress et un certificat par route (domaine + chemin) : un domaine qui ne
+pointe plus vers nous n'empêche pas de renouveler le certificat des autres.
+Entrée : {host, path} (ou un nom seul, valeurs antérieures aux chemins). Le nom
+d'une route « / » ne change pas : pas de nouveau certificat à la mise à jour.
+Plusieurs conteneurs peuvent servir le même nom, un chemin chacun : Traefik
+donne la priorité à la règle la plus longue (/auth avant /).
 */ -}}
 {{- if eq (include "standard-app.kind" .) "web" }}
 {{- range .Values.customDomains }}
-{{- $name := printf "%s-d-%s" $.Release.Name (sha256sum . | trunc 10) }}
+{{- $host := . }}
+{{- $path := "/" }}
+{{- if kindIs "map" . }}
+{{- $host = .host }}
+{{- $path = .path | default "/" }}
+{{- end }}
+{{- $key := $host }}
+{{- if ne $path "/" }}
+{{- $key = printf "%s%s" $host $path }}
+{{- end }}
+{{- $name := printf "%s-d-%s" $.Release.Name (sha256sum $key | trunc 10) }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -23,14 +37,14 @@ spec:
   {{- if $.Values.customDomainTLS }}
   tls:
     - hosts:
-        - {{ . | quote }}
+        - {{ $host | quote }}
       secretName: {{ $name }}
   {{- end }}
   rules:
-    - host: {{ . | quote }}
+    - host: {{ $host | quote }}
       http:
         paths:
-          - path: /
+          - path: {{ $path | quote }}
             pathType: Prefix
             backend:
               service:

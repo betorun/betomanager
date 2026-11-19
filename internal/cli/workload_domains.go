@@ -11,27 +11,94 @@ import (
 	"github.com/thekrauss/kubemanager/internal/cli/ui"
 )
 
+// printDNSRecords : enregistrements à créer, avec le nom tel que le saisit la
+// plupart des fournisseurs (relatif à la zone) et un conseil pour le sien.
 func printDNSRecords(p *ui.Printer, d *api.WorkloadDomainView) error {
-	p.Println(i18n.T("wl.dom.records"))
-	t := p.Table(i18n.T("col.dns.type"), i18n.T("col.dns.name"), i18n.T("col.dns.value"))
-	for _, r := range d.Records {
-		t.Row(r.Type, r.Name, r.Value)
+	if d.SharedProof {
+		p.Hint(i18n.T("wl.dom.shared_proof", d.Hostname))
 	}
-	return t.Flush()
+	// API antérieure aux noms relatifs : nom complet.
+	relative := d.Zone != ""
+	if relative {
+		p.Println(i18n.T("wl.dom.records", d.Zone))
+	} else {
+		p.Println(i18n.T("wl.dom.records_full"))
+	}
+	nameCol := i18n.T("col.dns.host")
+	if !relative {
+		nameCol = i18n.T("col.dns.name")
+	}
+	t := p.Table(i18n.T("col.dns.type"), nameCol, i18n.T("col.dns.value"))
+	alternative := false
+	for _, r := range d.Records {
+		typ := r.Type
+		if r.Alternative {
+			typ += " *"
+			alternative = true
+		}
+		name := r.Host
+		if !relative || name == "" {
+			name = r.Name
+		}
+		t.Row(typ, name, r.Value)
+	}
+	if err := t.Flush(); err != nil {
+		return err
+	}
+	if alternative {
+		p.Hint(i18n.T("wl.dom.alias"))
+	}
+	if d.Apex && !alternative {
+		p.Hint(i18n.T("wl.dom.apex"))
+	}
+	p.Hint(providerTip(d.DNSProvider))
+	return nil
 }
 
-// findWorkloadDomain : domaine du conteneur désigné par son nom.
-func findWorkloadDomain(cmd *cobra.Command, cl *api.Client, workloadID, host string) (*api.WorkloadDomainView, error) {
+// providerTip : conseil propre au fournisseur DNS détecté.
+func providerTip(provider string) string {
+	switch provider {
+	case "cloudflare", "ovh", "godaddy", "namecheap", "gandi", "google", "route53", "ionos", "hostinger", "lws":
+		return i18n.T("wl.dom.tip." + provider)
+	}
+	return i18n.T("wl.dom.tip.generic")
+}
+
+// splitRoute : « www.exemple.sn/auth » → nom et chemin (« / » par défaut).
+func splitRoute(arg string) (host, path string) {
+	host, rest, found := strings.Cut(strings.TrimSpace(arg), "/")
+	host = strings.TrimSuffix(host, ".")
+	if !found {
+		return host, "/"
+	}
+	path = "/" + strings.TrimRight(rest, "/")
+	return host, path
+}
+
+func routeLabel(host, path string) string {
+	if path == "" || path == "/" {
+		return host
+	}
+	return host + path
+}
+
+// findWorkloadDomain : route du conteneur désignée par « nom[/chemin] ».
+func findWorkloadDomain(cmd *cobra.Command, cl *api.Client, workloadID, arg string) (*api.WorkloadDomainView, error) {
 	list, err := cl.ListWorkloadDomains(cmd.Context(), workloadID)
 	if err != nil {
 		return nil, err
 	}
+	host, path := splitRoute(arg)
 	for i := range list {
-		if strings.EqualFold(list[i].Hostname, strings.TrimSuffix(host, ".")) {
+		p := list[i].Path
+		if p == "" {
+			p = "/"
+		}
+		if strings.EqualFold(list[i].Hostname, host) && p == path {
 			return &list[i], nil
 		}
 	}
-	return nil, errors.New(i18n.T("wl.dom.not_found", host))
+	return nil, errors.New(i18n.T("wl.dom.not_found", arg))
 }
 
 // newWorkloadsDomains : « workloads domains ».
@@ -39,7 +106,9 @@ func newWorkloadsDomains() *cobra.Command {
 	c := &cobra.Command{Use: "domains", Aliases: []string{"domain"}, Short: i18n.T("wl.dom.short"),
 		Example: "betorun workloads domains add web www.exemple.sn\n" +
 			"betorun workloads domains verify web www.exemple.sn\n" +
-			"betorun workloads domains list web"}
+			"betorun workloads domains list web\n" +
+			"# " + i18n.T("ex.dom.path") + "\n" +
+			"betorun workloads domains add auth backoffice.exemple.sn/auth"}
 	c.AddCommand(&cobra.Command{
 		Use: "list " + i18n.T("arg.name"), Short: i18n.T("wl.dom.list.short"), Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,7 +134,7 @@ func newWorkloadsDomains() *cobra.Command {
 				if d.Verified {
 					st = p.Status(ui.ToneOK, i18n.T("wl.dom.st.verified"))
 				}
-				t.Row(d.Hostname, st)
+				t.Row(routeLabel(d.Hostname, d.Path), st)
 			}
 			return t.Flush()
 		},
@@ -76,7 +145,8 @@ func newWorkloadsDomains() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			d, err := cl.AddWorkloadDomain(cmd.Context(), w.ID.String(), args[1])
+			host, path := splitRoute(args[1])
+			d, err := cl.AddWorkloadDomain(cmd.Context(), w.ID.String(), host, path)
 			if err != nil {
 				return err
 			}
@@ -87,7 +157,7 @@ func newWorkloadsDomains() *cobra.Command {
 			if err := printDNSRecords(p, d); err != nil {
 				return err
 			}
-			p.Hint(i18n.T("wl.dom.then", args[0], d.Hostname))
+			p.Hint(i18n.T("wl.dom.then", args[0], routeLabel(d.Hostname, d.Path)))
 			return nil
 		},
 	}, &cobra.Command{

@@ -132,8 +132,8 @@ func (a *App) initDomainLayers() error {
 			}, a.Logger)
 		siteService = concrete
 		concrete.HostnameInUse = func(ctx context.Context, host string) (bool, error) {
-			owner, err := workloadService.Domains.VerifiedOwner(ctx, host, uuid.Nil)
-			return owner != nil, err
+			claims, err := workloadService.Domains.HostClaims(ctx, host, uuid.Nil)
+			return len(claims) > 0, err
 		}
 		siteController = sites.NewSiteController(siteService, a.Logger)
 	}

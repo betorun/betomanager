@@ -80,6 +80,7 @@ var sentinelErrors = []sentinelMapping{
 	{workloadsDomain.ErrDomainExists, http.StatusConflict, "CONFLICT", false},
 	{workloadsDomain.ErrDomainClaimed, http.StatusConflict, "DOMAIN_CLAIMED", false},
 	{workloadsDomain.ErrDomainLimit, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{workloadsDomain.ErrInvalidPath, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrDomainsDisabled, http.StatusServiceUnavailable, "DOMAINS_UNAVAILABLE", false},
 	{sitesDomain.ErrInvalidHostname, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{sitesDomain.ErrPlatformHostname, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
