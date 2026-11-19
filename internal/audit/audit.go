@@ -109,9 +109,11 @@ func (r *Recorder) Metadata() map[string]any {
 type Query struct {
 	// Resource : entrées sur cette ressource et ses descendantes.
 	Resource string
-	// ProjectID : en plus, toutes les entrées du projet.
+	// ProjectID : en plus, toutes les entrées du projet et les actions
+	// d'organisation qui le touchent (voir projectScope).
 	ProjectID *uuid.UUID
-	// OrganizationID : toutes les entrées de l'organisation et de ses projets.
+	// OrganizationID : actions sur l'organisation elle-même (accès,
+	// groupes, rôles personnalisés, projets créés) ; pas celles des projets.
 	OrganizationID *uuid.UUID
 	BeforeID       int64
 	Limit          int
@@ -126,6 +128,30 @@ const DefaultPageSize = 50
 // emptyMetadata : métadonnées enregistrées quand il n'y en a pas.
 const emptyMetadata = "{}"
 
+// orgSetIamPolicy : permission d'un changement des accès de l'organisation
+// (pas d'import du paquet iam : il dépend de celui-ci).
+const orgSetIamPolicy = "resourcemanager.organizations.setIamPolicy"
+
+// projectScope : journal d'un projet. En plus de ses propres entrées, les
+// actions d'organisation qui le touchent (décision du 2026-11-19) :
+//   - les changements d'accès de l'organisation (hérités par le projet) ;
+//   - les groupes qui ont un rôle sur le projet ou sur l'organisation
+//     (création, membres ajoutés ou retirés) ;
+//   - les rôles personnalisés d'organisation attribués dans le projet.
+//
+// Groupes et rôles sont lus dans les bindings actuels : un groupe retiré du
+// projet sort aussi de son journal.
+const projectScope = `project_id = @pid OR resource = @r OR resource LIKE @rl
+	OR (permission = @orgSetPolicy AND resource = (SELECT 'organizations/' || organization_id FROM projects WHERE id = @pid))
+	OR resource IN (
+		SELECT 'organizations/' || p.organization_id || '/groups/' || substr(b.principal, 7)
+		FROM iam_bindings b JOIN projects p ON p.id = @pid
+		WHERE b.principal LIKE 'group:%'
+		  AND (b.resource_name = @r OR b.resource_name LIKE @rl OR b.resource_name = 'organizations/' || p.organization_id))
+	OR resource IN (
+		SELECT b.role FROM iam_bindings b
+		WHERE b.role LIKE 'organizations/%' AND (b.resource_name = @r OR b.resource_name LIKE @rl))`
+
 // List lit le journal selon q.
 func List(ctx context.Context, db *gorm.DB, q Query) ([]Entry, error) {
 	limit := q.Limit
@@ -135,11 +161,11 @@ func List(ctx context.Context, db *gorm.DB, q Query) ([]Entry, error) {
 	tx := db.WithContext(ctx).Model(&Entry{})
 	switch {
 	case q.OrganizationID != nil:
-		org := q.OrganizationID.String()
-		tx = tx.Where("resource = ? OR resource LIKE ? OR project_id IN (SELECT id FROM projects WHERE organization_id = ?)",
-			"organizations/"+org, "organizations/"+org+"/%", org)
+		org := "organizations/" + q.OrganizationID.String()
+		tx = tx.Where("resource = ? OR resource LIKE ?", org, org+"/%")
 	case q.ProjectID != nil:
-		tx = tx.Where("project_id = ? OR resource = ? OR resource LIKE ?", *q.ProjectID, q.Resource, q.Resource+"/%")
+		tx = tx.Where(projectScope, map[string]any{"pid": *q.ProjectID, "r": q.Resource, "rl": q.Resource + "/%",
+			"orgSetPolicy": orgSetIamPolicy})
 	default:
 		tx = tx.Where("resource = ? OR resource LIKE ?", q.Resource, q.Resource+"/%")
 	}

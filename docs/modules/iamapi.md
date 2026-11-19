@@ -23,7 +23,7 @@ Préfixe `/kmanager/v1`.
 | GET | `/iam/permissions` | `Authenticated()` | Catalogue des permissions (hors `PlatformOnly`), avec `custom_roles` |
 | GET | `/iam/session` | `Authenticated()` | État d'authentification : MFA disponible, session MFA, validité de la confirmation récente |
 | GET | `/iam/ancestry?resource=` | `resourcemanager.projects.get` ou `resourcemanager.organizations.get` | Ascendance (projet → organisation → platform) |
-| GET | `/iam/auditLogs?resource=` | `logging.auditLogs.read` | Journal d'une ressource et de ses descendantes ; `limit` 1 à 200 (défaut 50), curseur `before_id` → `next_before_id` (0 = fin) |
+| GET | `/iam/auditLogs?resource=` | `logging.auditLogs.read` | Journal d'une ressource et de ses descendantes ; `limit` 1 à 200 (défaut 50), curseur `before_id` → `next_before_id` (0 = fin). `organizations/<id>` : actions sur l'organisation seule (accès, groupes, rôles, projets créés), pas celles des projets. `projects/<id>` : en plus, les actions d'organisation qui touchent le projet (accès de l'organisation, groupes et rôles d'organisation liés au projet, d'après les bindings actuels) |
 
 Pour une sous-ressource de projet, la permission de policy est celle du projet ; la policy `platform` ne passe pas par l'API.
 

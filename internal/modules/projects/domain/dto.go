@@ -5,6 +5,9 @@ import "time"
 type CreateProjectRequest struct {
 	Name        string `json:"name" binding:"required,min=3,max=30"`
 	Description string `json:"description"`
+	// OrganizationID : organisation du projet (vide : organisation
+	// personnelle). Il faut y détenir resourcemanager.projects.create.
+	OrganizationID string `json:"organization_id" description:"Organisation du projet (vide : votre organisation personnelle)"`
 	// Pas de limites : elles sont fixées par la plateforme, jamais par le
 	// client (sinon chacun se donnerait les ressources qu'il veut).
 }
@@ -75,6 +78,30 @@ type ProjectSummary struct {
 type ListProjectsResponse struct {
 	Projects  []ProjectSummary `json:"projects"`
 	Truncated bool             `json:"truncated"`
+	// Organizations : organisations où l'appelant peut créer un projet, avec
+	// leur plafond (la console sait si « Nouveau projet » est possible).
+	Organizations []OrganizationQuota `json:"organizations"`
+}
+
+// OrganizationQuota : projets d'une organisation et son plafond.
+type OrganizationQuota struct {
+	OrganizationID string `json:"organization_id"`
+	DisplayName    string `json:"display_name"`
+	Projects       int    `json:"projects"`
+	MaxProjects    int    `json:"max_projects"`
+}
+
+// UpdateProjectRequest : nom et description (l'espace Kubernetes ne change pas).
+type UpdateProjectRequest struct {
+	ProjectID   string  `path:"id" binding:"required" json:"-" description:"ID du projet"`
+	Name        *string `json:"name" description:"Nouveau nom (3 à 30 caractères, unique dans l'organisation)"`
+	Description *string `json:"description" description:"Nouvelle description"`
+}
+
+// ProjectDetail : un projet et ses plafonds.
+type ProjectDetail struct {
+	ProjectSummary
+	Limits UsageDTO `json:"limits"`
 }
 
 // MaxListedProjects : borne de GET /projects.

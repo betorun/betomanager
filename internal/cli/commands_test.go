@@ -182,7 +182,9 @@ func TestCLI_WorkloadsDomainsAccess(t *testing.T) {
 	var listed []map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &listed), out)
 	require.Len(t, listed, 1)
-	assert.Equal(t, "RUNNING", listed[0]["Status"])
+	assert.Equal(t, "RUNNING", listed[0]["status"])
+	assert.Equal(t, "api", listed[0]["name"], "noms de champs stables (snake_case)")
+	assert.NotContains(t, listed[0], "Values", "champs internes absents")
 
 	out, err = run(t, "workloads", "logs", "api", "-f", "--tail", "50", "--since", "10m")
 	require.NoError(t, err)

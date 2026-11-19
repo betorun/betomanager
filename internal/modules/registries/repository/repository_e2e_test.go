@@ -35,8 +35,8 @@ func e2eStore(t *testing.T) (Store, *gorm.DB, uuid.UUID) {
 	sealer, err := auth.NewSealer(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
 	require.NoError(t, err)
 	project := uuid.New()
-	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, organization_id)
-		SELECT ?, ?, organization_id FROM projects LIMIT 1`, project, "e2e-"+project.String()).Error)
+	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, namespace, organization_id)
+		SELECT ?, ?, ?, organization_id FROM projects LIMIT 1`, project, "e2e-"+project.String(), "km-"+project.String()[:8]).Error)
 	return New(db, sealer), db, project
 }
 

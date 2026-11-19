@@ -4,12 +4,6 @@
 {
 	email {$ACME_EMAIL}
 
-	# Domaines de sites : certificat à la demande, seulement si static-edge
-	# répond 200 (domaine vérifié et site existant).
-	on_demand_tls {
-		ask http://static-edge:8091/check
-	}
-
 	servers {
 		# Seule la console (BFF, IP fixe) peut transmettre l'adresse de son
 		# client. Tout autre X-Forwarded-For entrant est écrasé par Caddy.
@@ -78,14 +72,22 @@
 	}
 }
 
-# Sites statiques : sous-domaines de SITES_BASE_DOMAIN et domaines des clients.
-# Un certificat par hôte. Quand le nombre de sites grandira, passer à un
-# certificat joker (voir Caddyfile.prod.example : image Caddy avec module DNS)
-# pour rester sous la limite Let's Encrypt de 50 certificats par semaine.
-https:// {
-	tls {
-		on_demand
+# Stockage des sites, pour static-edge qui tourne dans le cluster (serveur 2).
+# Les conteneurs des clients sortent par la même adresse : la vraie barrière
+# est l'identité « edge » (lecture seule, bucket des sites). Lectures seules
+# ici aussi, pour qu'aucune autre clé ne puisse écrire par ce nom.
+{$S3_PUBLIC_HOST} {
+	import hsts
+	@cluster {
+		remote_ip {$SERVER2_IP}
+		method GET HEAD
 	}
-	import compress
-	reverse_proxy static-edge:8090
+	handle @cluster {
+		reverse_proxy seaweedfs:8333 {
+			flush_interval -1
+		}
+	}
+	handle {
+		respond 403
+	}
 }

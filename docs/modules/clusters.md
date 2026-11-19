@@ -22,6 +22,7 @@ Routes internes déclarées dans `addClusterRoutes` ([route.go](../../internal/i
 | `GET` | `/ConfigService/:clusterID/Get` | Config remote (dedup, reasons, batch) |
 | `POST` | `/ProjectService/:clusterID/onPodEvent` | Un pod event reçu |
 | `POST` | `/ClusterService/:clusterID/ServiceAccountKeys` | Clés publiques des jetons de comptes Kubernetes du cluster (204) |
+| `GET` | `/EdgeService/:clusterID/Resolve?host=` | static-edge du cluster : site servi pour un nom d'hôte (`site_id`, `deployment_id`, `spa_fallback`), 404 sinon. Même garde que le watcher (module `sites`, `hedge.go`) |
 
 ### Admin — sous `/kmanager/v1/admin/clusters`
 

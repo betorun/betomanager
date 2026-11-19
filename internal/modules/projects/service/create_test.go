@@ -92,6 +92,7 @@ type fakeProjectRepo struct {
 	project   *authdomain.Project
 	getErr    error
 	createErr error
+	updateErr error
 	created   []*authdomain.Project
 	deleted   []string
 	rows      []authdomain.Project
@@ -115,6 +116,21 @@ func (f *fakeProjectRepo) GetProjectByID(_ context.Context, _ string) (*authdoma
 	}
 	return f.project, nil
 }
+func (f *fakeProjectRepo) UpdateProject(_ context.Context, _ uuid.UUID, name, description string) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	f.project.Name, f.project.Description = name, description
+	return nil
+}
+func (f *fakeProjectRepo) OrganizationQuotas(_ context.Context, ids []uuid.UUID) ([]repository.OrgQuota, error) {
+	out := []repository.OrgQuota{}
+	for _, id := range ids {
+		out = append(out, repository.OrgQuota{ID: id, DisplayName: "Perso", Projects: 1, MaxProjects: 3})
+	}
+	return out, nil
+}
+func (f *fakeProjectRepo) SetMaxProjects(context.Context, uuid.UUID, int) error { return nil }
 
 // ── tests ─────────────────────────────────────────────────────────────────
 
@@ -172,8 +188,9 @@ func TestDeleteProject_HappyPath_StartsDeleteWorkflow(t *testing.T) {
 	projectID := uuid.NewString()
 	dist := &fakeDistributor{handle: temporal.WorkflowHandle{WorkflowID: "wf-del"}}
 	repo := &fakeProjectRepo{project: &authdomain.Project{
-		ID:   uuid.MustParse(projectID),
-		Name: "alpha",
+		ID:        uuid.MustParse(projectID),
+		Name:      "alpha",
+		Namespace: "km-a1b2c3d4e5f6",
 	}}
 	svc := newProjectServiceForTest(dist, repo)
 
@@ -187,7 +204,7 @@ func TestDeleteProject_HappyPath_StartsDeleteWorkflow(t *testing.T) {
 	assert.Equal(t, "DeleteProjectWorkflow", dist.gotWorkflow)
 	require.Len(t, dist.gotArgs, 2)
 	assert.Equal(t, projectID, dist.gotArgs[0])
-	assert.Equal(t, "alpha", dist.gotArgs[1])
+	assert.Equal(t, "km-a1b2c3d4e5f6", dist.gotArgs[1], "espace enregistré, pas le nom")
 }
 
 // L'identifiant du projet est connu tout de suite (le bootstrap en a besoin)

@@ -2,8 +2,9 @@ DÉPLOYER BETORUN EN PRODUCTION
 ==============================
 
 Serveur 1 : API, worker, console, Postgres, Redis, Temporal, Keycloak, Centrifugo,
-            registre, stockage objet, static-edge, Caddy (docker compose).
-Serveur 2 : k3s avec son Traefik intégré (conteneurs des clients et builds).
+            registre, stockage objet, Caddy (docker compose).
+Serveur 2 : k3s avec son Traefik intégré (conteneurs des clients, builds, et
+            static-edge qui sert les sites statiques : section 7 ter).
 
 Dans ce guide, <domaine> est votre domaine, <IP1> et <IP2> les IP publiques.
 
@@ -24,7 +25,11 @@ Vérifié sur une seule machine de développement, le 2026-11-02 :
     avec un solveur HTTP-01 SIMULÉ (mêmes labels, même forme d'Ingress).
 
 JAMAIS TESTÉ EN VRAI, à surveiller au premier déploiement :
-  - HTTPS réel, certificats Let's Encrypt, TLS à la demande de Caddy ;
+  - HTTPS réel, certificats Let's Encrypt ;
+  - static-edge dans le cluster (2026-11-19) : lecture des sites par l'API avec
+    la clé du cluster, fichiers par S3_PUBLIC_HOST, certificat joker DNS-01,
+    Ingress des domaines clients créés par le worker. Code testé (tests
+    unitaires, faux cluster), manifestes validés à blanc ; aucun essai réel ;
   - cert-manager réel et son solveur HTTP-01 ;
   - les deux serveurs ensemble : API vers k3s, build, push et pull du registre
     par son nom public, de bout en bout ;
@@ -71,13 +76,15 @@ Machine de construction de la console : Docker. Pas le serveur 1 : next build
   api.<domaine>             A       <IP1>    API
   registry.<domaine>        A       <IP1>    registre d'images
   realtime.<domaine>        A       <IP1>    Centrifugo (wss)
-  edge.<domaine>            A       <IP1>    cible CNAME des domaines de sites
-  *.sites.<domaine>         A       <IP1>    sites statiques
+  s3.<domaine>              A       <IP1>    stockage des sites, pour static-edge
+  edge.<domaine>            A       <IP2>    cible CNAME des domaines de sites
+  *.sites.<domaine>         A       <IP2>    sites statiques (static-edge, cluster)
 
 Keycloak n'a aucun nom public, et n'en aura pas.
 
 Conteneurs des clients : <conteneur>-<projet>.<IP2>.sslip.io, sans enregistrement
-à créer. Leurs domaines personnalisés pointent vers <IP2>.
+à créer. Leurs domaines personnalisés pointent vers <IP2>, comme ceux des sites
+(CNAME vers edge.<domaine>).
 
 PAS D'ENREGISTREMENT AAAA vers le serveur 1 tant que le réseau Docker n'a pas
 IPv6 : un client en IPv6 passerait par le proxy de Docker, et Caddy verrait
@@ -109,8 +116,10 @@ Serveur 2 :
     sudo ufw enable
 
 Ce que le serveur 2 doit joindre sur le serveur 1 : uniquement 443, par les noms
-publics api.<domaine> (archives des builds, jetons du registre et du STS) et
-registry.<domaine> (push et pull). Aucun autre port n'est à ouvrir.
+publics api.<domaine> (archives des builds, jetons du registre et du STS, table des
+sites pour static-edge), registry.<domaine> (push et pull) et s3.<domaine>
+(fichiers des sites, lectures seules, réservé à <IP2> par Caddy). Aucun autre port
+n'est à ouvrir.
 
 Si les deux serveurs sont sur un même réseau privé et que ces noms y résolvent en
 adresses privées : les NetworkPolicy des builds bloquent les plages privées, il
@@ -257,8 +266,7 @@ b) Bootstrap de Keycloak (realm, clients). Rejouable. Il écrit les secrets des
    avec ses valeurs par défaut : localhost, MailHog, admin/admin.
 
 c) Tout le reste. compose respecte les dépendances : schéma Temporal, Temporal,
-   espace de noms, API (seule à appliquer les migrations), worker, droits de
-   static-edge, static-edge, console, Caddy :
+   espace de noms, API (seule à appliquer les migrations), worker, console, Caddy :
 
     deploy/compose.sh up -d
     deploy/compose.sh ps
@@ -357,6 +365,59 @@ Puis, sur le serveur 1 : CLUSTER_ID=preprod dans .env.prod, et
 
 Le watcher ne joint le serveur 1 que par https://api.<domaine> (443) : aucun port de
 plus à ouvrir.
+
+
+7 TER. SITES STATIQUES : STATIC-EDGE DANS LE CLUSTER
+----------------------------------------------------
+
+static-edge sert les sites depuis le serveur 2, derrière Traefik. Il ne lit pas
+Postgres : il demande à l'API quel site servir (clé du cluster, comme le watcher)
+et lit les fichiers par https://s3.<domaine> (identité « edge », lecture seule).
+Si l'API ne répond plus, les sites déjà consultés restent servis 15 minutes.
+
+Prérequis : watcher enrôlé (section 7 bis), CLUSTER_ID renseigné, DNS de la
+section 2 (*.sites et edge vers <IP2>, s3 vers <IP1>).
+
+a) Certificat joker des sites (DNS-01) : une clé d'API chez l'hébergeur DNS du
+   domaine, limitée à la zone. Voir deploy/k8s/cluster-issuer-dns.yaml (exemple
+   Cloudflare ; webhook pour OVH) :
+
+    sudo kubectl -n cert-manager create secret generic cloudflare-api-token \
+      --from-file=api-token=<fichier>
+    rm <fichier>
+    sed 's/ops@REMPLACER.invalid/ops@<domaine>/' cluster-issuer-dns.yaml | sudo kubectl apply -f -
+    sudo kubectl get clusterissuer letsencrypt-dns     # READY=True
+
+b) Secrets de static-edge. Une SECONDE clé « fichier de clé » pour le même
+   identifiant de cluster que le watcher (console, Clés de cluster) : chacun la
+   sienne, révocable séparément. Le secret S3 est S3_EDGE_SECRET_KEY du serveur 1 :
+
+    sudo kubectl create namespace betorun-edge
+    sudo kubectl -n betorun-edge create secret generic static-edge-key-file \
+      --from-file=key.json=<fichier>
+    sudo kubectl -n betorun-edge create secret generic static-edge-s3 \
+      --from-file=secret-key=<fichier contenant S3_EDGE_SECRET_KEY>
+    rm <fichiers>
+
+c) Déploiement (domaine et tag de l'image publiée par la CI) :
+
+    sed -e 's/REMPLACER-DOMAINE/<domaine>/g' -e 's/REMPLACER-SHA/<sha>/' \
+      static-edge.yaml | sudo kubectl apply -f -
+    sudo kubectl -n betorun-edge rollout status deploy/static-edge
+    sudo kubectl -n betorun-edge get certificate sites-wildcard   # READY=True
+    curl -sI https://<un-site>.sites.<domaine>
+
+d) Domaines des clients : à chaque domaine vérifié, le worker crée dans
+   betorun-edge un Ingress (étiquette betorun.io/edge-domain) et cert-manager son
+   certificat HTTP-01 ; ils partent avec le domaine ou le site
+   (KUBEMANAGER_SITES_EDGE_INGRESS_ENABLED, déjà dans le compose). Contrôle :
+
+    sudo kubectl -n betorun-edge get ingress -l betorun.io/edge-domain=true
+
+Mise à jour de l'image : la CI la publie mais ne la déploie pas (le serveur 2 n'est
+pas joint par la CI) :
+
+    sudo kubectl -n betorun-edge set image deploy/static-edge static-edge=thekrauss/static-edge:<sha>
 
 
 8. ADRESSE DES CLIENTS ET RATE LIMIT
@@ -501,7 +562,9 @@ serveur 1. Pour kweb : API_BASE_URL=https://api.<domaine>/kmanager/v1 et
 SITES_BASE_DOMAIN=sites.<domaine>, figés dans l'image de la console.
 
 Chaque push sur main publie les images sous le tag du commit (thekrauss/kubemanager,
-thekrauss/static-edge, thekrauss/kweb, thekrauss/watcher). Tant que DEPLOY_ENABLED
+thekrauss/static-edge, thekrauss/kweb, thekrauss/watcher). static-edge et le watcher
+tournent dans le cluster : ils se mettent à jour à la main (sections 7 bis et 7 ter).
+Tant que DEPLOY_ENABLED
 n'est pas à true, la CI publie les images mais ne déploie rien. Chaque dépôt ne
 remplace que ses lignes dans images.env (CONSOLE_IMAGE pour kweb). Le watcher ne se
 déploie pas automatiquement : section 7 bis, avec le tag publié.
@@ -511,14 +574,13 @@ doit pouvoir écrire /opt/betorun/secrets/images.env et lire .env.prod.
 Manuelle : écrire le tag du commit dans /opt/betorun/secrets/images.env :
 
     KUBEMANAGER_IMAGE=thekrauss/kubemanager:<sha>
-    STATIC_EDGE_IMAGE=thekrauss/static-edge:<sha>
 
 puis, API d'abord (elle applique les migrations) :
 
     git checkout <sha>
-    deploy/compose.sh pull api worker static-edge
+    deploy/compose.sh pull api worker
     deploy/compose.sh up -d --no-deps api
-    deploy/compose.sh up -d --no-deps worker static-edge
+    deploy/compose.sh up -d --no-deps worker
 
 Retour arrière : remettre l'ancien tag. Les migrations ne sont pas annulées : une
 sauvegarde avant toute mise à jour qui en contient est indispensable.
@@ -551,9 +613,11 @@ demande pg_dump et restauration.
   d'un bloc à la fin. Il reste donc désactivé.
 - Les conteneurs clients voient l'adresse de Traefik plutôt que celle du visiteur
   tant que le service Traefik n'est pas en externalTrafficPolicy: Local (non testé).
-- Sites : un certificat par sous-domaine, limite Let's Encrypt de 50 par semaine sur
-  le domaine. Pour aller au-delà : certificat joker et image Caddy avec module DNS
-  (docker/caddy/Caddyfile.prod.example).
+- Sites : les domaines des clients ont chacun leur certificat HTTP-01 (limite Let's
+  Encrypt de 50 nouveaux certificats par semaine et par domaine enregistré du
+  client, pas du nôtre) ; les sous-domaines *.sites passent par le joker.
+- Ancienne installation (static-edge dans le compose du serveur 1) : le rôle
+  Postgres edge_ro reste dans la base ; le supprimer à la main (DROP ROLE edge_ro).
 - Le code retombe sur nginx si KUBEMANAGER_KUBERNETES_INGRESS_CLASS manque
   (activities/constants.go) ; le compose de production et la validation l'imposent.
 - CLUSTER_ID reste vide tant que le watcher n'est pas enrôlé (section 7 bis) : l'identité

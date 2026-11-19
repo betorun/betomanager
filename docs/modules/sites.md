@@ -1,6 +1,6 @@
 # Module `sites`
 
-> Hébergement de sites statiques : upload d'un `.zip`, fichiers dans un stockage S3, servis par le binaire séparé `static-edge` derrière Caddy, sur `<sous-domaine>.<base_domain>` et sur des domaines personnalisés vérifiés.
+> Hébergement de sites statiques : upload d'un `.zip`, fichiers dans un stockage S3, servis par le binaire séparé `static-edge`, sur `<sous-domaine>.<base_domain>` et sur des domaines personnalisés vérifiés. En production, `static-edge` tourne dans le cluster derrière Traefik ; en développement, derrière Caddy.
 
 ## Architecture
 
@@ -13,16 +13,19 @@ graph LR
     Worker -->|extrait sites/site/deploy/| S3
     Worker -->|déploiement actif| PG[(Postgres)]
 
-    Visiteur -->|HTTPS| Caddy
-    Caddy -->|ask /check| Edge[static-edge]
-    Caddy -->|proxy| Edge
-    Edge -->|lecture seule| PG
-    Edge -->|lecture seule| S3
+    Visiteur -->|HTTPS| Traefik
+    Traefik --> Edge[static-edge, cluster]
+    Edge -->|HTTPS, clé du cluster : Resolve| API
+    Edge -->|HTTPS s3.domaine, lecture seule| S3
+    Worker -->|Ingress + certificat par domaine vérifié| Traefik
 ```
 
+Production (décision du 2026-11-19, [deploy/k8s/static-edge.yaml](../../deploy/k8s/static-edge.yaml), README de déploiement section 7 ter) : le serveur 2 ne joint le serveur 1 qu'en 443. Développement : `static-edge` lit Postgres directement et Caddy fait le TLS à la demande (`/check`).
+
 - **API + worker** (`cmd/gateway`) : gestion des sites, upload, extraction (workflow Temporal), domaines.
-- **`static-edge`** (`cmd/static-edge`) : binaire séparé exposé à Internet. Pas de config globale, de Temporal, de Kubernetes ni de Keycloak. Accès **lecture seule** à Postgres (`sites`, `site_domains`) et au stockage.
-- **Caddy** : TLS. Wildcard `*.<base_domain>` par challenge DNS ; domaines perso en TLS à la demande, autorisés uniquement si `static-edge` répond 200 sur `/check` (port interne). Voir [docker/caddy/Caddyfile.prod.example](../../docker/caddy/Caddyfile.prod.example).
+- **`static-edge`** (`cmd/static-edge`) : binaire séparé exposé à Internet. Pas de config globale, de Temporal, de Kubernetes ni de Keycloak. Table des sites : par l'API (`EDGE_API_URL`, `GET /clusters/EdgeService/:clusterID/Resolve`, fichier de clé du compte système du cluster) en production, par Postgres en lecture seule (`EDGE_DATABASE_URL`) en développement. Cache de 10 s ; API injoignable : dernière réponse connue servie 15 min. Stockage en **lecture seule**.
+- **TLS en production** : joker `*.<base_domain>` par cert-manager en DNS-01 ([cluster-issuer-dns.yaml](../../deploy/k8s/cluster-issuer-dns.yaml)) ; un Ingress + certificat HTTP-01 par domaine personnalisé vérifié, créés par `SyncEdgeDomainsWorkflow` (activité `SyncEdgeDomains`, étiquette `betorun.io/edge-domain`, config `sites.edge_ingress`). Le workflow a un identifiant fixe (`sites-edge-domains`) : une demande pendant un passage arrive par signal et en provoque un autre. Déclenché à la vérification d'un domaine, à sa suppression et à la suppression d'un site.
+- **TLS en développement** : Caddy, TLS à la demande autorisé si `static-edge` répond 200 sur `/check`.
 
 ## Endpoints HTTP
 

@@ -83,11 +83,12 @@ jobs:
             # Seules nos lignes : CONSOLE_IMAGE appartient au dépôt kweb.
             f=/opt/betorun/secrets/images.env
             touch "$f"
+            # static-edge tourne dans le cluster (serveur 2) : son image est
+            # publiée ci-dessus, sa mise à jour est manuelle (README, section 10).
             sed -i '/^KUBEMANAGER_IMAGE=/d;/^STATIC_EDGE_IMAGE=/d' "$f"
             echo "KUBEMANAGER_IMAGE=thekrauss/kubemanager:${{ github.sha }}" >> "$f"
-            echo "STATIC_EDGE_IMAGE=thekrauss/static-edge:${{ github.sha }}" >> "$f"
-            deploy/compose.sh pull api worker static-edge
+            deploy/compose.sh pull api worker
             deploy/compose.sh up -d --no-deps api
-            deploy/compose.sh up -d --no-deps worker static-edge
+            deploy/compose.sh up -d --no-deps worker
             docker image prune -f
             echo "Deployed ${{ github.sha }}"

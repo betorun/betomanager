@@ -15,6 +15,10 @@ const (
 	envS3Bucket     = "EDGE_S3_BUCKET"
 	envS3Region     = "EDGE_S3_REGION"
 	envS3UseSSL     = "EDGE_S3_USE_SSL"
+	// Mode cluster : la table des sites est lue par l'API, pas dans Postgres.
+	envAPIURL    = "EDGE_API_URL"
+	envClusterID = "EDGE_CLUSTER_ID"
+	envKeyFile   = "EDGE_KEY_FILE"
 )
 
 // Valeurs par défaut (candidates à la configuration).
@@ -22,6 +26,8 @@ const (
 	defaultHTTPAddr     = ":8090"
 	defaultInternalAddr = ":8091"
 	defaultCacheTTL     = 10 * time.Second
+	// defaultStaleFor : API injoignable, les sites déjà connus restent servis.
+	defaultStaleFor = 15 * time.Minute
 )
 
 // Base de données.
@@ -29,6 +35,8 @@ const (
 	sqlDriverName     = "pgx"
 	dbMaxOpenConns    = 10
 	dbConnMaxIdleTime = 5 * time.Minute
+	// apiClientTimeout : appel à l'API (mode cluster), échange de jeton compris.
+	apiClientTimeout = 10 * time.Second
 )
 
 // Serveurs HTTP.

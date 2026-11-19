@@ -31,22 +31,22 @@ type ProjectK8sActivities struct {
 
 // CreateNamespace est idempotente : si le namespace existe déjà (AlreadyExists),
 // on considère l'opération réussie (classique pour une activity Temporal retriable).
-func (a *ProjectK8sActivities) CreateNamespace(ctx context.Context, projectID string, projectName string) error {
+func (a *ProjectK8sActivities) CreateNamespace(ctx context.Context, projectID, projectName, nsName string) error {
 	payload := struct {
-		ProjectID, ProjectName string
-	}{projectID, projectName}
+		ProjectID, ProjectName, Namespace string
+	}{projectID, projectName, nsName}
 
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, payload,
 		idempotency.ActivityOptions{ProcessingTTL: k8sProcessingTTL},
 		func() (struct{}, error) {
-			nsName := utils.ProjectNamespace(projectName)
 			ns := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: nsName,
 					Labels: map[string]string{
-						utils.LabelManaged:     utils.LabelManagedValue,
-						utils.LabelProjectID:   projectID,
-						utils.LabelProjectName: projectName,
+						utils.LabelManaged:   utils.LabelManagedValue,
+						utils.LabelProjectID: projectID,
+						// Pas le nom : libre (espaces, accents), refusé dans
+						// un label, et il change au renommage.
 					},
 					Annotations: map[string]string{
 						utils.LabelCreatedAt: time.Now().Format(time.RFC3339),
@@ -63,13 +63,12 @@ func (a *ProjectK8sActivities) CreateNamespace(ctx context.Context, projectID st
 	return err
 }
 
-func (a *ProjectK8sActivities) DeleteNamespace(ctx context.Context, projectName string) error {
-	payload := struct{ ProjectName string }{projectName}
+func (a *ProjectK8sActivities) DeleteNamespace(ctx context.Context, nsName string) error {
+	payload := struct{ Namespace string }{nsName}
 
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, payload,
 		idempotency.ActivityOptions{ProcessingTTL: k8sProcessingTTL},
 		func() (struct{}, error) {
-			nsName := utils.ProjectNamespace(projectName)
 			a.Logger.Infow("deleting Kubernetes namespace", "namespace", nsName)
 			err := a.K8sClient.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
 			if err != nil && !kerrors.IsNotFound(err) {
@@ -146,8 +145,7 @@ func (a *ProjectK8sActivities) AssignDefaultOwner(ctx context.Context, projectID
 	return nil
 }
 
-func (a *ProjectK8sActivities) GetNamespaceMetrics(ctx context.Context, projectName string) (*domain.NamespaceMetrics, error) {
-	nsName := utils.ProjectNamespace(projectName)
+func (a *ProjectK8sActivities) GetNamespaceMetrics(ctx context.Context, nsName string) (*domain.NamespaceMetrics, error) {
 
 	podMetricsList, err := a.MetricsClient.MetricsV1beta1().PodMetricses(nsName).List(ctx, metav1.ListOptions{})
 	if err != nil {

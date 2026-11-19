@@ -11,7 +11,6 @@ import (
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	typesproject "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/projects/workflows"
-	"github.com/thekrauss/kubemanager/internal/modules/utils"
 )
 
 // ErrInvalidProjectLimits : limite illisible ou nulle.
@@ -70,7 +69,7 @@ func (s *ProjectService) SetLimits(ctx context.Context, projectID string, in typ
 		temporal.ExecuteOptions{WorkflowID: workflows.WorkflowIDLimitsPrefix + projectID},
 		workflows.UpdateProjectLimitsWorkflow, workflows.UpdateProjectLimitsInput{
 			ProjectID:   projectID,
-			Namespace:   utils.ProjectNamespace(project.Name),
+			Namespace:   project.Namespace,
 			CpuLimit:    next.CPU,
 			MemoryLimit: next.Memory,
 		},

@@ -53,7 +53,7 @@ func TestE2E_SiteDeployAndServe(t *testing.T) {
 	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	projectID := uuid.New()
-	require.NoError(t, gdb.Exec("INSERT INTO projects (id, name) VALUES (?, ?)", projectID, "e2e-"+projectID.String()[:8]).Error)
+	require.NoError(t, gdb.Exec("INSERT INTO projects (id, name, namespace) VALUES (?, ?, ?)", projectID, "e2e-"+projectID.String()[:8], "km-"+projectID.String()[:8]).Error)
 
 	platform, err := objectstore.New(s3cfg("betorun", "betorun-dev-secret"))
 	require.NoError(t, err)

@@ -7,7 +7,8 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-func DeleteProjectWorkflow(ctx workflow.Context, projectID, projectName string) error {
+// namespace : espace Kubernetes du projet (Project.Namespace).
+func DeleteProjectWorkflow(ctx workflow.Context, projectID, namespace string) error {
 	options := workflow.ActivityOptions{
 		StartToCloseTimeout: activityStartToCloseTimeout,
 		RetryPolicy: &temporal.RetryPolicy{
@@ -28,7 +29,7 @@ func DeleteProjectWorkflow(ctx workflow.Context, projectID, projectName string) 
 
 	// 1. Namespace K8s : cascade delete de toutes les ressources (Deployments,
 	//    Services, Ingress, PVCs, Helm storage Secrets…). Idempotent sur NotFound.
-	if err := workflow.ExecuteActivity(ctx, k8sActs.DeleteNamespace, projectName).Get(ctx, nil); err != nil {
+	if err := workflow.ExecuteActivity(ctx, k8sActs.DeleteNamespace, namespace).Get(ctx, nil); err != nil {
 		return err
 	}
 

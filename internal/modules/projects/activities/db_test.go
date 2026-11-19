@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 )
 
 type fakeRepo struct {
@@ -37,6 +38,11 @@ func (f *fakeRepo) UpdateProjectLimits(context.Context, string, string, string, 
 func (f *fakeRepo) ListProjects(context.Context, []uuid.UUID, []uuid.UUID, []uuid.UUID, int) ([]dauth.Project, error) {
 	return nil, nil
 }
+func (f *fakeRepo) UpdateProject(context.Context, uuid.UUID, string, string) error { return nil }
+func (f *fakeRepo) OrganizationQuotas(context.Context, []uuid.UUID) ([]repository.OrgQuota, error) {
+	return nil, nil
+}
+func (f *fakeRepo) SetMaxProjects(context.Context, uuid.UUID, int) error { return nil }
 
 // Ligne déjà écrite par CreateProject : l'activité la renvoie sans la recréer.
 func TestCreateProjectInDB_ExistingRow(t *testing.T) {

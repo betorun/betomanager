@@ -1682,5 +1682,25 @@
  {
   "fr": "Supprimer une politique de refus du projet",
   "en": "Delete a project deny policy"
+ },
+ {
+  "fr": "Nouvelle description",
+  "en": "New description"
+ },
+ {
+  "fr": "Nouveau nom (3 à 30 caractères, unique dans l'organisation)",
+  "en": "New name (3 to 30 characters, unique in the organization)"
+ },
+ {
+  "fr": "Organisation du projet (vide : votre organisation personnelle)",
+  "en": "Project organization (empty: your personal organization)"
+ },
+ {
+  "fr": "Lire un projet (nom, organisation, plafonds)",
+  "en": "Get a project (name, organization, limits)"
+ },
+ {
+  "fr": "Renommer un projet ou changer sa description",
+  "en": "Rename a project or change its description"
  }
 ]

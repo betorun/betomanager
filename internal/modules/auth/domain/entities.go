@@ -9,9 +9,13 @@ import (
 )
 
 type Project struct {
-	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	Name        string    `gorm:"type:varchar(255);uniqueIndex;not null"`
-	Description string    `gorm:"type:text"`
+	ID uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	// Name : unique dans l'organisation (projets supprimés exclus).
+	Name        string `gorm:"type:varchar(255);not null"`
+	Description string `gorm:"type:text"`
+	// Namespace : espace Kubernetes, fixé à la création (km-<id court> ;
+	// km-<nom> pour les projets créés avant le 2026-11-19). Ne suit pas le nom.
+	Namespace string `gorm:"type:varchar(63);not null"`
 
 	CpuLimit     string `gorm:"type:varchar(20);not null;default:'2000m'"`
 	MemoryLimit  string `gorm:"type:varchar(20);not null;default:'4Gi'"`

@@ -332,7 +332,7 @@ Les rôles Keycloak `SUPER_ADMIN`/`ADMIN` ne donnent plus de contournement globa
 - **Accès aux données** (activable par organisation) : lectures sensibles (logs, secrets).
 - Chaque entrée : horodatage, principal, mode d'authentification (session, SA, clé API `k7f3q9xz2m`, fédération), permission, ressource, décision (autorisé/refusé), IP, user agent, trace ID.
 - **Immuable** : table append-only (aucun `UPDATE`/`DELETE` accordé au rôle applicatif), partitionnée par mois, exportée vers le stockage objet en verrouillage WORM. Rétention : 400 jours pour l'administration.
-- Consultable par les clients avec `logging.auditLogs.read` (API + écran console).
+- Consultable par les clients avec `logging.auditLogs.read` (API + écran console). Page Audit : journal du projet (avec les actions d'organisation qui le touchent) et, pour qui a ce droit sur l'organisation (propriétaires par défaut), journal de l'organisation.
 
 ## 12. Point de décision unique
 

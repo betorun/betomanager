@@ -118,6 +118,18 @@ func (p *TemporalProcessor) Start() (<-chan error, error) {
 		sc := p.cfg.Config.Sites
 		w.RegisterWorkflow(siteWorkflows.DeploySiteWorkflow)
 		w.RegisterWorkflow(siteWorkflows.DeleteSiteWorkflow)
+		if ei := sc.EdgeIngress.WithDefaults(); ei.Enabled && p.cfg.K8sClient != nil {
+			w.RegisterWorkflow(siteWorkflows.SyncEdgeDomainsWorkflow)
+			p.registerActivities(w, &siteActivities.EdgeDomainActivities{
+				K8s:   p.cfg.K8sClient,
+				Hosts: siteRepository.NewSiteRepository(p.cfg.DB),
+				Edge: siteActivities.EdgeIngress{
+					Namespace: ei.Namespace, Service: ei.Service, Port: int32(ei.Port),
+					Issuer: ei.Issuer, IngressClass: p.cfg.Config.Kubernetes.IngressClass,
+				},
+				Logger: p.cfg.Logger,
+			})
+		}
 		p.registerActivities(w, &siteActivities.SiteActivities{
 			Repo:  siteRepository.NewSiteRepository(p.cfg.DB),
 			Store: p.cfg.ObjectStore,

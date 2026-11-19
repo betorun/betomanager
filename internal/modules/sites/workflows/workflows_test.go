@@ -76,3 +76,21 @@ func TestDeploySiteWorkflow_InfraErrorStaysInternal(t *testing.T) {
 func activityName(name string) activity.RegisterOptions {
 	return activity.RegisterOptions{Name: name}
 }
+
+func TestSyncEdgeDomainsWorkflow_SignalDuringPassRunsAgain(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	calls := 0
+	env.RegisterActivityWithOptions(func(context.Context) error {
+		calls++
+		if calls == 1 {
+			// Un domaine vérifié pendant le premier passage.
+			env.SignalWorkflow(SignalEdgeResync, nil)
+		}
+		return nil
+	}, activityName("SyncEdgeDomains"))
+	env.ExecuteWorkflow(SyncEdgeDomainsWorkflow)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	assert.Equal(t, 2, calls)
+}

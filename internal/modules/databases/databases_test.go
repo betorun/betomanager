@@ -24,7 +24,6 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam"
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/databases/domain"
-	"github.com/thekrauss/kubemanager/internal/modules/utils"
 )
 
 type memRepo struct {
@@ -77,7 +76,7 @@ func (m *memRepo) Delete(_ context.Context, id uuid.UUID) error {
 type projects struct{ status string }
 
 func (p projects) GetProjectByID(_ context.Context, id string) (*dauth.Project, error) {
-	return &dauth.Project{ID: uuid.MustParse(id), Name: "demo", Status: p.status}, nil
+	return &dauth.Project{ID: uuid.MustParse(id), Name: "demo", Namespace: "km-demo", Status: p.status}, nil
 }
 
 type fakeClusters struct {
@@ -124,7 +123,7 @@ func TestCreateValidatesAndProvisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Status != domain.StatusProvisioning || v.Host != "db-main-rw."+utils.ProjectNamespace("demo")+".svc" || v.StorageSize != "1Gi" || v.Port != 5432 {
+	if v.Status != domain.StatusProvisioning || v.Host != "db-main-rw.km-demo.svc" || v.StorageSize != "1Gi" || v.Port != 5432 {
 		t.Fatalf("vue : %+v", v)
 	}
 	if len(fc.created) != 1 || fc.created[0].Name != "db-main" || fc.created[0].Storage != "1Gi" {

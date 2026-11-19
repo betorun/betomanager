@@ -36,8 +36,8 @@ func e2eProject(t *testing.T) (WorkloadRepository, *gorm.DB, uuid.UUID) {
 	require.NoError(t, err)
 	project := uuid.New()
 	// Organisation du jeu de données de scripts/iam_e2e_db.sh.
-	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, organization_id)
-		SELECT ?, ?, organization_id FROM projects LIMIT 1`, project, "e2e-"+project.String()).Error)
+	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, namespace, organization_id)
+		SELECT ?, ?, ?, organization_id FROM projects LIMIT 1`, project, "e2e-"+project.String(), "km-"+project.String()[:8]).Error)
 	return NewWorkloadRepository(db), db, project
 }
 

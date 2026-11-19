@@ -381,7 +381,7 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 	if err := variables.Validate(); err != nil {
 		return nil, none, err
 	}
-	targetNamespace := utils.ProjectNamespace(project.Name)
+	targetNamespace := project.Namespace
 
 	// Identité : vérifiée avant toute création (actAs sur le compte).
 	var runAs *uuid.UUID

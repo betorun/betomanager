@@ -336,12 +336,9 @@ func (e mcpEnv) listWorkloads(ctx context.Context, call mcp.Call) (mcp.Result, e
 	if err != nil {
 		return mcp.Result{}, signInHint(err)
 	}
-	type row struct {
-		ID, Name, Status, Phase, Image, URL string
-	}
-	rows := make([]row, 0, len(list))
+	rows := make([]api.WorkloadJSON, 0, len(list))
 	for _, w := range list {
-		rows = append(rows, row{w.ID.String(), w.Name, w.Status, w.CurrentPhase, w.Image, w.ExternalURL})
+		rows = append(rows, api.ToJSON(w))
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	out := map[string]any{"workloads": rows}

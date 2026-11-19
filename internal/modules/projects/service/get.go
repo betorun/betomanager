@@ -27,7 +27,7 @@ func (s *ProjectService) GetProjectStatus(ctx context.Context, projectID string)
 	switch project.Status {
 
 	case utils.ProjectStatusReady:
-		nsName := utils.ProjectNamespace(project.Name)
+		nsName := project.Namespace
 		ns, err := s.K8sClient.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
 
 		if err != nil {
@@ -69,7 +69,7 @@ func (s *ProjectService) GetMetrics(ctx context.Context, projectID string) (*dom
 	if err != nil {
 		return nil, err
 	}
-	nsName := utils.ProjectNamespace(project.Name)
+	nsName := project.Namespace
 
 	mClient, err := metricsv1.NewForConfig(s.K8sConfig)
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/organizations"
+	"github.com/thekrauss/kubemanager/internal/modules/utils"
 )
 
 type ProjectRepository interface {
@@ -29,10 +30,25 @@ type ProjectRepository interface {
 	// récents d'abord, au plus limit (+1 pour savoir s'il en reste).
 	// excluded : retirés même si leur organisation est listée.
 	ListProjects(ctx context.Context, orgIDs, ids, excluded []uuid.UUID, limit int) ([]dauth.Project, error)
+	// UpdateProject : nom et description (l'espace Kubernetes ne change pas).
+	UpdateProject(ctx context.Context, id uuid.UUID, name, description string) error
+	// OrganizationQuotas : nom, nombre de projets et plafond de chaque organisation.
+	OrganizationQuotas(ctx context.Context, orgIDs []uuid.UUID) ([]OrgQuota, error)
+	// SetMaxProjects : plafond de projets d'une organisation.
+	SetMaxProjects(ctx context.Context, orgID uuid.UUID, max int) error
 }
 
-// ErrNameTaken : un projet porte déjà ce nom (le nom sert d'espace Kubernetes).
-var ErrNameTaken = errors.New("a project with this name already exists")
+// ErrNameTaken : un projet de l'organisation porte déjà ce nom.
+var ErrNameTaken = errors.New("a project with this name already exists in this organization")
+
+// ErrProjectLimit : l'organisation a déjà son nombre maximal de projets.
+var ErrProjectLimit = errors.New("this organization already has its maximum number of projects")
+
+// nameTaken : violation de l'unicité du nom dans l'organisation.
+func nameTaken(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == pgerr.UniqueViolation && pgErr.ConstraintName == "uq_projects_org_name"
+}
 
 type pgProjectRepo struct {
 	db *gorm.DB
@@ -42,8 +58,10 @@ func NewProjectRepository(db *gorm.DB) ProjectRepository {
 	return &pgProjectRepo{db: db}
 }
 
-// CreateProject crée le projet dans l'organisation personnelle du
-// propriétaire (créée au besoin) et lui accorde roles/owner, atomiquement.
+// CreateProject crée le projet dans son organisation (à défaut, celle,
+// personnelle, du propriétaire, créée au besoin) et accorde roles/owner,
+// atomiquement. Le plafond de projets de l'organisation est vérifié sous
+// verrou : deux créations simultanées ne le dépassent pas.
 func (r *pgProjectRepo) CreateProject(ctx context.Context, project *dauth.Project, ownerID string) error {
 	ownerUUID, err := uuid.Parse(ownerID)
 	if err != nil {
@@ -57,9 +75,27 @@ func (r *pgProjectRepo) CreateProject(ctx context.Context, project *dauth.Projec
 			}
 			project.OrganizationID = orgID
 		}
+		var max int
+		if err := tx.Raw(`SELECT max_projects FROM organizations WHERE id = ? AND deleted_at IS NULL FOR UPDATE`,
+			project.OrganizationID).Scan(&max).Error; err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(&dauth.Project{}).Where("organization_id = ?", project.OrganizationID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count >= int64(max) {
+			return ErrProjectLimit
+		}
+		// Espace Kubernetes : fixé une fois pour toutes, tiré de l'ID.
+		if project.ID == uuid.Nil {
+			project.ID = uuid.New()
+		}
+		if project.Namespace == "" {
+			project.Namespace = utils.NewProjectNamespace(project.ID)
+		}
 		if err := tx.Create(project).Error; err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == pgerr.UniqueViolation && pgErr.ConstraintName != "projects_pkey" {
+			if nameTaken(err) {
 				return ErrNameTaken
 			}
 			return err
@@ -140,4 +176,51 @@ func (r *pgProjectRepo) ListProjects(ctx context.Context, orgIDs, ids, excluded 
 	var out []dauth.Project
 	err := q.Order("created_at DESC, id").Limit(limit).Find(&out).Error
 	return out, err
+}
+
+func (r *pgProjectRepo) UpdateProject(ctx context.Context, id uuid.UUID, name, description string) error {
+	res := r.db.WithContext(ctx).Model(&dauth.Project{}).Where("id = ?", id).
+		Updates(map[string]any{"name": name, "description": description, "updated_at": time.Now()})
+	if res.Error != nil {
+		if nameTaken(res.Error) {
+			return ErrNameTaken
+		}
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// OrgQuota : projets d'une organisation et son plafond.
+type OrgQuota struct {
+	ID          uuid.UUID
+	DisplayName string
+	Projects    int
+	MaxProjects int
+}
+
+func (r *pgProjectRepo) OrganizationQuotas(ctx context.Context, orgIDs []uuid.UUID) ([]OrgQuota, error) {
+	if len(orgIDs) == 0 {
+		return nil, nil
+	}
+	var out []OrgQuota
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT o.id, o.display_name, o.max_projects,
+		       (SELECT count(*) FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL) AS projects
+		FROM organizations o WHERE o.id IN ? AND o.deleted_at IS NULL
+		ORDER BY o.display_name, o.id`, orgIDs).Scan(&out).Error
+	return out, err
+}
+
+func (r *pgProjectRepo) SetMaxProjects(ctx context.Context, orgID uuid.UUID, max int) error {
+	res := r.db.WithContext(ctx).Exec(`UPDATE organizations SET max_projects = ?, updated_at = now() WHERE id = ? AND deleted_at IS NULL`, max, orgID)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

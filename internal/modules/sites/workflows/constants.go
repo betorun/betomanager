@@ -17,3 +17,9 @@ const (
 	// WorkflowIDDeletePrefix : suivi de l'identifiant du site.
 	WorkflowIDDeletePrefix = "site-delete-"
 )
+
+// Synchronisation des Ingress des domaines personnalisés (static-edge).
+const (
+	WorkflowIDEdgeDomains = "sites-edge-domains"
+	SignalEdgeResync      = "resync"
+)

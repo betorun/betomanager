@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	githubdomain "github.com/thekrauss/kubemanager/internal/modules/github/domain"
 	workloadsdomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
@@ -157,4 +158,38 @@ func (c *Client) GetGitLink(ctx context.Context, id string) (*GitLinkView, error
 func (c *Client) DeployGitLink(ctx context.Context, id string) (*Build, error) {
 	var out Build
 	return &out, c.Do(ctx, http.MethodPost, gitLinkPath(id)+"/deploy", struct{}{}, &out)
+}
+
+// WorkloadJSON : forme stable de --json (snake_case), sans les champs
+// internes (Helm, spec, workflow) que l'API renvoie sous leurs noms Go.
+type WorkloadJSON struct {
+	ID             string       `json:"id"`
+	ProjectID      string       `json:"project_id"`
+	Name           string       `json:"name"`
+	Kind           string       `json:"kind"`
+	Image          string       `json:"image"`
+	Status         string       `json:"status"`
+	Phase          string       `json:"phase"`
+	Replicas       int          `json:"replicas"`
+	URL            string       `json:"url,omitempty"`
+	Port           int          `json:"port"`
+	CPULimit       string       `json:"cpu_limit"`
+	MemoryLimit    string       `json:"memory_limit"`
+	ServiceAccount string       `json:"service_account_id,omitempty"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+	PullFailure    *PullFailure `json:"pull_failure,omitempty"`
+}
+
+// ToJSON : vue --json d'un conteneur.
+func ToJSON(w Workload) WorkloadJSON {
+	out := WorkloadJSON{
+		ID: w.ID.String(), ProjectID: w.ProjectID.String(), Name: w.Name, Kind: w.Kind, Image: w.Image,
+		Status: w.Status, Phase: w.CurrentPhase, Replicas: w.Replicas, URL: w.ExternalURL, Port: w.TargetPort,
+		CPULimit: w.CPULimit, MemoryLimit: w.MemoryLimit, CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt,
+	}
+	if w.ServiceAccountID != nil {
+		out.ServiceAccount = w.ServiceAccountID.String()
+	}
+	return out
 }

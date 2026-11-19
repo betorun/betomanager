@@ -14,7 +14,6 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
 	"github.com/thekrauss/kubemanager/internal/modules/registries/repository"
-	"github.com/thekrauss/kubemanager/internal/modules/utils"
 )
 
 const refreshTimeout = 15 * time.Second
@@ -115,7 +114,7 @@ func (s *Service) refresh(ctx context.Context, project uuid.UUID) {
 	defer cancel()
 	p, err := s.Projects.GetProjectByID(ctx, project.String())
 	if err == nil {
-		err = s.Pull.Refresh(ctx, utils.ProjectNamespace(p.Name), project)
+		err = s.Pull.Refresh(ctx, p.Namespace, project)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) && s.Logger != nil {
 		s.Logger.Warnw("registry pull secret not refreshed", "project", project, "error", err)

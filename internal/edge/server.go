@@ -200,6 +200,9 @@ func writeUnavailable(w http.ResponseWriter) {
 	_, _ = w.Write([]byte(unavailablePage))
 }
 
+// NormalizeHost : minuscules, sans port ni point final.
+func NormalizeHost(h string) string { return normalizeHost(h) }
+
 // normalizeHost : minuscules, sans port ni point final.
 func normalizeHost(h string) string {
 	h = strings.TrimSpace(strings.ToLower(h))

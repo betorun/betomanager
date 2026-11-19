@@ -88,7 +88,7 @@ func (s *Service) namespace(ctx context.Context, projectID uuid.UUID) (string, e
 	if p.Status != utils.ProjectStatusReady {
 		return "", fmt.Errorf("project is not ready (%s)", p.Status)
 	}
-	return utils.ProjectNamespace(p.Name), nil
+	return p.Namespace, nil
 }
 
 // Create : enregistre la base puis crée son Cluster. Échec côté Kubernetes :

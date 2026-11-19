@@ -164,8 +164,8 @@
   "en": "project listing unavailable"
  },
  {
-  "fr": "Un projet porte déjà ce nom",
-  "en": "a project with this name already exists"
+  "fr": "Un projet de cette organisation porte déjà ce nom",
+  "en": "a project with this name already exists in this organization"
  },
  {
   "fr": "La nouvelle limite est inférieure à ce que les conteneurs du projet réservent déjà",
@@ -174,5 +174,25 @@
  {
   "fr": "Une modification des limites de ce projet est déjà en cours",
   "en": "a limits update is already in progress for this project"
+ },
+ {
+  "fr": "Identifiant d'organisation invalide",
+  "en": "invalid organization id"
+ },
+ {
+  "fr": "Permission refusée : resourcemanager.projects.create sur cette organisation",
+  "en": "permission denied: resourcemanager.projects.create on this organization"
+ },
+ {
+  "fr": "Le nom du projet doit faire de 3 à 30 caractères, sans caractère de contrôle",
+  "en": "the project name must be 3 to 30 characters, without control characters"
+ },
+ {
+  "fr": "Cette organisation a déjà son nombre maximal de projets",
+  "en": "this organization already has its maximum number of projects"
+ },
+ {
+  "fr": "Aucun site pour ce nom d'hôte",
+  "en": "no site for this host"
  }
 ]

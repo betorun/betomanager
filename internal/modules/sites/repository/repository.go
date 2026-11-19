@@ -41,6 +41,8 @@ type SiteRepository interface {
 	// VerifiedDomain : domaine vérifié portant ce nom, hors du domaine donné.
 	VerifiedDomain(ctx context.Context, hostname string, except uuid.UUID) (*domain.SiteDomain, error)
 	DeleteDomain(ctx context.Context, siteID, domainID uuid.UUID) error
+	// ServedDomains : noms vérifiés des sites non supprimés (Ingress de l'edge).
+	ServedDomains(ctx context.Context) ([]string, error)
 }
 
 type siteRepository struct {
@@ -192,4 +194,13 @@ func (r *siteRepository) SetDomainVerification(ctx context.Context, domainID uui
 
 func (r *siteRepository) DeleteDomain(ctx context.Context, siteID, domainID uuid.UUID) error {
 	return r.db.WithContext(ctx).Delete(&domain.SiteDomain{}, "id = ? AND site_id = ?", domainID, siteID).Error
+}
+
+func (r *siteRepository) ServedDomains(ctx context.Context) ([]string, error) {
+	var hosts []string
+	err := r.db.WithContext(ctx).Table("site_domains d").
+		Joins("JOIN sites s ON s.id = d.site_id").
+		Where("d.verified AND s.status <> ?", domain.SiteStatusDeleting).
+		Order("d.hostname").Distinct().Pluck("d.hostname", &hosts).Error
+	return hosts, err
 }

@@ -78,7 +78,12 @@ func newWorkloadsList() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if done, err := wantJSON(cmd, list); done {
+			if flagJSON {
+				views := make([]api.WorkloadJSON, 0, len(list))
+				for _, w := range list {
+					views = append(views, api.ToJSON(w))
+				}
+				_, err := wantJSON(cmd, views)
 				return err
 			}
 			p := printer(cmd)
@@ -348,15 +353,22 @@ func newWorkloadsStatus() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if done, err := wantJSON(cmd, w); done {
+			// Le pod peut être bloqué sur son image avant que le statut ne
+			// passe à IMAGE_PULL_FAILED : on demande toujours au cluster.
+			var pull *api.PullFailure
+			if live, err := cl.WorkloadLiveStatus(cmd.Context(), w.ID.String()); err == nil {
+				pull = live.PullFailure
+			}
+			if flagJSON {
+				view := api.ToJSON(*w)
+				view.PullFailure = pull
+				_, err := wantJSON(cmd, view)
 				return err
 			}
 			p := printer(cmd)
 			cause := ""
-			// Le pod peut être bloqué sur son image avant que le statut ne
-			// passe à IMAGE_PULL_FAILED : on demande toujours au cluster.
-			if live, err := cl.WorkloadLiveStatus(cmd.Context(), w.ID.String()); err == nil && live.PullFailure != nil {
-				cause = p.Red(pullFailureText(live.PullFailure))
+			if pull != nil {
+				cause = p.Red(pullFailureText(pull))
 			}
 			identity, url := "", ""
 			if w.ServiceAccountID != nil {

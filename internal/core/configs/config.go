@@ -270,6 +270,38 @@ type SitesConfig struct {
 	MaxArchiveBytes   int64 `mapstructure:"max_archive_bytes"`
 	MaxExtractedBytes int64 `mapstructure:"max_extracted_bytes"`
 	MaxFiles          int   `mapstructure:"max_files"`
+	// EdgeIngress : static-edge dans le cluster (production). Chaque domaine
+	// personnalisé vérifié y reçoit un Ingress et son certificat.
+	EdgeIngress EdgeIngressConfig `mapstructure:"edge_ingress"`
+}
+
+// EdgeIngressConfig : Ingress des domaines personnalisés des sites, vers
+// static-edge (deploy/k8s/static-edge.yaml).
+type EdgeIngressConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// Namespace et Service de static-edge (défauts : betorun-edge, static-edge:80).
+	Namespace string `mapstructure:"namespace"`
+	Service   string `mapstructure:"service"`
+	Port      int    `mapstructure:"port"`
+	// Issuer : ClusterIssuer cert-manager en HTTP-01 (défaut letsencrypt-prod).
+	Issuer string `mapstructure:"issuer"`
+}
+
+// WithDefaults : valeurs de deploy/k8s/static-edge.yaml pour les champs vides.
+func (c EdgeIngressConfig) WithDefaults() EdgeIngressConfig {
+	if c.Namespace == "" {
+		c.Namespace = "betorun-edge"
+	}
+	if c.Service == "" {
+		c.Service = "static-edge"
+	}
+	if c.Port == 0 {
+		c.Port = 80
+	}
+	if c.Issuer == "" {
+		c.Issuer = "letsencrypt-prod"
+	}
+	return c
 }
 
 // BuildsConfig : construction d'images depuis le code et registre de la

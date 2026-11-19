@@ -2,17 +2,22 @@
 //
 // Binaire séparé de la plateforme (cmd/gateway) : il est exposé à Internet et
 // ne doit embarquer ni identifiants admin, ni accès en écriture. Il lit :
-//   - Postgres en lecture seule (nom d'hôte → site + déploiement actif) ;
+//   - nom d'hôte → site + déploiement actif : en production, par l'API
+//     (EDGE_API_URL, clé du compte système du cluster) ; en développement,
+//     Postgres en lecture seule (EDGE_DATABASE_URL) ;
 //   - l'object store en lecture seule (fichiers des déploiements).
 //
-// Caddy est devant : TLS (certificats à la demande validés par /check sur le
-// port interne) puis reverse_proxy vers le port public.
+// Production : dans le cluster, derrière Traefik (certificats cert-manager).
+// Développement : derrière Caddy (TLS à la demande validé par /check).
 //
 // Configuration (variables d'environnement) :
 //
 //	EDGE_HTTP_ADDR       port public            (défaut :8090)
 //	EDGE_INTERNAL_ADDR   /check + /healthz      (défaut :8091)
-//	EDGE_DATABASE_URL    DSN Postgres, utilisateur lecture seule (requis)
+//	EDGE_API_URL         …/kmanager/v1 : mode cluster, avec EDGE_KEY_FILE
+//	                     (fichier de clé du watcher) ; EDGE_CLUSTER_ID lu
+//	                     dans ce fichier par défaut
+//	EDGE_DATABASE_URL    DSN Postgres lecture seule (sans EDGE_API_URL)
 //	EDGE_BASE_DOMAIN     domaine des sous-domaines de sites (requis)
 //	EDGE_CACHE_TTL       cache nom d'hôte → site (défaut 10s)
 //	EDGE_S3_ENDPOINT, EDGE_S3_ACCESS_KEY, EDGE_S3_SECRET_KEY, EDGE_S3_BUCKET (requis)
@@ -22,6 +27,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -36,6 +42,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/thekrauss/kubemanager/internal/cli/api"
 	"github.com/thekrauss/kubemanager/internal/edge"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/objectstore"
 )
@@ -54,13 +61,27 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	db, err := sql.Open(sqlDriverName, cfg.databaseURL)
-	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+	var source edge.Resolver
+	if cfg.apiURL != "" {
+		tokens, err := api.KeyFileSource(cfg.keyFile)
+		if err != nil {
+			return fmt.Errorf("%s: %w", envKeyFile, err)
+		}
+		source = &edge.HTTPResolver{BaseURL: cfg.apiURL, ClusterID: cfg.clusterID, Tokens: tokens,
+			Client: &http.Client{Timeout: apiClientTimeout}}
+		logger.Info("site lookup through the API", "cluster", cfg.clusterID)
+	} else {
+		db, err := sql.Open(sqlDriverName, cfg.databaseURL)
+		if err != nil {
+			return fmt.Errorf("open database: %w", err)
+		}
+		defer db.Close()
+		db.SetMaxOpenConns(dbMaxOpenConns)
+		db.SetConnMaxIdleTime(dbConnMaxIdleTime)
+		source = &edge.SQLResolver{DB: db, BaseDomain: cfg.baseDomain}
 	}
-	defer db.Close()
-	db.SetMaxOpenConns(dbMaxOpenConns)
-	db.SetConnMaxIdleTime(dbConnMaxIdleTime)
+	resolver := edge.NewCachedResolver(source, cfg.cacheTTL, 0)
+	resolver.StaleFor = defaultStaleFor
 
 	store, err := objectstore.New(cfg.store)
 	if err != nil {
@@ -68,7 +89,7 @@ func run(logger *slog.Logger) error {
 	}
 
 	srv := &edge.Server{
-		Resolver: edge.NewCachedResolver(&edge.SQLResolver{DB: db, BaseDomain: cfg.baseDomain}, cfg.cacheTTL, 0),
+		Resolver: resolver,
 		Store:    store,
 		Logger:   logger,
 	}
@@ -112,6 +133,9 @@ type config struct {
 	httpAddr     string
 	internalAddr string
 	databaseURL  string
+	apiURL       string
+	clusterID    string
+	keyFile      string
 	baseDomain   string
 	cacheTTL     time.Duration
 	store        objectstore.Config
@@ -122,6 +146,9 @@ func loadConfig() (config, error) {
 		httpAddr:     envOr(envHTTPAddr, defaultHTTPAddr),
 		internalAddr: envOr(envInternalAddr, defaultInternalAddr),
 		databaseURL:  os.Getenv(envDatabaseURL),
+		apiURL:       strings.TrimRight(os.Getenv(envAPIURL), "/"),
+		clusterID:    os.Getenv(envClusterID),
+		keyFile:      os.Getenv(envKeyFile),
 		baseDomain:   strings.TrimSuffix(strings.ToLower(os.Getenv(envBaseDomain)), "."),
 		cacheTTL:     defaultCacheTTL,
 		store: objectstore.Config{
@@ -147,15 +174,23 @@ func loadConfig() (config, error) {
 		cfg.store.UseSSL = b
 	}
 
-	var missing []string
-	for name, v := range map[string]string{
-		envDatabaseURL: cfg.databaseURL,
+	required := map[string]string{
 		envBaseDomain:  cfg.baseDomain,
 		envS3Endpoint:  cfg.store.Endpoint,
 		envS3AccessKey: cfg.store.AccessKey,
 		envS3SecretKey: cfg.store.SecretKey,
 		envS3Bucket:    cfg.store.Bucket,
-	} {
+	}
+	if cfg.apiURL != "" {
+		if cfg.clusterID == "" && cfg.keyFile != "" {
+			cfg.clusterID = clusterOfKeyFile(cfg.keyFile)
+		}
+		required[envClusterID], required[envKeyFile] = cfg.clusterID, cfg.keyFile
+	} else {
+		required[envDatabaseURL] = cfg.databaseURL
+	}
+	var missing []string
+	for name, v := range required {
 		if v == "" {
 			missing = append(missing, name)
 		}
@@ -165,6 +200,19 @@ func loadConfig() (config, error) {
 		return cfg, fmt.Errorf("missing required env: %s", strings.Join(missing, ", "))
 	}
 	return cfg, nil
+}
+
+// clusterOfKeyFile : cluster_id du fichier de clé (celui du watcher) ; "" si illisible.
+func clusterOfKeyFile(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var f api.KeyFile
+	if json.Unmarshal(raw, &f) != nil {
+		return ""
+	}
+	return f.ClusterID
 }
 
 func envOr(key, def string) string {

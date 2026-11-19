@@ -64,6 +64,9 @@ type Config struct {
 	BaseDomain string
 	EdgeTarget string
 	Limits     activities.Limits
+	// EdgeIngress : static-edge dans le cluster ; chaque domaine vérifié y
+	// reçoit un Ingress (SyncEdgeDomainsWorkflow).
+	EdgeIngress bool
 }
 
 type SiteService struct {
@@ -177,6 +180,9 @@ func (s *SiteService) DeleteSite(ctx context.Context, projectID, siteID uuid.UUI
 	if temporal.IsAlreadyStarted(err) {
 		return nil // deuxième demande : la suppression est déjà en cours
 	}
+	if err == nil {
+		s.syncEdgeDomains(ctx) // le site en DELETING n'a plus de domaine servi
+	}
 	if err != nil {
 		// Aucun workflow ne terminera ce DELETING : le site cesserait d'être servi.
 		s.compensate(ctx, "site status not restored", site.ID, func(ctx context.Context) error {
@@ -184,6 +190,31 @@ func (s *SiteService) DeleteSite(ctx context.Context, projectID, siteID uuid.UUI
 		})
 	}
 	return err
+}
+
+// syncEdgeDomains : demande l'alignement des Ingress de l'edge sur les
+// domaines vérifiés. Sans effet hors cluster. Un échec n'annule pas
+// l'action de l'utilisateur : le prochain alignement rattrape.
+func (s *SiteService) syncEdgeDomains(ctx context.Context) {
+	if !s.cfg.EdgeIngress {
+		return
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		_, err := s.distributor.ExecuteWorkflow(ctx, temporal.ExecuteOptions{WorkflowID: workflows.WorkflowIDEdgeDomains},
+			workflows.SyncEdgeDomainsWorkflow)
+		if err == nil {
+			return
+		}
+		if !temporal.IsAlreadyStarted(err) {
+			s.logger.Warnw("edge domains sync not started", "error", err)
+			return
+		}
+		// En cours : il refera un passage. Terminé entre-temps : on relance.
+		if err := s.distributor.SignalWorkflow(ctx, workflows.WorkflowIDEdgeDomains, "", workflows.SignalEdgeResync, nil); err == nil {
+			return
+		}
+	}
+	s.logger.Warnw("edge domains sync not requested")
 }
 
 // ── Déploiements ─────────────────────────────────────────────────────────
@@ -394,6 +425,7 @@ func (s *SiteService) VerifyDomain(ctx context.Context, projectID, siteID, domai
 		return nil, err
 	}
 	d.Verified, d.CheckedAt, d.VerifiedAt = true, &now, &now
+	s.syncEdgeDomains(ctx) // Ingress et certificat du domaine
 	return s.domainView(d, pointing), nil
 }
 
@@ -431,7 +463,11 @@ func (s *SiteService) DeleteDomain(ctx context.Context, projectID, siteID, domai
 	if err != nil {
 		return err
 	}
-	return s.repo.DeleteDomain(ctx, site.ID, domainID)
+	if err := s.repo.DeleteDomain(ctx, site.ID, domainID); err != nil {
+		return err
+	}
+	s.syncEdgeDomains(ctx)
+	return nil
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

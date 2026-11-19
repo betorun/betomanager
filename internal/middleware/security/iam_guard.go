@@ -369,6 +369,17 @@ const (
 	ctxDenyPolicy    = "iamDenyPolicy"
 )
 
+// RecordAudit : permission, ressource et projet de l'entrée d'audit de la
+// requête, pour un handler qui vérifie lui-même ses droits (pas de garde de
+// route : la ressource n'est connue qu'après lecture du corps).
+func RecordAudit(c *gin.Context, perm iam.Permission, resource iam.ResourceName, projectID uuid.UUID) {
+	c.Set("iamResource", resource.String())
+	c.Set(ctxIAMPermission, perm.String())
+	if projectID != uuid.Nil {
+		c.Set("projectID", projectID.String())
+	}
+}
+
 // AuditMiddleware : journal d'audit (iam.md §11). À monter après
 // AuthMiddleware. Journalise toute écriture d'un principal authentifié et tout
 // refus d'autorisation, avec la permission et la ressource posées par Require.

@@ -1,5 +1,11 @@
 package utils
 
+import (
+	"strings"
+
+	"github.com/google/uuid"
+)
+
 const (
 	ProjectStatusPending      = "PENDING"
 	ProjectStatusProvisioning = "PROVISIONING"
@@ -100,7 +106,6 @@ const (
 const (
 	LabelManaged      = "kubemanager.io/managed"
 	LabelProjectID    = "kubemanager.io/project-id"
-	LabelProjectName  = "kubemanager.io/name"
 	LabelCreatedAt    = "kubemanager.io/created-at"
 	LabelManagedValue = "true"
 
@@ -118,9 +123,11 @@ const (
 	AnnotationEnvChecksum = "checksum/env"
 )
 
-// ProjectNamespace : espace de noms Kubernetes d'un projet.
-func ProjectNamespace(projectName string) string {
-	return NamespacePrefix + projectName
+// NewProjectNamespace : espace Kubernetes d'un nouveau projet, tiré de son
+// identifiant (le nom est libre et modifiable). Il est ensuite lu sur le
+// projet (Project.Namespace), jamais recalculé.
+func NewProjectNamespace(projectID uuid.UUID) string {
+	return NamespacePrefix + strings.ReplaceAll(projectID.String(), "-", "")[:12]
 }
 
 // EnvSecretName : Secret des variables d'environnement d'un workload.

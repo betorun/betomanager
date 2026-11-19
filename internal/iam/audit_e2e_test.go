@@ -109,12 +109,51 @@ func TestE2E_AuditLog(t *testing.T) {
 	assert.Equal(t, []any{"roles/viewer " + string(iam.UserPrincipal(fatou))}, allow.Metadata["bindings_added"])
 	assert.NotContains(t, string(allow.MetadataDB), "policy\"", "pas de corps de requête dans le journal")
 
-	// Lecture par organisation (les entrées du projet y figurent).
+	// Journal d'organisation : ses propres actions, pas celles des projets ;
+	// journal du projet : en plus, les actions d'organisation qui le touchent.
 	var org uuid.UUID
 	require.NoError(t, db.Raw(`SELECT organization_id FROM projects WHERE id = ?`, projectID).Row().Scan(&org))
-	byOrg, err := audit.List(ctx, db, audit.Query{OrganizationID: &org})
+	orgRes := "organizations/" + org.String()
+	bound, unbound := uuid.New(), uuid.New()
+	customRole := orgRes + "/roles/auditeur"
+	require.NoError(t, db.Exec(`INSERT INTO iam_bindings (resource_name, role, principal) VALUES (?, 'roles/viewer', ?), (?, ?, ?)`,
+		string(project), "group:"+bound.String(), string(project), customRole, string(iam.UserPrincipal(fatou))).Error)
+	w := &audit.GormWriter{DB: db}
+	write := func(resource, permission string) int64 {
+		e := &audit.Entry{Principal: string(iam.UserPrincipal(awa)), Action: "test", Permission: permission,
+			Resource: resource, Decision: audit.DecisionAllow, Status: 200}
+		require.NoError(t, w.Write(ctx, e))
+		return e.ID
+	}
+	orgPolicy := write(orgRes, "resourcemanager.organizations.setIamPolicy")
+	groupCreated := write(orgRes, "iam.groups.create")
+	boundMember := write(orgRes+"/groups/"+bound.String(), "iam.groups.update")
+	otherMember := write(orgRes+"/groups/"+unbound.String(), "iam.groups.update")
+	roleChanged := write(customRole, "iam.roles.update")
+
+	ids := func(es []audit.Entry) map[int64]bool {
+		out := map[int64]bool{}
+		for _, e := range es {
+			out[e.ID] = true
+		}
+		return out
+	}
+	byOrg, err := audit.List(ctx, db, audit.Query{OrganizationID: &org, Limit: audit.MaxPageSize})
 	require.NoError(t, err)
-	assert.Equal(t, entries[0].ID, byOrg[0].ID)
+	got := ids(byOrg)
+	for _, id := range []int64{orgPolicy, groupCreated, boundMember, otherMember, roleChanged} {
+		assert.True(t, got[id], "action d'organisation %d dans son journal", id)
+	}
+	assert.False(t, got[entries[0].ID], "les entrées des projets restent dans leur journal")
+
+	byProject, err := audit.List(ctx, db, audit.Query{Resource: string(project), ProjectID: &projectID, Limit: audit.MaxPageSize})
+	require.NoError(t, err)
+	got = ids(byProject)
+	assert.True(t, got[orgPolicy], "accès de l'organisation : hérités par le projet")
+	assert.True(t, got[boundMember], "groupe lié au projet")
+	assert.True(t, got[roleChanged], "rôle d'organisation attribué dans le projet")
+	assert.False(t, got[groupCreated], "création d'un groupe : ne touche pas le projet")
+	assert.False(t, got[otherMember], "groupe sans rôle sur le projet")
 
 	// Pagination par curseur.
 	page, err := audit.List(ctx, db, audit.Query{ProjectID: &projectID, Resource: string(project), Limit: 1})

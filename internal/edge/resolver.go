@@ -76,10 +76,14 @@ func (r *SQLResolver) Resolve(ctx context.Context, host string) (*Site, error) {
 // CachedResolver : cache mémoire à TTL court, y compris des réponses
 // négatives (protège la DB des scans de noms d'hôte). Un nouveau déploiement
 // ou un domaine vérifié est donc visible au plus TTL plus tard.
+//
+// StaleFor : si Next échoue (API injoignable), la dernière réponse connue
+// reste servie jusqu'à StaleFor après son expiration (0 : jamais).
 type CachedResolver struct {
 	Next       Resolver
 	TTL        time.Duration
 	MaxEntries int
+	StaleFor   time.Duration
 
 	mu      sync.Mutex
 	entries map[string]cacheEntry
@@ -109,6 +113,9 @@ func (c *CachedResolver) Resolve(ctx context.Context, host string) (*Site, error
 
 	site, err := c.Next.Resolve(ctx, host)
 	if err != nil {
+		if ok && c.StaleFor > 0 && now.Before(e.expires.Add(c.StaleFor)) {
+			return e.site, nil // panne passagère : dernière réponse connue
+		}
 		return nil, err // erreurs jamais mises en cache
 	}
 	c.mu.Lock()

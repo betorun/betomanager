@@ -9,14 +9,17 @@ import (
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
 	workloadsCtrl "github.com/thekrauss/kubemanager/internal/modules/workloads"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/loopfz/gadgeto/tonic"
 	"gorm.io/gorm"
 
+	"github.com/thekrauss/kubemanager/internal/edge"
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	"github.com/thekrauss/kubemanager/internal/modules/sites"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 )
 
@@ -39,6 +42,9 @@ var (
 	ClustersGroup = RootGroup.NewGroup("/clusters", "API watcher (pod events depuis chaque cluster K3s géré)").Internal()
 )
 
+// edgeResolveCacheTTL : cache des réponses à static-edge, qui a aussi le sien.
+const edgeResolveCacheTTL = 5 * time.Second
+
 func addClusterRoutes(app *App) {
 	r := app.Controllers.Clusters
 	if r == nil {
@@ -58,6 +64,18 @@ func addClusterRoutes(app *App) {
 	ClustersGroup.AddRoute("/ProjectService/:clusterID/onPodEvent", http.MethodPost,
 		"onPodEvent : reçoit un event pod (CrashLoopBackOff, OOMKilled...) → DB + Centrifugo",
 		watcher, tonic.Handler(r.OnPodEvent, http.StatusOK))
+
+	// static-edge du cluster : nom d'hôte → site servi (pas d'accès direct à
+	// Postgres depuis le cluster).
+	if app.Config != nil && app.Config.Sites.Enabled && app.DB != nil {
+		if sqlDB, err := app.DB.DB(); err == nil {
+			ctl := &sites.EdgeController{Resolver: edge.NewCachedResolver(
+				&edge.SQLResolver{DB: sqlDB, BaseDomain: app.Config.Sites.BaseDomain}, edgeResolveCacheTTL, 0)}
+			ClustersGroup.AddRoute("/EdgeService/:clusterID/Resolve", http.MethodGet,
+				"Resolve : site servi pour un nom d'hôte (static-edge du cluster)",
+				watcher, tonic.Handler(ctl.Resolve, http.StatusOK))
+		}
+	}
 
 	if iamCtl := app.Controllers.IAM; iamCtl != nil {
 		ClustersGroup.AddRoute("/ClusterService/:clusterID/ServiceAccountKeys", http.MethodPost,
@@ -179,6 +197,10 @@ func addProjectRoutes(app *App) {
 	adminProjects.AddRoute("/:id/limits", http.MethodPatch,
 		"Changer les limites CPU, mémoire et stockage d'un projet (base puis quota Kubernetes)",
 		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetProjectLimits, http.StatusOK))
+	adminOrgs := RootGroup.NewGroup("/admin/organizations", "Admin — plafonds des organisations").Internal()
+	adminOrgs.AddRoute("/:id/limits", http.MethodPatch,
+		"Changer le nombre maximal de projets d'une organisation",
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetOrganizationLimits, http.StatusOK))
 
 	// Création dans l'organisation personnelle de l'appelant, qui en devient owner.
 	ProjectGroup.AddRoute("", http.MethodPost, "Créer un projet", Authenticated(), tonic.Handler(r.CreateProject, http.StatusCreated))
@@ -194,6 +216,10 @@ func addProjectRoutes(app *App) {
 	ProjectGroup.AddRoute("/:id/metrics", http.MethodGet, "Métriques de consommation",
 		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProjectMetrics, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "get_project_metrics"})
+	ProjectGroup.AddRoute("/:id", http.MethodGet, "Lire un projet (nom, organisation, plafonds)",
+		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProject, http.StatusOK))
+	ProjectGroup.AddRoute("/:id", http.MethodPatch, "Renommer un projet ou changer sa description",
+		g.Perm(iam.ProjectsUpdate, project), tonic.Handler(r.UpdateProject, http.StatusOK))
 	ProjectGroup.AddRoute("/:id", http.MethodDelete, "Supprimer un projet",
 		g.Perm(iam.ProjectsDelete, project), tonic.Handler(r.DeleteProject, http.StatusAccepted))
 }

@@ -75,3 +75,23 @@ func DeleteSiteWorkflow(ctx workflow.Context, siteID string) error {
 	}
 	return workflow.ExecuteActivity(ctx, acts.DeleteSiteRecord, siteID).Get(ctx, nil)
 }
+
+// SyncEdgeDomainsWorkflow : Ingress des domaines personnalisés alignés sur la
+// base. Un seul à la fois (WorkflowIDEdgeDomains) : une demande arrivée
+// pendant un passage (signal SignalEdgeResync) en provoque un nouveau, rien
+// ne se perd et deux passages ne se croisent jamais.
+func SyncEdgeDomainsWorkflow(ctx workflow.Context) error {
+	ctx = activityCtx(ctx)
+	var acts *activities.EdgeDomainActivities
+	resync := workflow.GetSignalChannel(ctx, SignalEdgeResync)
+	for {
+		for resync.ReceiveAsync(nil) {
+		}
+		if err := workflow.ExecuteActivity(ctx, acts.SyncEdgeDomains).Get(ctx, nil); err != nil {
+			return err
+		}
+		if !resync.ReceiveAsync(nil) {
+			return nil
+		}
+	}
+}

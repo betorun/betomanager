@@ -129,8 +129,9 @@ func (a *App) initDomainLayers() error {
 		resolver, _ := workloadsSvc.NewResolver(a.Config.Kubernetes.DomainDNSServer).(sitesSvc.DNSResolver)
 		concrete := sitesSvc.NewSiteService(a.Repos.Site, a.ObjectStore, a.TemporalDistributor, resolver,
 			sitesSvc.Config{
-				BaseDomain: sc.BaseDomain,
-				EdgeTarget: sc.EdgeTarget,
+				BaseDomain:  sc.BaseDomain,
+				EdgeTarget:  sc.EdgeTarget,
+				EdgeIngress: sc.EdgeIngress.Enabled,
 				Limits: sitesActs.Limits{
 					MaxArchiveBytes:   sc.MaxArchiveBytes,
 					MaxExtractedBytes: sc.MaxExtractedBytes,

@@ -29,7 +29,7 @@ func (u usageRepo) GetTotalUsageByProject(context.Context, uuid.UUID) (int64, in
 
 func limitsFixture(dist *fakeDistributor, usedCPU, usedMemMi int64) (*ProjectService, *fakeProjectRepo) {
 	repo := &fakeProjectRepo{project: &authdomain.Project{
-		ID: uuid.New(), Name: "bomba", CpuLimit: "2000m", MemoryLimit: "4Gi", StorageLimit: "10Gi",
+		ID: uuid.New(), Name: "bomba", Namespace: "km-bomba", CpuLimit: "2000m", MemoryLimit: "4Gi", StorageLimit: "10Gi",
 	}}
 	svc := newProjectServiceForTest(dist, repo)
 	svc.WorkloadRepo = usageRepo{cpu: usedCPU, memMi: usedMemMi}

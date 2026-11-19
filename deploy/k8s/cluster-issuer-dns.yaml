@@ -1,0 +1,34 @@
+# Émetteur Let's Encrypt par DNS-01, pour le certificat joker des sites
+# (*.sites.<domaine>, deploy/k8s/static-edge.yaml). Le challenge HTTP-01 ne
+# sait pas émettre de joker.
+#
+# Il faut une clé d'API chez l'hébergeur DNS du domaine, limitée si possible à
+# la seule zone du domaine et aux enregistrements TXT.
+#
+# Exemple Cloudflare (solveur intégré à cert-manager). Jeton : Zone > DNS > Edit
+# sur la seule zone du domaine.
+#   sudo kubectl -n cert-manager create secret generic cloudflare-api-token \
+#     --from-file=api-token=/chemin/vers/le-jeton    # jamais en argument
+#
+# OVH : pas de solveur intégré ; installer le webhook
+# github.com/baarde/cert-manager-webhook-ovh et remplacer le bloc dns01
+# ci-dessous (voir sa documentation).
+#
+# Remplacer l'adresse avant d'appliquer :
+#   sed 's/ops@REMPLACER.invalid/ops@votre-domaine/' cluster-issuer-dns.yaml | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-dns
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@REMPLACER.invalid
+    privateKeySecretRef:
+      name: letsencrypt-dns-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token

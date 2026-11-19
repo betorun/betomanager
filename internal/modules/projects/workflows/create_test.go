@@ -46,9 +46,9 @@ func (f *fakeProjectActs) CreateProjectInDB(_ context.Context, projectID, name, 
 	return &dauth.Project{ID: f.createInDBID, Name: name, Description: description}, nil
 }
 
-func (f *fakeProjectActs) CreateNamespace(_ context.Context, projectID, projectName string) error {
+func (f *fakeProjectActs) CreateNamespace(_ context.Context, projectID, projectName, nsName string) error {
 	f.mu.Lock()
-	f.createdNamespace = true
+	f.createdNamespace = nsName != ""
 	f.mu.Unlock()
 	return f.createNSErr
 }
@@ -106,6 +106,7 @@ func TestCreateProjectWorkflow_HappyPath(t *testing.T) {
 	env.ExecuteWorkflow(CreateProjectWorkflow, CreateProjectInput{
 		Name:        "alpha",
 		Description: "demo",
+		Namespace:   "km-alpha",
 		OwnerID:     "owner-42",
 		CpuLimit:    "1000m",
 		MemoryLimit: "2Gi",
@@ -151,6 +152,7 @@ func TestCreateProjectWorkflow_NamespaceFailure_CompensatesDBRow(t *testing.T) {
 
 	env.ExecuteWorkflow(CreateProjectWorkflow, CreateProjectInput{
 		Name:        "alpha",
+		Namespace:   "km-alpha",
 		OwnerID:     "owner-42",
 		CpuLimit:    "1000m",
 		MemoryLimit: "2Gi",
@@ -173,7 +175,7 @@ func TestCreateProjectWorkflow_CreateInDBFailure_Aborts(t *testing.T) {
 	fake := &fakeProjectActs{createInDBErr: errors.New("db down")}
 	registerFakeProjectActs(env, fake)
 
-	env.ExecuteWorkflow(CreateProjectWorkflow, CreateProjectInput{Name: "alpha", OwnerID: "o"})
+	env.ExecuteWorkflow(CreateProjectWorkflow, CreateProjectInput{Name: "alpha", Namespace: "km-alpha", OwnerID: "o"})
 
 	require.True(t, env.IsWorkflowCompleted())
 	require.Error(t, env.GetWorkflowError())

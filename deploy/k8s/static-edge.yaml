@@ -1,0 +1,226 @@
+# static-edge : sert les sites statiques depuis le cluster (serveur 2), derrière
+# Traefik. Voir deploy/README.txt, section 4 bis.
+#
+# - Table des sites : par l'API en HTTPS (clé de cluster, comme le watcher),
+#   aucun accès à Postgres.
+# - Fichiers : stockage du serveur 1 par S3_PUBLIC_HOST, identité « edge » en
+#   lecture seule.
+# - Certificats : joker *.sites.<domaine> par DNS-01 (cluster-issuer-dns.yaml) ;
+#   un Ingress + certificat HTTP-01 par domaine client vérifié, créés par la
+#   plateforme (étiquette betorun.io/edge-domain).
+#
+# Remplacer avant d'appliquer : REMPLACER-DOMAINE (ex. betorun.app) et
+# REMPLACER-SHA (tag de l'image publiée par la CI).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: betorun-edge
+---
+# Redirection HTTPS, utilisée par l'Ingress joker et ceux des domaines clients.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: https-redirect
+  namespace: betorun-edge
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: static-edge
+  namespace: betorun-edge
+  labels:
+    app: static-edge
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: static-edge
+  template:
+    metadata:
+      labels:
+        app: static-edge
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Deux nœuds dès qu'il y en a deux : une panne de serveur ne coupe pas les sites.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: static-edge
+      containers:
+        - name: static-edge
+          image: thekrauss/static-edge:REMPLACER-SHA
+          ports:
+            - name: http
+              containerPort: 8090
+            - name: internal
+              containerPort: 8091
+          env:
+            - name: EDGE_API_URL
+              value: https://api.REMPLACER-DOMAINE/kmanager/v1
+            - name: EDGE_KEY_FILE
+              value: /var/run/betorun/key/key.json
+            - name: EDGE_BASE_DOMAIN
+              value: sites.REMPLACER-DOMAINE
+            - name: EDGE_S3_ENDPOINT
+              value: s3.REMPLACER-DOMAINE
+            - name: EDGE_S3_USE_SSL
+              value: "true"
+            - name: EDGE_S3_ACCESS_KEY
+              value: edge
+            - name: EDGE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: static-edge-s3
+                  key: secret-key
+            - name: EDGE_S3_BUCKET
+              value: betorun-sites
+            - name: EDGE_S3_REGION
+              value: us-east-1
+            - name: GOMEMLIMIT
+              value: 100MiB
+          volumeMounts:
+            - name: key
+              mountPath: /var/run/betorun/key
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: internal
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: internal
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      volumes:
+        # Fichier de clé du compte système du cluster (le cluster_id y est lu).
+        - name: key
+          secret:
+            secretName: static-edge-key-file
+            items:
+              - key: key.json
+                path: key.json
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: static-edge
+  namespace: betorun-edge
+spec:
+  selector:
+    app: static-edge
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: static-edge
+  namespace: betorun-edge
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: static-edge
+---
+# Certificat joker des sous-domaines de sites (un seul, sans limite par site).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sites-wildcard
+  namespace: betorun-edge
+spec:
+  secretName: sites-wildcard-tls
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-dns
+  dnsNames:
+    - "*.sites.REMPLACER-DOMAINE"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sites-wildcard
+  namespace: betorun-edge
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: betorun-edge-https-redirect@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: ["*.sites.REMPLACER-DOMAINE"]
+      secretName: sites-wildcard-tls
+  rules:
+    - host: "*.sites.REMPLACER-DOMAINE"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: static-edge
+                port:
+                  name: http
+---
+# Entrées : Traefik seulement. Sorties : DNS et HTTPS (API et stockage du
+# serveur 1) ; rien vers le reste du cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: static-edge
+  namespace: betorun-edge
+spec:
+  podSelector:
+    matchLabels:
+      app: static-edge
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 8090
+    # Sondes du kubelet (adresse du nœud) : autorisées par k3s sans règle.
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - port: 443
+          protocol: TCP

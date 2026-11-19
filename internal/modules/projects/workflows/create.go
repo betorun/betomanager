@@ -23,7 +23,7 @@ type ProjectActivities struct{}
 func (a *ProjectActivities) CreateProjectInDB(ctx context.Context, projectID, name, description, ownerID string) (*dauth.Project, error) {
 	return nil, nil
 }
-func (a *ProjectActivities) CreateNamespace(ctx context.Context, projectID string, projectName string) error {
+func (a *ProjectActivities) CreateNamespace(ctx context.Context, projectID, projectName, nsName string) error {
 	return nil
 }
 
@@ -52,6 +52,8 @@ type CreateProjectInput struct {
 	ProjectID   string `json:"project_id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	// Namespace : espace Kubernetes, fixé par CreateProject.
+	Namespace string `json:"namespace"`
 
 	OwnerID string `json:"owner_id"`
 
@@ -91,9 +93,9 @@ func CreateProjectWorkflow(ctx workflow.Context, input CreateProjectInput) (Proj
 	result.ProjectID = dbRes.ID.String()
 	// Fix #3 : calcule nsName UNE fois, utilise-le pour ReconcileProjectResources
 	// (avant : result.Namespace lu ligne 87 avant d'être setté → "" passé en paramètre).
-	result.Namespace = utils.ProjectNamespace(input.Name)
+	result.Namespace = input.Namespace
 
-	err = workflow.ExecuteActivity(ctx, a.CreateNamespace, result.ProjectID, input.Name).Get(ctx, nil)
+	err = workflow.ExecuteActivity(ctx, a.CreateNamespace, result.ProjectID, input.Name, result.Namespace).Get(ctx, nil)
 	if err != nil {
 		compensateOptions := workflow.LocalActivityOptions{StartToCloseTimeout: compensationTimeout}
 		ctxComp := workflow.WithLocalActivityOptions(ctx, compensateOptions)

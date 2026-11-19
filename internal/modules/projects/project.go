@@ -2,6 +2,9 @@ package projects
 
 import (
 	"context"
+	"errors"
+
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
@@ -19,11 +22,15 @@ type IProjectController interface {
 	GetProjectMetrics(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.NamespaceMetrics, error)
 	ListProjects(c *gin.Context) (*typeiam.ListProjectsResponse, error)
 	SetProjectLimits(c *gin.Context, in *SetProjectLimitsRequest) (*typeiam.ProjectLimitsResponse, error)
+	GetProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectDetail, error)
+	UpdateProject(c *gin.Context, in *typeiam.UpdateProjectRequest) (*typeiam.ProjectDetail, error)
+	SetOrganizationLimits(c *gin.Context, in *SetOrganizationLimitsRequest) (*typeiam.OrganizationQuota, error)
 }
 
 // ProjectAccess : où l'appelant détient une permission (iam.Engine).
 type ProjectAccess interface {
 	Holdings(ctx context.Context, p iam.Principal, perm iam.Permission) (iam.Holdings, error)
+	Check(ctx context.Context, p iam.Principal, perm iam.Permission, r iam.ResourceName) (iam.Decision, error)
 }
 
 type ProjectHandler struct {
@@ -53,7 +60,20 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) (*typeiam.ListProjectsResp
 	if err != nil {
 		return nil, err
 	}
-	return h.ProjectService.ListProjects(c.Request.Context(), held.Organizations, held.Projects, held.Excluded)
+	out, err := h.ProjectService.ListProjects(c.Request.Context(), held.Organizations, held.Projects, held.Excluded)
+	if err != nil {
+		return nil, err
+	}
+	// Où l'appelant peut créer un projet, avec le plafond de chaque
+	// organisation. Vide : la création ira dans son organisation personnelle.
+	canCreate, err := h.Access.Holdings(c.Request.Context(), p, iam.ProjectsCreate)
+	if err != nil {
+		return nil, err
+	}
+	if out.Organizations, err = h.ProjectService.OrganizationQuotas(c.Request.Context(), canCreate.Organizations); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (h *ProjectHandler) CreateProject(c *gin.Context, in *typeiam.CreateProjectRequest) (*typeiam.ProjectResponse, error) {
@@ -65,7 +85,39 @@ func (h *ProjectHandler) CreateProject(c *gin.Context, in *typeiam.CreateProject
 	if !ok {
 		return nil, betoerrors.New(betoerrors.CodeUnauthorized, "complete your profile before creating a project")
 	}
-	return h.ProjectService.CreateProject(c.Request.Context(), *in, owner.String())
+	// Organisation choisie : il faut y avoir le droit de créer un projet.
+	// Sans choix, l'organisation personnelle (dont l'appelant est owner).
+	if in.OrganizationID != "" {
+		org, err := uuid.Parse(in.OrganizationID)
+		if err != nil {
+			return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+		}
+		p, ok := security.PrincipalFromContext(c)
+		if !ok || h.Access == nil {
+			return nil, betoerrors.New(betoerrors.CodeForbidden, "permission denied")
+		}
+		dec, err := h.Access.Check(c.Request.Context(), p, iam.ProjectsCreate, iam.OrganizationName(org))
+		if err != nil && !errors.Is(err, iam.ErrResourceNotFound) {
+			return nil, err
+		}
+		if err != nil || !dec.Allowed {
+			return nil, betoerrors.New(betoerrors.CodeForbidden, "permission denied: resourcemanager.projects.create on this organization")
+		}
+	}
+	res, err := h.ProjectService.CreateProject(c.Request.Context(), *in, owner.String())
+	if err != nil {
+		return nil, err
+	}
+	// Journal : création rattachée à l'organisation (son journal) et au
+	// nouveau projet (le sien).
+	if pid, perr := uuid.Parse(res.ProjectID); perr == nil {
+		if d, gerr := h.ProjectService.GetProject(c.Request.Context(), res.ProjectID); gerr == nil {
+			if org, oerr := uuid.Parse(d.OrganizationID); oerr == nil {
+				security.RecordAudit(c, iam.ProjectsCreate, iam.OrganizationName(org), pid)
+			}
+		}
+	}
+	return res, nil
 }
 
 type GetProjectStatusRequest struct {
@@ -107,4 +159,29 @@ func (h *ProjectHandler) SetProjectLimits(c *gin.Context, in *SetProjectLimitsRe
 		return nil, err
 	}
 	return res, nil
+}
+
+// GetProject : un projet et ses plafonds.
+func (h *ProjectHandler) GetProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectDetail, error) {
+	return h.ProjectService.GetProject(c.Request.Context(), in.ProjectID)
+}
+
+// UpdateProject : renommer, changer la description.
+func (h *ProjectHandler) UpdateProject(c *gin.Context, in *typeiam.UpdateProjectRequest) (*typeiam.ProjectDetail, error) {
+	return h.ProjectService.UpdateProject(c.Request.Context(), *in)
+}
+
+// SetOrganizationLimitsRequest : nombre maximal de projets d'une organisation.
+type SetOrganizationLimitsRequest struct {
+	OrganizationID string `path:"id" binding:"required" description:"ID de l'organisation"`
+	MaxProjects    int    `json:"max_projects" binding:"required,min=1,max=1000" description:"Nombre maximal de projets"`
+}
+
+// SetOrganizationLimits : réservé au staff de la plateforme (garde de la route).
+func (h *ProjectHandler) SetOrganizationLimits(c *gin.Context, in *SetOrganizationLimitsRequest) (*typeiam.OrganizationQuota, error) {
+	org, err := uuid.Parse(in.OrganizationID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	return h.ProjectService.SetMaxProjects(c.Request.Context(), org, in.MaxProjects)
 }
