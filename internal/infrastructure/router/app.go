@@ -170,6 +170,9 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// Facturation : relevé de l'usage réservé (ADR 0012, phase 2 à blanc).
 	if billing := a.billingService(); billing != nil {
 		go billing.Run(ctx, billingSvc.DefaultSampleEvery)
+		// Phase 3 : débit de l'usage (organisations activées), recharges en
+		// attente, crédits expirés, alertes de solde.
+		go billing.RunWallet(ctx, billingSvc.DefaultWalletEvery)
 	}
 
 	// Une panne du worker doit sortir en erreur : sinon le code 0 ne déclenche

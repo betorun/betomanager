@@ -18,6 +18,8 @@ import (
 type Inventory interface {
 	Reservations(ctx context.Context, since time.Time) ([]domain.Reservation, error)
 	ProjectNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
+	RunningWorkloads(ctx context.Context, org uuid.UUID, project *uuid.UUID) ([]domain.WorkloadRef, error)
+	ProjectOrg(ctx context.Context, project uuid.UUID) (uuid.UUID, error)
 }
 
 // Réglages par défaut du relevé.
@@ -34,8 +36,21 @@ const (
 type Service struct {
 	Store     repository.Store
 	Inventory Inventory
-	Now       func() time.Time
-	Logger    *zap.SugaredLogger
+	// Phase 3 : grand livre, administration, paiements, alertes. Payments
+	// nil : recharges fermées (pas de XYKPay configuré).
+	Ledger        repository.Ledger
+	Admin         repository.Admin
+	Payments      Payments
+	WebhookSecret string
+	Alerts        BalanceAlerter
+	// Phase 4 : grâce et suspension, budgets, documents. Containers nil :
+	// rien n'est arrêté (garde seule) ; Issuer incomplet : pas de facture.
+	Phase4     repository.Phase4
+	Containers Containers
+	Budgets    BudgetAlerter
+	Issuer     domain.Issuer
+	Now        func() time.Time
+	Logger     *zap.SugaredLogger
 }
 
 func (s *Service) now() time.Time {

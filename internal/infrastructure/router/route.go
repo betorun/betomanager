@@ -2,6 +2,7 @@ package router
 
 import (
 	"errors"
+	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
@@ -525,12 +526,52 @@ func addBillingRoutes(app *App) {
 	g := newGuards(app)
 	org := RootGroup.NewGroup("/organizations/:id/billing", "Facturation").
 		Named("Facturation", "Coût estimé de l'organisation, mois par mois, selon la grille de prix. Pendant la phase de mesure, rien n'est débité.")
+	view := g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id"))
+	org.AddRoute("/wallet", http.MethodGet, "Solde de l'organisation : argent, crédits offerts, consommation par jour, jours restants",
+		view, tonic.Handler(r.Wallet, http.StatusOK))
+	org.AddRoute("/transactions", http.MethodGet, "Mouvements du solde (recharges, débits d'usage par jour, crédits), du plus récent au plus ancien",
+		view, tonic.Handler(r.Transactions, http.StatusOK))
+	org.AddRoute("/topups", http.MethodGet, "Recharges récentes", view, tonic.Handler(r.Topups, http.StatusOK))
+	org.AddRoute("/topups", http.MethodPost, "Recharger par mobile money : la demande arrive sur le téléphone, l'argent est crédité à sa confirmation",
+		g.Perm(iam.BillingPaymentsCreate, security.OrganizationParam("id")), tonic.Handler(r.CreateTopup, http.StatusCreated))
+	org.AddRoute("/topups/:topupID", http.MethodGet, "Une recharge (son état est relu chez le prestataire si elle attend encore)",
+		view, tonic.Handler(r.Topup, http.StatusOK))
+	org.AddRoute("/profile", http.MethodGet, "Informations portées sur les factures (raison sociale, numéro fiscal, adresse)", view, tonic.Handler(r.Profile, http.StatusOK))
+	org.AddRoute("/profile", http.MethodPut, "Modifier les informations de facturation (prochaines factures)",
+		g.Perm(iam.BillingAccountsUpdate, security.OrganizationParam("id")), tonic.Handler(r.SetProfile, http.StatusOK))
+	org.AddRoute("/documents", http.MethodGet, "Factures mensuelles et reçus de recharge", view, tonic.Handler(r.Documents, http.StatusOK))
+	org.AddRoute("/documents/:documentID/pdf", http.MethodGet, "Le PDF d'une facture ou d'un reçu, tel qu'émis", view,
+		wrapRawHandler(r.DocumentPDF)).Documented(RawDoc{Input: billingDomain.DocumentPath{}, Produces: "application/pdf"})
 	org.AddRoute("/estimate", http.MethodGet, "Coût estimé d'un mois (défaut : le mois en cours), par projet et par ressource, offre gratuite déduite",
 		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Estimate, http.StatusOK))
 	cat := RootGroup.NewGroup("/billing", "Grille de prix").
 		Named("Grille de prix", "Prix en vigueur des conteneurs (par taille), des bases, du disque et des builds, et offre gratuite. Fixés par l'équipe de la plateforme.")
 	cat.AddRoute("/catalog", http.MethodGet, "Grille de prix d'une monnaie : tailles de conteneur, bases, disque, builds, offre gratuite",
-		Authenticated(), tonic.Handler(r.Catalog, http.StatusOK))
+		Public(), tonic.Handler(r.Catalog, http.StatusOK)) // prix publics : page Tarifs du site
+
+	// Budget mensuel d'un projet : alerte à 80 % et 100 %, arrêt facultatif.
+	budget := RootGroup.NewGroup("/projects/:id/billing", "Budget du projet").
+		Named("Budget du projet", "Budget mensuel d'un projet : une alerte quand il est presque atteint, puis atteint, et l'arrêt de ses conteneurs si vous le demandez.")
+	project := security.ProjectParam("id")
+	budget.AddRoute("/budget", http.MethodGet, "Budget du projet et sa consommation du mois", g.Perm(iam.BillingAccountsGet, project), tonic.Handler(r.Budget, http.StatusOK))
+	budget.AddRoute("/budget", http.MethodPut, "Fixer (montant positif) ou retirer (0) le budget mensuel du projet", g.Perm(iam.BillingAccountsUpdate, project), tonic.Handler(r.SetBudget, http.StatusOK))
+
+	// Webhook du prestataire de paiement : signé, et le paiement est relu
+	// avant tout crédit.
+	hooks := RootGroup.NewGroup("/billing/webhooks", "Webhooks de paiement").Internal()
+	hooks.AddRoute("/xykpay", http.MethodPost, "Signal de XYKPay sur un paiement (signature XYK-Signature)", Public(), r.Webhook)
+
+	// Comptes des clients : équipe de la plateforme seulement. Chaque geste
+	// passe par le grand livre, avec un motif.
+	accounts := RootGroup.NewGroup("/admin/billing", "Admin — comptes de facturation").Internal()
+	adminView := g.Perm(iam.PlatformBillingAccountsGet, security.PlatformResource)
+	adminEdit := g.Perm(iam.PlatformBillingAccountsUpdate, security.PlatformResource)
+	accounts.AddRoute("/organizations", http.MethodGet, "Rechercher une organisation (nom, e-mail du propriétaire, projet)", adminView, tonic.Handler(r.AdminOrgs, http.StatusOK))
+	accounts.AddRoute("/organizations/:id", http.MethodGet, "Fiche d'une organisation : projets, solde, coût du mois, mouvements, recharges", adminView, tonic.Handler(r.AdminOrg, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/credits", http.MethodPost, "Offrir un crédit (consommé avant l'argent, avec une date d'expiration)", adminEdit, tonic.Handler(r.AdminCredit, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/adjustments", http.MethodPost, "Corriger l'argent d'un client (positif : crédité, négatif : débité), avec un motif", adminEdit, tonic.Handler(r.AdminAdjust, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/charging", http.MethodPut, "Activer ou suspendre la facturation réelle (crédit d'essai à la première activation)", adminEdit, tonic.Handler(r.AdminCharging, http.StatusOK))
+	accounts.AddRoute("/revenue", http.MethodGet, "Recettes par jour et par monnaie, recharges en attente ou ratées", adminView, tonic.Handler(r.AdminRevenue, http.StatusOK))
 
 	// Grilles de prix : équipe de la plateforme seulement. Une modification
 	// crée une version ; elle s'applique dès le relevé suivant.

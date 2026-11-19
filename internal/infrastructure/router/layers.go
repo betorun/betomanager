@@ -178,6 +178,12 @@ func (a *App) initDomainLayers() error {
 		Site:     siteService,
 	}
 
+	// Facturation : pas de démarrage ni de déploiement pendant une suspension
+	// faute de solde, ou dans un projet arrêté par son budget.
+	if billing := a.billingService(); billing != nil {
+		workloadService.Billing = billing
+	}
+
 	a.Controllers = &ControllerContainer{
 		Builds:     buildController,
 		GitHub:     a.newGitHubController(a.GitHub),

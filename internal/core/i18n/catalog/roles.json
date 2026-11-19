@@ -454,5 +454,13 @@
  {
   "fr": "Modifier les grilles de prix",
   "en": "Edit price catalogs"
+ },
+ {
+  "fr": "Voir les comptes de facturation des clients",
+  "en": "View customers' billing accounts"
+ },
+ {
+  "fr": "Offrir un crédit, corriger un solde, activer la facturation",
+  "en": "Grant a credit, adjust a balance, activate billing"
  }
 ]

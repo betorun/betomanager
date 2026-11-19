@@ -72,6 +72,10 @@ type WorkloadService struct {
 	K8sClient   *kubernetes.Clientset
 	K8sConfig   *rest.Config
 	Logger      *zap.SugaredLogger
+	// Billing : garde de la facturation (nil : rien n'est bloqué). Refuse de
+	// démarrer ou de déployer pendant une suspension faute de solde, ou dans
+	// un projet arrêté par son budget.
+	Billing AccountGuard
 	// Registry : registre de la plateforme (nil si builds désactivés).
 	Registry *RegistrySettings
 	// Variables : variables et secrets chiffrés.
@@ -117,6 +121,20 @@ func NewWorkloadService(
 		K8sConfig:   k8sCfg,
 		Logger:      log.With("service", "WorkloadService"),
 	}
+}
+
+// AccountGuard : la facturation autorise-t-elle à faire tourner des
+// conteneurs dans ce projet ? (implémenté par le module billing)
+type AccountGuard interface {
+	CanRun(ctx context.Context, project uuid.UUID) error
+}
+
+// canRun : nil sans garde.
+func (s *WorkloadService) canRun(ctx context.Context, project uuid.UUID) error {
+	if s.Billing == nil {
+		return nil
+	}
+	return s.Billing.CanRun(ctx, project)
 }
 
 type WorkloadServiceRequest struct {
@@ -234,6 +252,9 @@ func (s *WorkloadService) DeployBuiltImage(ctx context.Context, project, id uuid
 	if current.ProjectID != project {
 		return buildsDomain.ErrWorkloadGone
 	}
+	if err := s.canRun(ctx, project); err != nil {
+		return err
+	}
 	switch current.Status {
 	case utils.WorkloadStopped:
 		return buildsDomain.ErrWorkloadStopped
@@ -287,6 +308,9 @@ func ensureBuilt(w *domain.Workload) error {
 func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest, status, phase string) (*domain.Workload, domain.CreateWorkloadRequest, error) {
 	var none domain.CreateWorkloadRequest
 	pID, _ := uuid.Parse(in.ProjectID)
+	if err := s.canRun(ctx, pID); err != nil {
+		return nil, none, err
+	}
 
 	// Une panne ne doit pas compter pour 0 : le contrôle laisserait tout passer.
 	currentCPU, currentMem, currentStorage, err := s.Repo.GetTotalUsageByProject(ctx, pID)
@@ -466,6 +490,9 @@ func (s *WorkloadService) update(ctx context.Context, id string, req domain.Upda
 	}
 	current, err := s.Repo.GetByID(ctx, wID)
 	if err != nil {
+		return err
+	}
+	if err := s.canRun(ctx, current.ProjectID); err != nil {
 		return err
 	}
 	if err := ensureNotDeleting(current); err != nil {

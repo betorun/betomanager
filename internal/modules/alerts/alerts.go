@@ -283,6 +283,12 @@ var (
 
 // render : email d'une alerte, dans la langue de ctx (français par défaut).
 func render(ctx context.Context, copies map[i18n.Locale]alertCopy, to Recipient, project, name, link string) (mail.Message, error) {
+	return renderWith(ctx, copies, to, project, name, link, outro)
+}
+
+// renderWith : render avec une phrase de fin choisie (ex. alertes d'organisation).
+func renderWith(ctx context.Context, copies map[i18n.Locale]alertCopy, to Recipient, project, name, link string,
+	outro map[i18n.Locale]string) (mail.Message, error) {
 	lang := i18n.From(ctx)
 	if lang != i18n.EN {
 		lang = i18n.FR

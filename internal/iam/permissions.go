@@ -128,6 +128,10 @@ const (
 	// (jamais fixées dans le code).
 	PlatformBillingCatalogsGet    Permission = "platform.billingCatalogs.get"
 	PlatformBillingCatalogsUpdate Permission = "platform.billingCatalogs.update"
+	// PlatformBillingAccountsGet / Update : comptes de facturation des
+	// clients (solde, crédits offerts, ajustements, activation).
+	PlatformBillingAccountsGet    Permission = "platform.billingAccounts.get"
+	PlatformBillingAccountsUpdate Permission = "platform.billingAccounts.update"
 	// PlatformClustersReport : le watcher d'un cluster rend compte de son
 	// cluster (enrôlement, configuration, événements des pods).
 	PlatformClustersReport Permission = "platform.clusters.report"
@@ -239,6 +243,8 @@ var catalog = map[Permission]PermissionInfo{
 	PlatformProjectsSetLimits:     {Title: "Changer les limites de ressources d'un projet", PlatformOnly: true, Sensitive: true},
 	PlatformBillingCatalogsGet:    {Title: "Voir les grilles de prix", PlatformOnly: true},
 	PlatformBillingCatalogsUpdate: {Title: "Modifier les grilles de prix", PlatformOnly: true, Sensitive: true},
+	PlatformBillingAccountsGet:    {Title: "Voir les comptes de facturation des clients", PlatformOnly: true},
+	PlatformBillingAccountsUpdate: {Title: "Offrir un crédit, corriger un solde, activer la facturation", PlatformOnly: true, Sensitive: true},
 }
 
 // Known : la permission figure au catalogue.

@@ -47,6 +47,11 @@ type CatalogUpdate struct {
 	BuildMinute     int64      `json:"build_minute" description:"Prix d'une minute de build au-delà de l'offre gratuite"`
 	SiteDomain      int64      `json:"site_domain_monthly" description:"Prix mensuel d'un domaine personnalisé de site (0 : gratuit)"`
 	Free            FreeView   `json:"free_tier" description:"Offre gratuite par organisation et par mois"`
+	TopupMin        int64      `json:"topup_min" description:"Recharge minimale (0 avec topup_max : recharges fermées)"`
+	TopupMax        int64      `json:"topup_max" description:"Recharge maximale"`
+	TrialCredit     int64      `json:"trial_credit" description:"Crédit d'essai offert à l'activation de la facturation (0 : aucun)"`
+	TrialDays       int        `json:"trial_days" description:"Validité du crédit d'essai, en jours"`
+	GraceDays       int        `json:"grace_days" description:"Jours de solde négatif tolérés avant l'arrêt des conteneurs"`
 }
 
 // CatalogFromUpdate : grille validée. Les tailles doivent croître (CPU,
@@ -84,7 +89,8 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 	for name, v := range map[string]int64{
 		"database_monthly": u.DatabaseMonthly, "disk_gi_monthly": u.DiskGiMonthly, "build_minute": u.BuildMinute,
 		"site_domain_monthly": u.SiteDomain, "free_tier.compute": u.Free.Compute, "free_tier.database": u.Free.Database,
-		"free_tier.build_minutes": u.Free.BuildMinutes,
+		"free_tier.build_minutes": u.Free.BuildMinutes, "topup_min": u.TopupMin, "topup_max": u.TopupMax,
+		"trial_credit": u.TrialCredit, "trial_days": int64(u.TrialDays), "grace_days": int64(u.GraceDays),
 	} {
 		if v < 0 {
 			return Catalog{}, invalid("%s cannot be negative", name)
@@ -93,6 +99,18 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 	c.DatabaseMonthly, c.DiskGiMonthly = FromUnits(u.DatabaseMonthly), FromUnits(u.DiskGiMonthly)
 	c.BuildMinute, c.SiteDomain = FromUnits(u.BuildMinute), FromUnits(u.SiteDomain)
 	c.Free = FreeTier{Compute: FromUnits(u.Free.Compute), Database: FromUnits(u.Free.Database), BuildMinutes: u.Free.BuildMinutes}
+	if u.TopupMax > 0 && (u.TopupMin <= 0 || u.TopupMin > u.TopupMax) {
+		return Catalog{}, invalid("topup_min must be positive and at most topup_max")
+	}
+	if u.TrialCredit > 0 && u.TrialDays <= 0 {
+		return Catalog{}, invalid("trial_days must be positive when a trial credit is offered")
+	}
+	c.TopupMin, c.TopupMax = FromUnits(u.TopupMin), FromUnits(u.TopupMax)
+	c.TrialCredit, c.TrialDays = FromUnits(u.TrialCredit), u.TrialDays
+	if u.GraceDays > 30 {
+		return Catalog{}, invalid("grace_days must be at most 30")
+	}
+	c.GraceDays = u.GraceDays
 	return c, nil
 }
 
@@ -100,7 +118,8 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 func (c Catalog) Update() CatalogUpdate {
 	v := c.View()
 	return CatalogUpdate{Currency: c.Currency, Sizes: v.Sizes, DatabaseMonthly: v.DatabaseMonthly,
-		DiskGiMonthly: v.DiskGiMonthly, BuildMinute: v.BuildMinute, SiteDomain: v.SiteDomain, Free: v.Free}
+		DiskGiMonthly: v.DiskGiMonthly, BuildMinute: v.BuildMinute, SiteDomain: v.SiteDomain, Free: v.Free,
+		TopupMin: v.TopupMin, TopupMax: v.TopupMax, TrialCredit: v.TrialCredit, TrialDays: v.TrialDays, GraceDays: v.GraceDays}
 }
 
 // CatalogVersionView : une version de grille (administration).

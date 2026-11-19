@@ -27,6 +27,10 @@ type Store interface {
 	Recipients(ctx context.Context, project uuid.UUID) ([]Recipient, error)
 	// ProjectName : nom affiché du projet.
 	ProjectName(ctx context.Context, project uuid.UUID) (string, error)
+	// OrgRecipients : owners de l'organisation (comptes actifs).
+	OrgRecipients(ctx context.Context, org uuid.UUID) ([]Recipient, error)
+	// OrgName : nom affiché de l'organisation.
+	OrgName(ctx context.Context, org uuid.UUID) (string, error)
 }
 
 // maxRecipients : au-delà, les autres owners ne sont pas prévenus.
@@ -66,5 +70,23 @@ func (s *gormStore) Recipients(ctx context.Context, project uuid.UUID) ([]Recipi
 func (s *gormStore) ProjectName(ctx context.Context, project uuid.UUID) (string, error) {
 	var name string
 	err := s.db.WithContext(ctx).Raw(`SELECT name FROM projects WHERE id = ?`, project).Scan(&name).Error
+	return name, err
+}
+
+func (s *gormStore) OrgRecipients(ctx context.Context, org uuid.UUID) ([]Recipient, error) {
+	var out []Recipient
+	err := s.db.WithContext(ctx).Raw(`
+		SELECT u.email, u.full_name FROM iam_bindings b
+		JOIN users u ON b.principal = ? || u.id::text
+		WHERE b.resource_name = ? AND b.role = ? AND u.deleted_at IS NULL AND u.is_active
+		ORDER BY u.email LIMIT ?`,
+		iam.KindUser+iam.PrincipalSeparator, string(iam.OrganizationName(org)), iam.RoleOwner, maxRecipients).
+		Scan(&out).Error
+	return out, err
+}
+
+func (s *gormStore) OrgName(ctx context.Context, org uuid.UUID) (string, error) {
+	var name string
+	err := s.db.WithContext(ctx).Raw(`SELECT display_name FROM organizations WHERE id = ?`, org).Scan(&name).Error
 	return name, err
 }

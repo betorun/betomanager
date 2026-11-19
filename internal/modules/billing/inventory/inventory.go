@@ -6,6 +6,7 @@ package inventory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -193,3 +194,31 @@ func gibibytes(s string) int64 {
 	}
 	return (q.Value() + (1<<30 - 1)) >> 30
 }
+
+// RunningWorkloads : conteneurs ni arrêtés ni supprimés d'une organisation
+// (project : d'un seul projet).
+func (i *Inventory) RunningWorkloads(ctx context.Context, org uuid.UUID, project *uuid.UUID) ([]domain.WorkloadRef, error) {
+	q := `SELECT w.id, w.project_id, w.name FROM workloads w
+		JOIN projects p ON p.id = w.project_id AND p.deleted_at IS NULL
+		WHERE p.organization_id = ? AND w.status NOT IN ('STOPPED', 'DELETED')`
+	args := []any{org}
+	if project != nil {
+		q += ` AND w.project_id = ?`
+		args = append(args, *project)
+	}
+	var out []domain.WorkloadRef
+	err := i.DB.WithContext(ctx).Raw(q+` ORDER BY w.created_at`, args...).Scan(&out).Error
+	return out, err
+}
+
+// ProjectOrg : organisation d'un projet.
+func (i *Inventory) ProjectOrg(ctx context.Context, project uuid.UUID) (uuid.UUID, error) {
+	var rows []uuid.UUID
+	err := i.DB.WithContext(ctx).Raw(`SELECT organization_id FROM projects WHERE id = ?`, project).Scan(&rows).Error
+	if err != nil || len(rows) == 0 {
+		return uuid.Nil, fmt.Errorf("billing inventory: project %s: %w", project, errProjectUnknown)
+	}
+	return rows[0], nil
+}
+
+var errProjectUnknown = errors.New("unknown project")

@@ -35,6 +35,10 @@ func (f *fakeStore) Claim(_ context.Context, subject uuid.UUID, kind string, _ t
 }
 func (f *fakeStore) Recipients(context.Context, uuid.UUID) ([]Recipient, error) { return f.owners, nil }
 func (f *fakeStore) ProjectName(context.Context, uuid.UUID) (string, error)     { return "boutique", nil }
+func (f *fakeStore) OrgRecipients(context.Context, uuid.UUID) ([]Recipient, error) {
+	return f.owners, nil
+}
+func (f *fakeStore) OrgName(context.Context, uuid.UUID) (string, error) { return "Bomba", nil }
 
 type fakeMail struct{ sent []mail.Message }
 

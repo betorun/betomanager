@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS billing_topups;
+DROP TABLE IF EXISTS billing_credit_grants;
+DROP TABLE IF EXISTS billing_ledger_entries;
+DROP TABLE IF EXISTS billing_transactions;
+DROP FUNCTION IF EXISTS billing_entries_balanced();
+DROP FUNCTION IF EXISTS billing_ledger_append_only();
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS alert_level;
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS charging_since;
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS charging;
+DELETE FROM billing_catalogs WHERE data ? 'topup_min' AND created_by = 'migration';

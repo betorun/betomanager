@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS billing_trials;
+DROP TABLE IF EXISTS billing_project_budgets;
+DROP TABLE IF EXISTS billing_documents;
+DROP TABLE IF EXISTS billing_number_counters;
+DROP TABLE IF EXISTS billing_stopped_workloads;
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS address;
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS tax_id;
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS legal_name;
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS suspended_at;
+ALTER TABLE billing_accounts DROP COLUMN IF EXISTS grace_started_at;
+DELETE FROM billing_catalogs WHERE data ? 'grace_days' AND created_by = 'migration';

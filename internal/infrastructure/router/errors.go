@@ -213,6 +213,24 @@ var sentinelErrors = []sentinelMapping{
 	{billingDomain.ErrUnknownCurrency, http.StatusNotFound, "UNKNOWN_CURRENCY", false},
 	// La raison (taille, montant négatif…) aide l'équipe à corriger la grille.
 	{billingDomain.ErrInvalidCatalog, http.StatusBadRequest, "INVALID_CATALOG", true},
+	{billingDomain.ErrTopupsClosed, http.StatusConflict, "TOPUPS_CLOSED", false},
+	{billingDomain.ErrTopupAmount, http.StatusBadRequest, "TOPUP_AMOUNT", true},
+	{billingDomain.ErrInvalidPhone, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{billingDomain.ErrInvalidOperator, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{billingDomain.ErrPaymentsDisabled, http.StatusServiceUnavailable, "PAYMENTS_DISABLED", false},
+	{billingDomain.ErrChargingDisabled, http.StatusConflict, "BILLING_NOT_ACTIVE", false},
+	{billingDomain.ErrTopupNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{billingDomain.ErrTopupPending, http.StatusConflict, "TOPUP_PENDING", false},
+	{billingDomain.ErrInvalidCursor, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	// Le code du prestataire aide à comprendre le refus (solde insuffisant…).
+	{billingDomain.ErrPaymentRefused, http.StatusBadGateway, "PAYMENT_REFUSED", true},
+	{billingDomain.ErrReasonRequired, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{billingDomain.ErrInvalidAdminAmount, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{billingDomain.ErrOrganizationNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{billingDomain.ErrAccountSuspended, http.StatusPaymentRequired, "ACCOUNT_SUSPENDED", false},
+	{billingDomain.ErrInvalidProfile, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{billingDomain.ErrDocumentNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{billingDomain.ErrInvalidBudget, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 }
 
 // classifyError : statut, code et message sûr à exposer.

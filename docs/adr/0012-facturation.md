@@ -1,6 +1,6 @@
 # ADR 0012 — Facturation prépayée
 
-Statut : décidé ; phase 2 (mesure à blanc) implémentée. Date : 2026-11-19.
+Statut : décidé ; phases 2 à 4 implémentées. Date : 2026-11-19.
 Code : [internal/modules/billing](../../internal/modules/billing), doc : [docs/modules/billing.md](../modules/billing.md).
 
 ## Contexte
@@ -88,6 +88,20 @@ rendre payants ne demandera qu'un changement de grille.
 
 ### Argent (phases 3 et 4)
 
+Activation **organisation par organisation** par l'équipe : la phase 2 continue
+pour les autres (coût estimé), ce qui permet un pilote (Bomba) sans basculer
+toute la plateforme. Le crédit d'essai, les bornes d'une recharge et la durée
+de la grâce sont dans la grille (modifiables), pas dans le code.
+
+**Phase 4, choix de mise en œuvre** : le crédit d'essai est offert à la
+première recharge réussie, une fois par numéro Mobile Money : le paiement
+prouve que le numéro appartient au client, sans vérification par SMS. Les prix
+sont TTC ; la facture extrait la TVA du montant payé en argent (les crédits
+offerts ne sont pas une recette). Un reçu de recharge ne porte pas de TVA. La
+suspension n'arrête que les conteneurs : la page « compte suspendu » des sites
+attend la décision sur l'hébergement des sites, et la suppression des données
+après 30 jours reste une décision de l'équipe.
+
 11. **Grand livre en partie double, immuable** : comptes wallet client,
     revenus, TVA, crédits offerts ; chaque mouvement est une écriture
     équilibrée ; on corrige par une écriture inverse. Le solde est la somme des
@@ -116,8 +130,8 @@ rendre payants ne demandera qu'un changement de grille.
 | 0 | Ce document | fait |
 | 1 | Plusieurs projets par organisation, compte de facturation par organisation | en cours (hors de ce module) |
 | 2 | Mesure, valorisation, coût estimé dans la console, rien n'est débité | **implémentée** |
-| 3 | Wallet, grand livre, recharge XYKPay, débits, alertes, offre gratuite | à faire |
-| 4 | Suspension et reprise, factures et TVA, budgets par projet | à faire |
+| 3 | Wallet, grand livre, recharge XYKPay, débits, alertes, crédit d'essai ; administration (organisations, crédits, ajustements, activation, recettes) | **implémentée** |
+| 4 | Grâce et suspension, reprise, factures et reçus PDF (TVA), budgets par projet, crédit d'essai par numéro | **implémentée** |
 | 5 | Plans liés aux limites, cartes, postpayé, revente de domaines | à faire |
 
 La phase 2 tourne quelques semaines sur de vrais clients (Bomba) : elle révèle

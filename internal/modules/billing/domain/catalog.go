@@ -55,6 +55,15 @@ type Catalog struct {
 	BuildMinute     Milli
 	SiteDomain      Milli
 	Free            FreeTier
+	// TopupMin / TopupMax : montant d'une recharge (0 : recharges fermées).
+	TopupMin, TopupMax Milli
+	// TrialCredit : crédit d'essai offert à l'activation de la facturation
+	// réelle, valable TrialDays jours (0 : pas de crédit d'essai).
+	TrialCredit Milli
+	TrialDays   int
+	// GraceDays : jours de solde négatif tolérés avant la suspension douce
+	// (plafonnés aussi à GraceDays jours de consommation de dette).
+	GraceDays int
 }
 
 // DefaultCurrency : monnaie d'un compte sans réglage.

@@ -117,6 +117,12 @@ type fakeInventory struct{ res []domain.Reservation }
 func (f *fakeInventory) Reservations(context.Context, time.Time) ([]domain.Reservation, error) {
 	return f.res, nil
 }
+func (f *fakeInventory) RunningWorkloads(context.Context, uuid.UUID, *uuid.UUID) ([]domain.WorkloadRef, error) {
+	return nil, nil
+}
+func (f *fakeInventory) ProjectOrg(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return uuid.Nil, nil
+}
 func (f *fakeInventory) ProjectNames(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
 	out := map[uuid.UUID]string{}
 	for _, id := range ids {
