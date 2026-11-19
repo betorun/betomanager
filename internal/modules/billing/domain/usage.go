@@ -34,6 +34,9 @@ type Reservation struct {
 	// BuildMinutes et FinishedAt : build terminé (minutes commencées).
 	BuildMinutes int64
 	FinishedAt   time.Time
+	// Monthly : abonnement mensuel du plan (KindPlan) ; Size : son identifiant.
+	Monthly Milli
+	Size    string
 }
 
 // Usage : une ligne par (compteur, ressource, heure). Le relevé garde le
@@ -90,6 +93,10 @@ func (c Catalog) Price(r Reservation, hour time.Time) []Usage {
 		}
 	case KindSiteDomain:
 		out = append(out, line(MeterSiteDomain, "", 1, PerHour(c.SiteDomain), hour))
+	case KindPlan:
+		if r.Monthly > 0 {
+			out = append(out, line(MeterPlan, r.Size, 1, PerHour(r.Monthly), hour))
+		}
 	}
 	return out
 }

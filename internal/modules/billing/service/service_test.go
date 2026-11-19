@@ -120,6 +120,12 @@ func (f *fakeInventory) Reservations(context.Context, time.Time) ([]domain.Reser
 func (f *fakeInventory) RunningWorkloads(context.Context, uuid.UUID, *uuid.UUID) ([]domain.WorkloadRef, error) {
 	return nil, nil
 }
+func (f *fakeInventory) LimitTargets(context.Context, *uuid.UUID, *string) ([]domain.LimitTarget, error) {
+	return nil, nil
+}
+func (f *fakeInventory) ProjectUsages(context.Context, uuid.UUID) ([]domain.ProjectUsage, error) {
+	return nil, nil
+}
 func (f *fakeInventory) ProjectOrg(context.Context, uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }

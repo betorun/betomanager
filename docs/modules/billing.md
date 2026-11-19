@@ -126,14 +126,33 @@ Erreurs : `INVALID_INPUT` (mois), `UNKNOWN_CURRENCY` (404), `INVALID_CATALOG` (4
 | GET | `/organizations/:id/billing/documents/:documentID/pdf` | `billing.accounts.get` | PDF tel qu'émis |
 | GET / PUT | `/projects/:id/billing/budget` | `billing.accounts.get` / `billing.accounts.update` | Budget mensuel du projet (0 : retiré) |
 
+## Plans (phase 5, migration 000037)
+
+Un **plan** fixe les limites de **chaque projet** de l'organisation (CPU, mémoire, stockage) et un **abonnement mensuel** par monnaie. Table `billing_plans`, modifiable par l'équipe (`PUT /admin/billing/plans/:planID`, droit `platform.billingCatalogs.update`) ; amorcée avec Gratuit (limites par défaut des projets, 0), Starter et Pro. `billing_accounts.plan_id` (défaut `free`).
+
+- **Abonnement mesuré comme une ressource** (compteur `plan`, réservation de l'organisation, projet nul) : à l'heure, plafonné au mois, hors offre gratuite ; il apparaît dans l'estimation, le débit et la facture (« Abonnement »).
+- **Changer de plan** (`PUT /organizations/:id/billing/plan`) : contrôle de **tous** les projets d'abord (réservation selon les règles des quotas) ; un projet au-dessus des nouvelles limites refuse le changement (`PLAN_BELOW_USAGE`, projets nommés), rien n'est appliqué à moitié. Puis les limites de chaque projet passent par le service des projets (base, puis quota Kubernetes).
+- Un plan payant demande la facturation réelle active (`PLAN_NEEDS_BILLING`) ; un plan non public n'est attribué que par l'équipe (`PUT /admin/billing/organizations/:id/plan`).
+- **Le plan fait foi** : un **rapprochement** (`ReconcileLimits`, au changement de plan, à la modification d'un plan, et à chaque passage du worker) ramène chaque projet aux limites de sa cible. Un plan modifié s'applique donc aussitôt à toutes les organisations qui l'ont ; un nouveau projet reçoit les limites du plan de son organisation au plus tard au passage suivant (5 min).
+- **Exceptions** : des limites posées à la main par l'équipe (page « Limites des projets », `PATCH /admin/projects/:id/limits`) sont retenues dans `billing_limit_overrides` (migration 000038) ; le rapprochement les respecte. `DELETE /admin/billing/projects/:id/limits-override` ramène le projet au plan.
+- Un projet qui réserve déjà plus que sa cible garde ses limites : la modification d'un plan le rend dans `not_applied`, et le rapprochement réessaie à chaque passage.
+
+| Méthode | Chemin | Permission | Description |
+|---|---|---|---|
+| GET | `/billing/plans?currency=` | publique | Plans proposés (page Tarifs) |
+| GET / PUT | `/organizations/:id/billing/plan` | `billing.accounts.get` / `billing.accounts.update` (sensible) | Plan de l'organisation / changer de plan |
+| GET / PUT | `/admin/billing/plans[/:planID]` | `platform.billingCatalogs.get` / `update` | Catalogue des plans |
+| PUT | `/admin/billing/organizations/:id/plan` | `platform.billingAccounts.update` | Attribuer un plan |
+| DELETE | `/admin/billing/projects/:id/limits-override` | `platform.projects.setLimits` | Retirer l'exception : retour aux limites du plan |
+
 ## Tests
 
 - `domain/` : tailles, prix, plafond, offre gratuite, projection, validation d'une grille.
 - `service/` : relevé idempotent, plus grande taille de l'heure, nouvelle version de grille, monnaie inconnue.
 - `xykpay/` : signature des webhooks, client (faux serveur).
 - `pdf/` : rendu d'une facture et d'un reçu (`PDF_OUT=… go test ./internal/modules/billing/pdf/` écrit l'exemple).
-- `repository/` (vrai Postgres, `IAM_E2E=1` après `bash scripts/iam_e2e_db.sh`) : relevé et estimation de bout en bout, versions de grille ; grand livre équilibré et immuable ; activation, crédit d'essai, débit (crédits d'abord, idempotent), recharge par webhook signé (créditée une fois), ajustement, expiration, historique, administration ; grâce puis suspension, reprise après recharge (seuls les conteneurs arrêtés par elle), crédit d'essai une fois par numéro, budget avec arrêt puis relance, facture et reçu (numéros, TVA, PDF, immuables).
+- `repository/` (vrai Postgres, `IAM_E2E=1` après `bash scripts/iam_e2e_db.sh`) : relevé et estimation de bout en bout, versions de grille ; grand livre équilibré et immuable ; activation, crédit d'essai, débit (crédits d'abord, idempotent), recharge par webhook signé (créditée une fois), ajustement, expiration, historique, administration ; grâce puis suspension, reprise après recharge (seuls les conteneurs arrêtés par elle), crédit d'essai une fois par numéro, budget avec arrêt puis relance, facture et reçu (numéros, TVA, PDF, immuables) ; plans (offre publique, plan payant sans facturation refusé, limites appliquées à tous les projets, abonnement mesuré, descente refusée sans rien appliquer, nouveau projet aligné, plan modifié appliqué aussitôt avec les projets en retard signalés, exception respectée puis retirée).
 
 ## Suite
 
-Phase 5 : plans liés aux limites, cartes, postpayé entreprise, revente de domaines. Restent aussi : la page « compte suspendu » des sites statiques (serveur des sites à trancher), la suppression des données après 30 jours de suspension (aujourd'hui décision de l'équipe, pas automatique).
+Phase 5 (suite) : cartes, postpayé entreprise, revente de domaines. Restent aussi : la page « compte suspendu » des sites statiques (serveur des sites à trancher), la suppression des données après 30 jours de suspension (aujourd'hui décision de l'équipe, pas automatique).

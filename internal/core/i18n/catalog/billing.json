@@ -110,5 +110,21 @@
  {
   "fr": "Projet inconnu",
   "en": "unknown project"
+ },
+ {
+  "fr": "Un plan payant demande que la facturation soit active pour cette organisation",
+  "en": "a paid plan needs billing to be active for this organization"
+ },
+ {
+  "fr": "Plan invalide",
+  "en": "invalid plan"
+ },
+ {
+  "fr": "Plan introuvable",
+  "en": "plan not found"
+ },
+ {
+  "fr": "Les limites du plan sont inférieures à ce que certains projets réservent déjà",
+  "en": "the plan's limits are below what some projects already reserve"
  }
 ]

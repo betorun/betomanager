@@ -542,12 +542,17 @@ func addBillingRoutes(app *App) {
 	org.AddRoute("/documents", http.MethodGet, "Factures mensuelles et reçus de recharge", view, tonic.Handler(r.Documents, http.StatusOK))
 	org.AddRoute("/documents/:documentID/pdf", http.MethodGet, "Le PDF d'une facture ou d'un reçu, tel qu'émis", view,
 		wrapRawHandler(r.DocumentPDF)).Documented(RawDoc{Input: billingDomain.DocumentPath{}, Produces: "application/pdf"})
+	org.AddRoute("/plan", http.MethodGet, "Plan de l'organisation (limites des projets, abonnement) et plans proposés", view, tonic.Handler(r.OrgPlan, http.StatusOK))
+	org.AddRoute("/plan", http.MethodPut, "Changer de plan : les limites de tous les projets suivent (refusé si un projet réserve déjà plus)",
+		g.Perm(iam.BillingAccountsUpdate, security.OrganizationParam("id")), tonic.Handler(r.ChangePlan, http.StatusOK))
 	org.AddRoute("/estimate", http.MethodGet, "Coût estimé d'un mois (défaut : le mois en cours), par projet et par ressource, offre gratuite déduite",
 		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Estimate, http.StatusOK))
 	cat := RootGroup.NewGroup("/billing", "Grille de prix").
 		Named("Grille de prix", "Prix en vigueur des conteneurs (par taille), des bases, du disque et des builds, et offre gratuite. Fixés par l'équipe de la plateforme.")
 	cat.AddRoute("/catalog", http.MethodGet, "Grille de prix d'une monnaie : tailles de conteneur, bases, disque, builds, offre gratuite",
 		Public(), tonic.Handler(r.Catalog, http.StatusOK)) // prix publics : page Tarifs du site
+	cat.AddRoute("/plans", http.MethodGet, "Plans proposés : limites par projet et abonnement mensuel",
+		Public(), tonic.Handler(r.PublicPlans, http.StatusOK))
 
 	// Budget mensuel d'un projet : alerte à 80 % et 100 %, arrêt facultatif.
 	budget := RootGroup.NewGroup("/projects/:id/billing", "Budget du projet").
@@ -571,6 +576,12 @@ func addBillingRoutes(app *App) {
 	accounts.AddRoute("/organizations/:id/credits", http.MethodPost, "Offrir un crédit (consommé avant l'argent, avec une date d'expiration)", adminEdit, tonic.Handler(r.AdminCredit, http.StatusOK))
 	accounts.AddRoute("/organizations/:id/adjustments", http.MethodPost, "Corriger l'argent d'un client (positif : crédité, négatif : débité), avec un motif", adminEdit, tonic.Handler(r.AdminAdjust, http.StatusOK))
 	accounts.AddRoute("/organizations/:id/charging", http.MethodPut, "Activer ou suspendre la facturation réelle (crédit d'essai à la première activation)", adminEdit, tonic.Handler(r.AdminCharging, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/plan", http.MethodPut, "Attribuer un plan à une organisation (y compris non public)", adminEdit, tonic.Handler(r.AdminChangePlan, http.StatusOK))
+	accounts.AddRoute("/plans", http.MethodGet, "Tous les plans, toutes monnaies", g.Perm(iam.PlatformBillingCatalogsGet, security.PlatformResource), tonic.Handler(r.AdminPlans, http.StatusOK))
+	accounts.AddRoute("/plans/:planID", http.MethodPut, "Créer ou modifier un plan (limites par projet, abonnement par monnaie)",
+		g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource), tonic.Handler(r.AdminSavePlan, http.StatusOK))
+	accounts.AddRoute("/projects/:id/limits-override", http.MethodDelete, "Retirer l'exception de limites d'un projet : il revient aux limites de son plan",
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.AdminClearOverride, http.StatusOK))
 	accounts.AddRoute("/revenue", http.MethodGet, "Recettes par jour et par monnaie, recharges en attente ou ratées", adminView, tonic.Handler(r.AdminRevenue, http.StatusOK))
 
 	// Grilles de prix : équipe de la plateforme seulement. Une modification

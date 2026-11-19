@@ -1,12 +1,18 @@
 package router
 
 import (
+	"context"
+	"errors"
+
+	"github.com/google/uuid"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	billingInventory "github.com/thekrauss/kubemanager/internal/modules/billing/inventory"
 	billingRepo "github.com/thekrauss/kubemanager/internal/modules/billing/repository"
 	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
 	"github.com/thekrauss/kubemanager/internal/modules/billing/xykpay"
+	projectDomain "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
+	projectSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
 )
 
 // billingService : facturation (ADR 0012). Même service pour l'API
@@ -39,6 +45,14 @@ func (a *App) billingService() *billingSvc.Service {
 			svc.Containers = c
 		}
 	}
+	// Phase 5 : plans ; le changement de plan passe par le service des projets
+	// (base, puis quota Kubernetes).
+	svc.Plans = billingRepo.NewPlans(a.DB)
+	if a.Services != nil {
+		if ps, ok := a.Services.Project.(*projectSvc.ProjectService); ok && ps != nil {
+			svc.Limits = projectLimiter{ps}
+		}
+	}
 	is := a.Config.Billing.Issuer
 	svc.Issuer = billingDomain.Issuer{Name: is.Name, Address: is.Address, TaxID: is.TaxID, Country: is.Country,
 		VATRateBP: is.VATRateBP, InvoicePrefix: or(is.InvoicePrefix, "BTR"), ReceiptPrefix: or(is.ReceiptPrefix, "REC")}
@@ -59,3 +73,20 @@ func or(v, fallback string) string {
 	}
 	return v
 }
+
+// projectLimiter : limites d'un projet par le service des projets.
+type projectLimiter struct{ svc *projectSvc.ProjectService }
+
+func (l projectLimiter) SetLimits(ctx context.Context, project uuid.UUID, cpu, memory, storage string) error {
+	_, err := l.svc.SetLimits(ctx, project.String(), projectDomain.ProjectLimits{CPU: cpu, Memory: memory, Storage: storage})
+	if errors.Is(err, projectSvc.ErrLimitsBelowUsage) {
+		return belowUsage{err}
+	}
+	return err
+}
+
+// belowUsage : refus « limites sous l'existant », reconnu par la facturation.
+type belowUsage struct{ error }
+
+func (b belowUsage) BelowUsage() bool { return true }
+func (b belowUsage) Unwrap() error    { return b.error }

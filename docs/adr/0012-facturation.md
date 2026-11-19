@@ -1,6 +1,6 @@
 # ADR 0012 — Facturation prépayée
 
-Statut : décidé ; phases 2 à 4 implémentées. Date : 2026-11-19.
+Statut : décidé ; phases 2 à 4 et plans (phase 5) implémentés. Date : 2026-11-19.
 Code : [internal/modules/billing](../../internal/modules/billing), doc : [docs/modules/billing.md](../modules/billing.md).
 
 ## Contexte
@@ -132,7 +132,7 @@ après 30 jours reste une décision de l'équipe.
 | 2 | Mesure, valorisation, coût estimé dans la console, rien n'est débité | **implémentée** |
 | 3 | Wallet, grand livre, recharge XYKPay, débits, alertes, crédit d'essai ; administration (organisations, crédits, ajustements, activation, recettes) | **implémentée** |
 | 4 | Grâce et suspension, reprise, factures et reçus PDF (TVA), budgets par projet, crédit d'essai par numéro | **implémentée** |
-| 5 | Plans liés aux limites, cartes, postpayé, revente de domaines | à faire |
+| 5 | Plans liés aux limites (**implémentés** : abonnement mesuré comme une ressource) ; cartes, postpayé, revente de domaines | en partie |
 
 La phase 2 tourne quelques semaines sur de vrais clients (Bomba) : elle révèle
 les erreurs de mesure et cale la grille avant qu'un franc ne soit débité.

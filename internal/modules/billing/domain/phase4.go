@@ -12,7 +12,7 @@ import (
 // Phase 4 (ADR 0012) : grâce et suspension douce, factures et reçus,
 // budgets par projet.
 
-// ── Grâce et suspension ─────────────────────────────────────────────────
+//  Grâce et suspension
 
 // Raisons d'un arrêt de conteneur par la facturation.
 const (
@@ -58,6 +58,7 @@ func (c Catalog) InvoiceLines(totals []Total) []DocLine {
 		{"Bases de données", []Meter{MeterDatabase, MeterDatabaseDisk}},
 		{"Minutes de build", []Meter{MeterBuildMinutes}},
 		{"Domaines de site", []Meter{MeterSiteDomain}},
+		{"Abonnement", []Meter{MeterPlan}},
 	}
 	sums := map[Meter]Milli{}
 	var compute, database, build Milli
@@ -89,7 +90,7 @@ func (c Catalog) InvoiceLines(totals []Total) []DocLine {
 	return out
 }
 
-// ── Profil de facturation ───────────────────────────────────────────────
+//  Profil de facturation
 
 // Profile : informations portées sur les factures du client.
 type Profile struct {
@@ -127,7 +128,7 @@ func NormalizeProfile(r ProfileRequest) (Profile, error) {
 	return p, nil
 }
 
-// ── Factures et reçus ───────────────────────────────────────────────────
+//  Factures et reçus
 
 // Natures de document.
 const (
@@ -239,7 +240,7 @@ type DocumentPath struct {
 
 var ErrDocumentNotFound = errors.New("document not found")
 
-// ── Budgets par projet ──────────────────────────────────────────────────
+//  Budgets par projet
 
 // Seuils d'alerte d'un budget.
 const (
@@ -291,7 +292,7 @@ type ProjectPath struct {
 
 var ErrInvalidBudget = errors.New("invalid budget: a positive whole amount, or 0 to remove it")
 
-// ── Suspension (erreur vue par les autres modules) ──────────────────────
+//  Suspension (erreur vue par les autres modules)
 
 // ErrAccountSuspended : l'organisation est suspendue faute de solde, ou le
 // projet a atteint son budget avec arrêt : rien ne démarre avant une

@@ -17,6 +17,7 @@ import (
 	identityCtrl "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
 	projectCtrl "github.com/thekrauss/kubemanager/internal/modules/projects"
+	projectDomain "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 	projectSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
 	realtimeCtrl "github.com/thekrauss/kubemanager/internal/modules/realtime"
 	"github.com/thekrauss/kubemanager/internal/modules/sites"
@@ -182,6 +183,10 @@ func (a *App) initDomainLayers() error {
 	// faute de solde, ou dans un projet arrêté par son budget.
 	if billing := a.billingService(); billing != nil {
 		workloadService.Billing = billing
+		// Limites posées à la main par l'équipe : exception au plan, retenue.
+		projectController.OnLimitsOverride = func(ctx context.Context, projectID string, l projectDomain.UsageDTO, by string) error {
+			return billing.RecordOverride(ctx, projectID, l.CPU, l.Memory, l.Storage, by)
+		}
 	}
 
 	a.Controllers = &ControllerContainer{

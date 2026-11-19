@@ -436,6 +436,12 @@ func (s *Service) RunWallet(ctx context.Context, every time.Duration) {
 		}
 		s.checkBudgets(ctx)
 		s.IssueDocuments(ctx)
+		// Limites des projets au niveau de leur plan (nouveau projet, plan modifié).
+		if applied, missed, err := s.ReconcileLimits(ctx, nil, nil); err != nil {
+			s.log().Warnw("billing: limits reconciliation failed", "error", err)
+		} else if applied > 0 || len(missed) > 0 {
+			s.log().Infow("billing: project limits reconciled", "updated", applied, "pending", len(missed))
+		}
 		select {
 		case <-ctx.Done():
 			return

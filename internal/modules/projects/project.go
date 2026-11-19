@@ -29,6 +29,9 @@ type ProjectAccess interface {
 type ProjectHandler struct {
 	ProjectService service.IProjectService
 	Access         ProjectAccess
+	// OnLimitsOverride : limites posées à la main par l'équipe (exception au
+	// plan de l'organisation, retenue par la facturation). nil : rien.
+	OnLimitsOverride func(ctx context.Context, projectID string, limits typeiam.UsageDTO, by string) error
 }
 
 func NewProjectHandlers(ps service.IProjectService, access ProjectAccess) *ProjectHandler {
@@ -89,6 +92,19 @@ type SetProjectLimitsRequest struct {
 }
 
 // SetProjectLimits : réservé au staff de la plateforme (garde de la route).
+// Les limites ainsi posées sont une exception au plan : la facturation la
+// retient pour que le rapprochement des plans ne l'écrase pas.
 func (h *ProjectHandler) SetProjectLimits(c *gin.Context, in *SetProjectLimitsRequest) (*typeiam.ProjectLimitsResponse, error) {
-	return h.ProjectService.SetLimits(c.Request.Context(), in.ProjectID, in.ProjectLimits)
+	res, err := h.ProjectService.SetLimits(c.Request.Context(), in.ProjectID, in.ProjectLimits)
+	if err != nil || h.OnLimitsOverride == nil {
+		return res, err
+	}
+	by := ""
+	if p, ok := security.PrincipalFromContext(c); ok {
+		by = string(p)
+	}
+	if err := h.OnLimitsOverride(c.Request.Context(), in.ProjectID, res.Limits, by); err != nil {
+		return nil, err
+	}
+	return res, nil
 }

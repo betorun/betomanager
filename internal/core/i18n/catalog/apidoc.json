@@ -1486,5 +1486,25 @@
  {
   "fr": "Budget du projet",
   "en": "Project budget"
+ },
+ {
+  "fr": "Identifiant du plan choisi",
+  "en": "ID of the chosen plan"
+ },
+ {
+  "fr": "Plans proposés : limites par projet et abonnement mensuel",
+  "en": "Plans offered: limits per project and monthly subscription"
+ },
+ {
+  "fr": "Plan de l'organisation (limites des projets, abonnement) et plans proposés",
+  "en": "The organization's plan (project limits, subscription) and the plans offered"
+ },
+ {
+  "fr": "Changer de plan : les limites de tous les projets suivent (refusé si un projet réserve déjà plus)",
+  "en": "Change plan: the limits of every project follow (refused if a project already reserves more)"
+ },
+ {
+  "fr": "Retirer l'exception de limites d'un projet : il revient aux limites de son plan",
+  "en": "Remove a project's limits exception: it goes back to its plan's limits"
  }
 ]

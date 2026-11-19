@@ -28,7 +28,7 @@ func New(db *gorm.DB) *Inventory { return &Inventory{DB: db} }
 func (i *Inventory) Reservations(ctx context.Context, since time.Time) ([]domain.Reservation, error) {
 	var out []domain.Reservation
 	for _, read := range []func(context.Context, time.Time) ([]domain.Reservation, error){
-		i.containers, i.databases, i.builds, i.siteDomains,
+		i.containers, i.databases, i.builds, i.siteDomains, i.plans,
 	} {
 		rs, err := read(ctx, since)
 		if err != nil {
@@ -222,3 +222,99 @@ func (i *Inventory) ProjectOrg(ctx context.Context, project uuid.UUID) (uuid.UUI
 }
 
 var errProjectUnknown = errors.New("unknown project")
+
+// plans : abonnement des organisations à un plan payant (dans la monnaie du
+// compte). Rattaché à l'organisation, pas à un projet (ProjectID nul).
+func (i *Inventory) plans(ctx context.Context, _ time.Time) ([]domain.Reservation, error) {
+	var rows []struct {
+		OrganizationID uuid.UUID
+		PlanID         string
+		Name           string
+		Fee            int64
+	}
+	err := i.DB.WithContext(ctx).Raw(`
+		SELECT a.organization_id, a.plan_id, p.name, COALESCE((p.fees->>a.currency)::bigint, 0) AS fee
+		FROM billing_accounts a JOIN billing_plans p ON p.id = a.plan_id
+		JOIN organizations o ON o.id = a.organization_id AND o.deleted_at IS NULL`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("billing inventory plans: %w", err)
+	}
+	out := make([]domain.Reservation, 0, len(rows))
+	for _, r := range rows {
+		if r.Fee <= 0 {
+			continue
+		}
+		out = append(out, domain.Reservation{Kind: domain.KindPlan, OrganizationID: r.OrganizationID, ResourceID: r.OrganizationID,
+			ResourceName: r.Name, Size: r.PlanID, Monthly: domain.FromUnits(r.Fee)})
+	}
+	return out, nil
+}
+
+// ProjectUsages : ce que chaque projet de l'organisation réserve, selon les
+// règles des quotas (conteneur arrêté ou en échec compris, un réplica au
+// moins ; seul un conteneur supprimé ne compte plus).
+func (i *Inventory) ProjectUsages(ctx context.Context, org uuid.UUID) ([]domain.ProjectUsage, error) {
+	var projects []struct {
+		ID   uuid.UUID
+		Name string
+	}
+	if err := i.DB.WithContext(ctx).Raw(`SELECT id, name FROM projects WHERE organization_id = ? AND deleted_at IS NULL ORDER BY name`, org).
+		Scan(&projects).Error; err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ProjectID             uuid.UUID
+		Replicas              int
+		CPULimit, MemoryLimit string
+	}
+	if err := i.DB.WithContext(ctx).Raw(`SELECT w.project_id, w.replicas, w.cpu_limit, w.memory_limit FROM workloads w
+		JOIN projects p ON p.id = w.project_id WHERE p.organization_id = ? AND p.deleted_at IS NULL AND w.status <> 'DELETED'`, org).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	used := map[uuid.UUID]*domain.ProjectUsage{}
+	out := make([]domain.ProjectUsage, len(projects))
+	for k, p := range projects {
+		out[k] = domain.ProjectUsage{ProjectID: p.ID, Name: p.Name}
+		used[p.ID] = &out[k]
+	}
+	for _, r := range rows {
+		u := used[r.ProjectID]
+		if u == nil {
+			continue
+		}
+		n := int64(max(r.Replicas, 1))
+		u.CPUMilli += milliCPU(r.CPULimit) * n
+		u.MemMi += mebibytes(r.MemoryLimit) * n
+	}
+	return out, nil
+}
+
+// LimitTargets : projets dont les limites diffèrent de leur cible (exception
+// de l'équipe, sinon plan de l'organisation ; plan par défaut sans compte).
+// org / plan : restreindre à une organisation, ou aux organisations d'un plan.
+func (i *Inventory) LimitTargets(ctx context.Context, org *uuid.UUID, plan *string) ([]domain.LimitTarget, error) {
+	q := `SELECT p.id AS project_id, p.organization_id, p.name,
+			COALESCE(o.cpu_limit, pl.cpu_limit) AS cpu, COALESCE(o.memory_limit, pl.memory_limit) AS memory,
+			COALESCE(o.storage_limit, pl.storage_limit) AS storage, o.project_id IS NOT NULL AS override
+		FROM projects p
+		LEFT JOIN billing_accounts a ON a.organization_id = p.organization_id
+		JOIN billing_plans pl ON pl.id = COALESCE(a.plan_id, ?)
+		LEFT JOIN billing_limit_overrides o ON o.project_id = p.id
+		WHERE p.deleted_at IS NULL
+		  AND (p.cpu_limit <> COALESCE(o.cpu_limit, pl.cpu_limit)
+		    OR p.memory_limit <> COALESCE(o.memory_limit, pl.memory_limit)
+		    OR p.storage_limit <> COALESCE(o.storage_limit, pl.storage_limit))`
+	args := []any{domain.DefaultPlan}
+	if org != nil {
+		q += ` AND p.organization_id = ?`
+		args = append(args, *org)
+	}
+	if plan != nil {
+		q += ` AND COALESCE(a.plan_id, ?) = ? AND o.project_id IS NULL`
+		args = append(args, domain.DefaultPlan, *plan)
+	}
+	var out []domain.LimitTarget
+	err := i.DB.WithContext(ctx).Raw(q+` ORDER BY p.organization_id, p.name`, args...).Scan(&out).Error
+	return out, err
+}
