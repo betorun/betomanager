@@ -442,5 +442,9 @@
  {
   "fr": "Supprimer une image construite",
   "en": "Delete a built image"
+ },
+ {
+  "fr": "Vider une base de données (copie de sécurité gardée 24 h)",
+  "en": "Empty a database (safety copy kept 24 h)"
  }
 ]

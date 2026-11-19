@@ -63,7 +63,11 @@ type Service struct {
 	Imports *ImportConfig
 	// Attachments : branchements tracés (nil : la carte n'en montre aucun).
 	Attachments AttachmentStore
-	Logger      *zap.SugaredLogger
+	// Shell : lecture et remise à zéro d'une base (nil : indisponibles).
+	Shell Shell
+	// Snapshots : copies prises avant une remise à zéro (nil : pas de remise à zéro).
+	Snapshots SnapshotStore
+	Logger    *zap.SugaredLogger
 }
 
 func (s *Service) available() error {
@@ -218,6 +222,7 @@ func (s *Service) enrich(ctx context.Context, v *domain.DatabaseView, id uuid.UU
 			v.LastImport = &list[0]
 		}
 	}
+	v.ResetSnapshot = s.snapshotView(ctx, id)
 }
 
 // Get : une base, avec son état en direct.
@@ -284,6 +289,7 @@ func (s *Service) Delete(ctx context.Context, projectID, id uuid.UUID) error {
 		_ = s.Repo.SetStatus(context.WithoutCancel(ctx), d.ID, domain.StatusFailed)
 		return fmt.Errorf("the database could not be deleted: %w", err)
 	}
+	s.dropSnapshot(ctx, d.ID)
 	return s.Repo.Delete(ctx, d.ID)
 }
 

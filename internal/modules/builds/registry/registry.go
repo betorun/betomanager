@@ -117,6 +117,17 @@ func (c Credentials) DumpSignature(importID uuid.UUID, expires int64) string {
 	return c.sign("db-dump", importID.String(), strconv.FormatInt(expires, 10))
 }
 
+// SnapshotSignature : URL signée d'envoi de la copie de sécurité d'une base
+// (tâche de remise à zéro), par le Job de la tâche.
+func (c Credentials) SnapshotSignature(taskID uuid.UUID, expires int64) string {
+	return c.sign("db-snapshot", taskID.String(), strconv.FormatInt(expires, 10))
+}
+
+// VerifySnapshot : URL d'envoi de copie encore valable.
+func (c Credentials) VerifySnapshot(taskID uuid.UUID, expires int64, sig string, now time.Time) bool {
+	return now.Unix() <= expires && hmac.Equal([]byte(c.SnapshotSignature(taskID, expires)), []byte(sig))
+}
+
 // VerifyDump : URL de dump encore valable.
 func (c Credentials) VerifyDump(importID uuid.UUID, expires int64, sig string, now time.Time) bool {
 	return now.Unix() <= expires && hmac.Equal([]byte(c.DumpSignature(importID, expires)), []byte(sig))

@@ -164,14 +164,23 @@ func importPolicy(ns string, egressAllow []string) *networkingv1.NetworkPolicy {
 	}
 }
 
-func (c *CNPG) StartImport(ctx context.Context, ns string, spec ImportJobSpec) error {
-	pol := importPolicy(ns, spec.EgressAllow)
+// ensureImportPolicy : politique réseau des Jobs de base (import, lecture,
+// remise à zéro), créée ou mise à jour.
+func (c *CNPG) ensureImportPolicy(ctx context.Context, ns string, egressAllow []string) error {
+	pol := importPolicy(ns, egressAllow)
 	if _, err := c.Kube.NetworkingV1().NetworkPolicies(ns).Create(ctx, pol, metav1.CreateOptions{}); apierrors.IsAlreadyExists(err) {
 		if _, err := c.Kube.NetworkingV1().NetworkPolicies(ns).Update(ctx, pol, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("import network policy: %w", err)
 		}
 	} else if err != nil {
 		return fmt.Errorf("import network policy: %w", err)
+	}
+	return nil
+}
+
+func (c *CNPG) StartImport(ctx context.Context, ns string, spec ImportJobSpec) error {
+	if err := c.ensureImportPolicy(ctx, ns, spec.EgressAllow); err != nil {
+		return err
 	}
 	if _, err := c.Kube.BatchV1().Jobs(ns).Create(ctx, importJob(ns, spec), metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("import job: %w", err)

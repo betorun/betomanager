@@ -37,6 +37,8 @@ type ImportStore interface {
 type DumpSigner interface {
 	DumpSignature(importID uuid.UUID, expires int64) string
 	VerifyDump(importID uuid.UUID, expires int64, sig string, now time.Time) bool
+	SnapshotSignature(taskID uuid.UUID, expires int64) string
+	VerifySnapshot(taskID uuid.UUID, expires int64, sig string, now time.Time) bool
 }
 
 // ImportConfig : ce qu'il faut pour importer (absent : fonction indisponible).
@@ -75,9 +77,10 @@ func (s *Service) MaxDumpBytes() int64 {
 func dumpKey(id uuid.UUID) string { return "database-imports/" + id.String() + ".pgc" }
 
 // Import : charge un dump (pg_dump -Fc) dans la base. clean : objets
-// existants supprimés d'abord (sinon, un dump sur une base non vide échoue
-// au premier objet déjà présent, sans rien casser).
-func (s *Service) Import(ctx context.Context, projectID, databaseID uuid.UUID, r io.Reader, size int64, clean bool, creator string) (*domain.DatabaseImport, error) {
+// existants du dump supprimés d'abord (sinon, un dump sur une base non vide
+// échoue au premier objet déjà présent, sans rien casser). reset : la base
+// est d'abord vidée, après une copie de sécurité (voir Reset).
+func (s *Service) Import(ctx context.Context, projectID, databaseID uuid.UUID, r io.Reader, size int64, clean, reset bool, creator string) (*domain.DatabaseImport, error) {
 	if err := s.available(); err != nil {
 		return nil, err
 	}
@@ -112,6 +115,14 @@ func (s *Service) Import(ctx context.Context, projectID, databaseID uuid.UUID, r
 	head, _ := br.Peek(5)
 	if !domain.IsCustomDump(head) {
 		return nil, domain.ErrNotADump
+	}
+	if reset {
+		if err := s.resetReady(); err != nil {
+			return nil, err
+		}
+		if _, err := s.reset(ctx, &target{db: d, ns: ns, TaskTarget: TaskTarget{Cluster: d.ClusterName(), Image: st.Image}}, creator); err != nil {
+			return nil, err
+		}
 	}
 
 	imp := &domain.DatabaseImport{ID: uuid.New(), DatabaseID: databaseID, ProjectID: projectID, Status: domain.ImportPending,

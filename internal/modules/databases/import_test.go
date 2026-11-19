@@ -145,7 +145,7 @@ var dump = []byte("PGDMP\x01\x0e\x00rest-of-dump")
 func TestImport_StartsJobWithSignedURL(t *testing.T) {
 	ctx := context.Background()
 	s, d, imp, store, objs := importSvc(t)
-	got, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), true, "user:1")
+	got, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), true, false, "user:1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,20 +183,20 @@ func TestImport_Refusals(t *testing.T) {
 	ctx := context.Background()
 	s, d, imp, _, _ := importSvc(t)
 	imp.state = ImportJobState{Exists: true} // Job lancé, pas fini
-	if _, err := s.Import(ctx, d.ProjectID, d.ID, strings.NewReader("CREATE TABLE x();"), 17, false, "u"); err != domain.ErrNotADump {
+	if _, err := s.Import(ctx, d.ProjectID, d.ID, strings.NewReader("CREATE TABLE x();"), 17, false, false, "u"); err != domain.ErrNotADump {
 		t.Fatalf("SQL brut : %v", err)
 	}
-	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), domain.DefaultMaxDumpBytes+1, false, "u"); err != domain.ErrDumpTooLarge {
+	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), domain.DefaultMaxDumpBytes+1, false, false, "u"); err != domain.ErrDumpTooLarge {
 		t.Fatalf("trop gros : %v", err)
 	}
-	if _, err := s.Import(ctx, uuid.New(), d.ID, bytes.NewReader(dump), int64(len(dump)), false, "u"); err != domain.ErrNotFound {
+	if _, err := s.Import(ctx, uuid.New(), d.ID, bytes.NewReader(dump), int64(len(dump)), false, false, "u"); err != domain.ErrNotFound {
 		t.Fatalf("autre projet : %v", err)
 	}
 	// Un import en cours : un second est refusé.
-	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, "u"); err != nil {
+	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, false, "u"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, "u"); err != domain.ErrImportRunning {
+	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, false, "u"); err != domain.ErrImportRunning {
 		t.Fatalf("deuxième import : %v", err)
 	}
 	if len(imp.started) != 1 {
@@ -204,12 +204,12 @@ func TestImport_Refusals(t *testing.T) {
 	}
 	// Base pas prête.
 	s.Clusters.(*fakeClusters).state.ReadyInstance = false
-	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, "u"); err != domain.ErrNotReady {
+	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, false, "u"); err != domain.ErrNotReady {
 		t.Fatalf("base pas prête : %v", err)
 	}
 	// Sans configuration : indisponible.
 	s.Imports = nil
-	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, "u"); err != domain.ErrImportsDisabled {
+	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, false, "u"); err != domain.ErrImportsDisabled {
 		t.Fatalf("désactivé : %v", err)
 	}
 }
@@ -217,7 +217,7 @@ func TestImport_Refusals(t *testing.T) {
 func TestImport_StateFollowsJob(t *testing.T) {
 	ctx := context.Background()
 	s, d, imp, _, objs := importSvc(t)
-	got, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, "u")
+	got, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), false, false, "u")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestImport_StateFollowsJob(t *testing.T) {
 	}
 	// Terminé : un nouvel import est permis.
 	imp.state = ImportJobState{Exists: true, Done: true}
-	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), true, "u"); err != nil {
+	if _, err := s.Import(ctx, d.ProjectID, d.ID, bytes.NewReader(dump), int64(len(dump)), true, false, "u"); err != nil {
 		t.Fatalf("nouvel import : %v", err)
 	}
 	list, _ := s.ListImports(ctx, d.ProjectID, d.ID)
