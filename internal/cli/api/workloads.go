@@ -29,6 +29,24 @@ func (c *Client) GetWorkload(ctx context.Context, id string) (*Workload, error) 
 	return &out, c.Do(ctx, http.MethodGet, pathWorkloads+"/"+url.PathEscape(id), nil, &out)
 }
 
+// PullFailure : pourquoi l'image d'un conteneur ne se récupère pas.
+type PullFailure struct {
+	Cause    string `json:"cause"`
+	Registry string `json:"registry"`
+	Image    string `json:"image"`
+}
+
+// LiveStatus : état en direct d'un conteneur (sous-ensemble utile à la CLI).
+type LiveStatus struct {
+	PullFailure *PullFailure `json:"pull_failure,omitempty"`
+}
+
+// WorkloadLiveStatus : état lu dans le cluster.
+func (c *Client) WorkloadLiveStatus(ctx context.Context, id string) (*LiveStatus, error) {
+	var out LiveStatus
+	return &out, c.Do(ctx, http.MethodGet, pathWorkloads+"/"+url.PathEscape(id)+"/status", nil, &out)
+}
+
 func (c *Client) CreateWorkload(ctx context.Context, req CreateWorkloadRequest) (*WorkloadResponse, error) {
 	var out WorkloadResponse
 	return &out, c.Do(ctx, http.MethodPost, pathWorkloads, req, &out)

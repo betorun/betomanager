@@ -4,6 +4,7 @@ package alerts
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +24,8 @@ type Store interface {
 	// Claim : true si aucune alerte de ce type n'est partie pour ce sujet
 	// depuis `every` ; l'envoi est alors réservé (atomique entre instances).
 	Claim(ctx context.Context, subject uuid.UUID, kind string, every time.Duration) (bool, error)
-	// Recipients : owners du projet (comptes actifs).
+	// Recipients : propriétaires et éditeurs du projet, directs ou par un
+	// groupe, liaison en cours de validité, comptes actifs.
 	Recipients(ctx context.Context, project uuid.UUID) ([]Recipient, error)
 	// ProjectName : nom affiché du projet.
 	ProjectName(ctx context.Context, project uuid.UUID) (string, error)
@@ -33,7 +35,7 @@ type Store interface {
 	OrgName(ctx context.Context, org uuid.UUID) (string, error)
 }
 
-// maxRecipients : au-delà, les autres owners ne sont pas prévenus.
+// maxRecipients : au-delà, les autres ne sont pas prévenus.
 const maxRecipients = 20
 
 type gormStore struct {
@@ -56,15 +58,55 @@ func (s *gormStore) Claim(ctx context.Context, subject uuid.UUID, kind string, e
 }
 
 func (s *gormStore) Recipients(ctx context.Context, project uuid.UUID) ([]Recipient, error) {
-	var out []Recipient
+	// Ceux qui peuvent réparer : propriétaires et éditeurs. Les liaisons
+	// conditionnelles (expiration) sont filtrées ici, une à une.
+	var rows []struct {
+		Email     string
+		FullName  string
+		Condition []byte
+	}
+	user := iam.KindUser + iam.PrincipalSeparator
+	group := iam.KindGroup + iam.PrincipalSeparator
 	err := s.db.WithContext(ctx).Raw(`
-		SELECT u.email, u.full_name FROM iam_bindings b
-		JOIN users u ON b.principal = ? || u.id::text
-		WHERE b.resource_name = ? AND b.role = ? AND u.deleted_at IS NULL AND u.is_active
-		ORDER BY u.email LIMIT ?`,
-		iam.KindUser+iam.PrincipalSeparator, string(iam.ProjectName(project)), iam.RoleOwner, maxRecipients).
-		Scan(&out).Error
-	return out, err
+		WITH b AS (
+			SELECT principal, condition FROM iam_bindings
+			WHERE resource_name = ? AND role IN (?, ?)
+		), p AS (
+			SELECT principal, condition FROM b WHERE principal LIKE ? || '%'
+			UNION ALL
+			SELECT m.principal, b.condition FROM b
+			JOIN iam_group_members m ON b.principal = ? || m.group_id::text
+		)
+		SELECT u.email, u.full_name, p.condition FROM p
+		JOIN users u ON p.principal = ? || u.id::text
+		WHERE u.deleted_at IS NULL AND u.is_active
+		ORDER BY u.email`,
+		string(iam.ProjectName(project)), iam.RoleOwner, iam.RoleEditor, user, group, user).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	seen := map[string]bool{}
+	out := []Recipient{}
+	for _, r := range rows {
+		if seen[r.Email] || len(out) == maxRecipients {
+			continue
+		}
+		var cond *iam.Condition
+		if len(r.Condition) > 0 && string(r.Condition) != "null" {
+			cond = &iam.Condition{}
+			if json.Unmarshal(r.Condition, cond) != nil {
+				continue // illisible : échec fermé, comme l'évaluateur
+			}
+		}
+		if !iam.ConditionHolds(cond, now) {
+			continue
+		}
+		seen[r.Email] = true
+		out = append(out, Recipient{Email: r.Email, FullName: r.FullName})
+	}
+	return out, nil
 }
 
 func (s *gormStore) ProjectName(ctx context.Context, project uuid.UUID) (string, error) {

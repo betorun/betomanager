@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -106,10 +107,11 @@ func newAccessList() *cobra.Command {
 				until := ""
 				if len(b.Condition) > 0 {
 					var c struct {
-						Title string `json:"title"`
+						Title      string `json:"title"`
+						Expression string `json:"expression"`
 					}
 					_ = json.Unmarshal(b.Condition, &c)
-					until = c.Title
+					until = conditionUntil(c.Expression, c.Title)
 				}
 				for _, m := range b.Members {
 					label := m
@@ -250,4 +252,19 @@ func newAccessRevoke() *cobra.Command {
 	}
 	c.Flags().StringVar(&role, "role", "", i18n.T("flag.role"))
 	return c
+}
+
+// expiryExpr : seule condition acceptée par l'API (expiration).
+var expiryExpr = regexp.MustCompile(`^\s*request\.time\s*<\s*timestamp\(\s*'([^']+)'\s*\)\s*$`)
+
+// conditionUntil : jour d'expiration, en UTC comme il a été saisi (23:59:59Z
+// le 31 deviendrait le 1er en heure locale) ; à défaut, le titre saisi (texte
+// libre, dans la langue de son auteur).
+func conditionUntil(expression, title string) string {
+	if m := expiryExpr.FindStringSubmatch(expression); m != nil {
+		if t, err := time.Parse(time.RFC3339, m[1]); err == nil {
+			return t.UTC().Format("2006-01-02")
+		}
+	}
+	return title
 }

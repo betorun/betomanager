@@ -104,6 +104,8 @@ func newFakeOps(t *testing.T) (*httptest.Server, *fakeOps) {
 		case r.Method == "DELETE" && strings.Contains(p, "/domains/"):
 			f.domains = nil
 			w.WriteHeader(204)
+		case r.Method == "GET" && strings.HasPrefix(p, "/workloads/") && strings.HasSuffix(p, "/status"):
+			write(w, 200, map[string]any{"pull_failure": map[string]string{"cause": "not_found", "registry": "ghcr.io", "image": "ghcr.io/acme/web:9"}})
 		// ── accès ──
 		case r.Method == "GET" && p == "/iam/policy":
 			assert.Equal(t, "projects/"+projectID, r.URL.Query().Get("resource"))
@@ -200,6 +202,7 @@ func TestCLI_WorkloadsDomainsAccess(t *testing.T) {
 	out, err = run(t, "workloads", "status", "api")
 	require.NoError(t, err)
 	assert.Contains(t, out, "● en service (READY)")
+	assert.Contains(t, out, "image introuvable sur ghcr.io", "cause lue dans l'état en direct")
 
 	// Nouvelle version : image seule (variables conservées côté API : null),
 	// puis variables seules (remplacent l'ensemble).
@@ -266,7 +269,8 @@ func TestCLI_WorkloadsDomainsAccess(t *testing.T) {
 	out, err = run(t, "access", "list")
 	require.NoError(t, err)
 	assert.Contains(t, out, "moussa@ex.sn")
-	assert.Contains(t, out, "Expire le 2026-12-31")
+	assert.Contains(t, out, "2026-12-31", "jour d'expiration tiré de l'expression, en UTC")
+	assert.NotContains(t, out, "Expire le", "pas le titre libre")
 
 	_, err = run(t, "access", "revoke", "inconnu@ex.sn")
 	assert.Contains(t, describe(err), "n'a pas ce rôle")

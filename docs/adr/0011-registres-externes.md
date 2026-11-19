@@ -50,9 +50,11 @@ DELETE /projects/:id/registries/:host
 POST   /projects/:id/registries/:host/test   vérifie l'accès (voir plus bas)
 ```
 
-Permissions IAM nouvelles : `project:registries:view`, `project:registries:manage`
-(rôle propriétaire et administrateur ; pas développeur par défaut, car un jeton de
-registre donne accès au code de l'entreprise).
+Permissions IAM nouvelles : `workloads.registries.list`, `workloads.registries.manage`
+(rôles propriétaire et éditeur ; pas développeur par défaut, car un jeton de
+registre donne accès au code de l'entreprise). *Écrit d'abord
+`project:registries:view/manage`, « propriétaire et administrateur » : le code fait
+foi, l'éditeur est le rôle le plus proche d'un administrateur.*
 
 ### CLI
 
@@ -65,7 +67,8 @@ betorun registries remove ghcr.io
 
 ### Console
 
-Page « Registres » dans les réglages du projet : liste, ajout, test, suppression.
+Page « Registres » à part dans la console (pas dans les réglages du projet) : liste,
+ajout, test, suppression.
 Aide par fournisseur (où créer un jeton en lecture seule : GitHub « read:packages »,
 Docker Hub « Read-only access token », GitLab « read_registry »).
 
@@ -74,9 +77,10 @@ Docker Hub « Read-only access token », GitLab « read_registry »).
 1. `deployInput` indique si l'image vient d'un registre pour lequel le projet a un
    accès (comparaison du `host` normalisé ; `nginx` → `docker.io`).
 2. Le worker construit **un seul** Secret `kubernetes.io/dockerconfigjson` par
-   namespace, `betorun-pull`, avec notre registre et les accès externes du projet.
+   namespace, `betorun-registry` (écrit d'abord `betorun-pull`), avec notre registre
+   et les accès externes du projet.
    Les valeurs sont déchiffrées dans l'activité, jamais dans l'entrée du workflow.
-3. Le chart reçoit `pullSecrets: [betorun-pull]` dès qu'une entrée s'applique.
+3. Le chart reçoit `pullSecrets: [betorun-registry]` dès qu'une entrée s'applique.
 4. Suppression ou modification d'un accès : le Secret est réécrit au prochain
    déploiement ; une suppression le réécrit tout de suite (pas d'accès résiduel).
 
@@ -86,6 +90,14 @@ Le watcher remonte déjà les événements de pods. On traduit `ErrImagePull` et
 `ImagePullBackOff` en statut clair : « le registre ghcr.io refuse l'accès : vérifiez
 le jeton » ou « image introuvable : vérifiez le nom et l'étiquette ». Le message brut
 du pod n'est jamais affiché tel quel (il peut contenir des informations sensibles).
+
+Implémenté (2026-11-19) dans l'état en direct du conteneur : `pull_failure`
+`{cause, registry, image}`, cause parmi `denied`, `not_found`, `denied_or_not_found`
+(Docker Hub ne distingue pas un dépôt privé d'un dépôt absent), `unreachable`,
+`invalid`, `unknown`. Le classement lit l'état du conteneur, puis le dernier
+événement `Failed` du pod quand ImagePullBackOff ne donne que « Back-off pulling
+image » ([domain/pull.go](../../internal/modules/workloads/domain/pull.go)). La
+console et `betorun workloads status` en font la phrase.
 
 ### Test d'un accès
 
@@ -124,7 +136,7 @@ paquet privé ghcr.io).
 
 ## Décisions (validées le 2026-11-18)
 
-1. Gestion des accès : propriétaire et administrateur seulement, pas les développeurs.
+1. Gestion des accès : propriétaire et éditeur seulement, pas les développeurs.
 2. ECR : hors V1.
 3. Un accès par hôte et par projet en V1.
 
@@ -136,5 +148,4 @@ paquet privé ghcr.io).
   identifiants de build et de pull) ; il n'est pas déplacé.
 - `workloads/activities/heml.go` : `EnsureRegistryPullSecret` devient
   `EnsurePullSecret` et assemble notre registre et les accès externes du projet.
-- Migration 000023, CLI `internal/cli/registries.go`, page console dans les
-  réglages du projet.
+- Migration 000023, CLI `internal/cli/registries.go`, page console « Registres ».

@@ -1,6 +1,6 @@
 # ADR 0008 — Couche d'accès aux modèles de langage
 
-- **Status** : proposé
+- **Status** : implémenté (Copilot compris ; désactivé en production tant qu'aucun fournisseur n'est choisi)
 - **Date** : 2026-11-18
 - **Code** : [internal/infrastructure/llm](../../internal/infrastructure/llm)
 

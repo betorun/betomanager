@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
@@ -336,10 +337,74 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 				ps.Ready = ps.Ready || c.Ready
 			}
 			status.Pods = append(status.Pods, ps)
+			if status.PullFailure == nil {
+				status.PullFailure = s.pullFailure(ctx, &p)
+			}
 		}
 	}
 
 	return status, nil
+}
+
+// pullFailure : cause d'un conteneur bloqué sur son image (ADR 0011). Le
+// message d'ImagePullBackOff est vague : le dernier événement « Failed » du
+// pod porte celui du registre.
+func (s *WorkloadService) pullFailure(ctx context.Context, p *corev1.Pod) *domain.PullFailure {
+	statuses := append(append([]corev1.ContainerStatus{}, p.Status.InitContainerStatuses...), p.Status.ContainerStatuses...)
+	for _, c := range statuses {
+		w := c.State.Waiting
+		if w == nil || !domain.IsPullWaiting(w.Reason) {
+			continue
+		}
+		image := c.Image
+		for _, spec := range append(append([]corev1.Container{}, p.Spec.InitContainers...), p.Spec.Containers...) {
+			if spec.Name == c.Name {
+				image = spec.Image // c.Image peut être vide tant que rien n'est tiré
+			}
+		}
+		f := domain.ClassifyPull(image, w.Reason, w.Message)
+		if f.Cause == domain.PullUnknown {
+			if msg := s.lastPullEvent(ctx, p); msg != "" {
+				f = domain.ClassifyPull(image, domain.ReasonErrImagePull, msg)
+			}
+		}
+		return &f
+	}
+	return nil
+}
+
+// lastPullEvent : message du dernier échec de récupération d'image du pod.
+func (s *WorkloadService) lastPullEvent(ctx context.Context, p *corev1.Pod) string {
+	events, err := s.K8sClient.CoreV1().Events(p.Namespace).List(ctx, metav1.ListOptions{
+		FieldSelector: "involvedObject.name=" + p.Name + ",reason=Failed",
+	})
+	if err != nil {
+		return ""
+	}
+	var last *corev1.Event
+	for i := range events.Items {
+		e := &events.Items[i]
+		if !strings.Contains(e.Message, "pull") && !strings.Contains(e.Message, "image") {
+			continue
+		}
+		if last == nil || eventTime(e).After(eventTime(last)) {
+			last = e
+		}
+	}
+	if last == nil {
+		return ""
+	}
+	return last.Message
+}
+
+func eventTime(e *corev1.Event) time.Time {
+	switch {
+	case !e.LastTimestamp.IsZero():
+		return e.LastTimestamp.Time
+	case !e.EventTime.IsZero():
+		return e.EventTime.Time
+	}
+	return e.CreationTimestamp.Time
 }
 
 // Logs : stream les logs du premier pod en état Running (ou Pending si aucun Ready).

@@ -361,8 +361,33 @@ func unknownCommand(c *cobra.Command, word string) error {
 	msg := i18n.T("help.err.unknown", word, c.CommandPath())
 	if s := c.SuggestionsFor(word); len(s) > 0 {
 		msg += "\n  " + i18n.T("help.err.suggest", strings.Join(s, ", "))
+	} else if s := withName(c, word); len(s) > 0 {
+		// « workloads git web » : le mot est sans doute un nom, il manque l'action.
+		msg += "\n  " + i18n.T("help.err.suggest", strings.Join(s, ", "))
 	}
 	return usageError(c, msg)
+}
+
+// withName : sous-commandes de c qui prennent un nom, appliquées au mot.
+func withName(c *cobra.Command, word string) []string {
+	var read, act []string
+	for _, sub := range c.Commands() {
+		if sub.Hidden || !strings.Contains(sub.Use, " ") {
+			continue
+		}
+		line := c.CommandPath() + " " + sub.Name() + " " + word
+		switch sub.Name() {
+		case "status", "list", "show", "logs":
+			read = append(read, line) // lecture d'abord : un copier-coller ne change rien
+		default:
+			act = append(act, line)
+		}
+	}
+	out := append(read, act...)
+	if len(out) > 2 {
+		out = out[:2]
+	}
+	return out
 }
 
 // usageError : message, puis où trouver l'aide de la commande.

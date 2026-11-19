@@ -17,8 +17,10 @@ par email, sans bruit et sans divulguer le message brut du cluster.
   - build échoué (`builds/activities.Finish`, worker) : BUILD_FAILED, TIMEOUT,
     DISK_LIMIT, NO_BUILD_PLAN, GIT_ACCESS_LOST, INTERNAL. Pas SUPERSEDED ni
     TOO_MANY_BUILDS (rien à faire pour le client).
-- Destinataires : owners du projet (`iam_bindings`, `roles/owner`, comptes actifs),
-  20 au plus.
+- Destinataires : propriétaires et éditeurs du projet, directs ou par un groupe,
+  liaison en cours de validité, comptes actifs, 20 au plus (décision du
+  2026-11-19 : ceux qui peuvent réparer ; V1 : propriétaires directs seulement).
+  Désinscription par personne : plus tard.
 - Fréquence : table `alert_deliveries (subject_id, kind)` ; réservation atomique
   par `INSERT … ON CONFLICT … WHERE sent_at < now() - période RETURNING`.
   6 h par conteneur, 1 h par projet pour les builds.

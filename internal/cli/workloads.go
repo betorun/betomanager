@@ -344,7 +344,7 @@ func newWorkloadsStatus() *cobra.Command {
 		Short:   i18n.T("wl.status.short"),
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, w, err := workloadByName(cmd, args[0])
+			cl, w, err := workloadByName(cmd, args[0])
 			if err != nil {
 				return err
 			}
@@ -352,6 +352,12 @@ func newWorkloadsStatus() *cobra.Command {
 				return err
 			}
 			p := printer(cmd)
+			cause := ""
+			// Le pod peut être bloqué sur son image avant que le statut ne
+			// passe à IMAGE_PULL_FAILED : on demande toujours au cluster.
+			if live, err := cl.WorkloadLiveStatus(cmd.Context(), w.ID.String()); err == nil && live.PullFailure != nil {
+				cause = p.Red(pullFailureText(live.PullFailure))
+			}
 			identity, url := "", ""
 			if w.ServiceAccountID != nil {
 				identity = "serviceAccount:" + w.ServiceAccountID.String()
@@ -363,6 +369,7 @@ func newWorkloadsStatus() *cobra.Command {
 				[2]string{i18n.T("wl.col.name"), p.Bold(w.Name)},
 				[2]string{i18n.T("wl.col.status"), workloadStatus(p, w.Status) + " " + p.Dim("("+phaseLabel(w.CurrentPhase)+")")},
 				[2]string{i18n.T("wl.col.image"), w.Image},
+				[2]string{i18n.T("wl.col.cause"), cause},
 				[2]string{i18n.T("wl.col.replicas"), fmt.Sprint(w.Replicas)},
 				[2]string{i18n.T("wl.col.kind"), kindLabel(w.Kind)},
 				[2]string{i18n.T("wl.col.url"), url},
@@ -435,4 +442,15 @@ func confirm(cmd *cobra.Command, prompt, expected string) bool {
 	fmt.Fprint(cmd.OutOrStdout(), prompt+" ")
 	line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 	return strings.TrimSpace(line) == expected
+}
+
+// pullFailureText : phrase de la cause d'un échec de récupération d'image.
+func pullFailureText(f *api.PullFailure) string {
+	switch f.Cause {
+	case "denied", "not_found", "denied_or_not_found", "unreachable":
+		return i18n.T("pull."+f.Cause, f.Registry)
+	case "invalid":
+		return i18n.T("pull.invalid", f.Image)
+	}
+	return i18n.T("pull.unknown", f.Registry)
 }

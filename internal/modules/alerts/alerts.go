@@ -276,8 +276,8 @@ var htmlLayout = htmltemplate.Must(htmltemplate.New("html").Parse(`<!doctype htm
 var (
 	greeting = map[i18n.Locale]string{i18n.FR: "Bonjour %s,", i18n.EN: "Hello %s,"}
 	outro    = map[i18n.Locale]string{
-		i18n.FR: "Vous recevez cet email parce que vous êtes propriétaire de ce projet. Au plus une alerte de ce type par période de quelques heures.",
-		i18n.EN: "You receive this email because you own this project. At most one alert of this kind every few hours.",
+		i18n.FR: "Vous recevez cet email parce que vous êtes propriétaire ou éditeur de ce projet. Au plus une alerte de ce type par période de quelques heures.",
+		i18n.EN: "You receive this email because you are an owner or editor of this project. At most one alert of this kind every few hours.",
 	}
 )
 

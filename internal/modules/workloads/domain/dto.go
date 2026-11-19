@@ -162,8 +162,10 @@ type LiveStatus struct {
 	Command []string `json:"command,omitempty"`
 	Args    []string `json:"args,omitempty"`
 	// Cron : état de la tâche planifiée (cron seulement).
-	Cron      *CronStatus `json:"cron,omitempty"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	Cron *CronStatus `json:"cron,omitempty"`
+	// PullFailure : l'image ne se récupère pas, et pourquoi (absent sinon).
+	PullFailure *PullFailure `json:"pull_failure,omitempty"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
 // CronStatus : état d'une tâche planifiée.

@@ -47,6 +47,10 @@ func ValidateCondition(c *Condition) error {
 	return err
 }
 
+// ConditionHolds : la condition d'une liaison est remplie à cet instant
+// (nil : toujours ; invalide : jamais).
+func ConditionHolds(c *Condition, now time.Time) bool { return conditionHolds(c, now) }
+
 // conditionHolds : une condition invalide n'accorde jamais rien (échec fermé).
 func conditionHolds(c *Condition, now time.Time) bool {
 	if c == nil {
