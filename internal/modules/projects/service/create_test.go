@@ -92,10 +92,10 @@ type fakeProjectRepo struct {
 	project   *authdomain.Project
 	getErr    error
 	createErr error
-	created []*authdomain.Project
-	deleted []string
-	rows    []authdomain.Project
-	listed  []listCall
+	created   []*authdomain.Project
+	deleted   []string
+	rows      []authdomain.Project
+	listed    []listCall
 }
 
 func (f *fakeProjectRepo) CreateProject(_ context.Context, p *authdomain.Project, _ string) error {

@@ -2,13 +2,17 @@ package router
 
 import (
 	"context"
+	"strings"
+
 	"github.com/google/uuid"
+
 	"github.com/thekrauss/kubemanager/internal/iam"
 	authCtrl "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	"github.com/thekrauss/kubemanager/internal/modules/builds/images"
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
+	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identityCtrl "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
@@ -21,7 +25,6 @@ import (
 	workloadsCtrl "github.com/thekrauss/kubemanager/internal/modules/workloads"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
-	"strings"
 )
 
 func (a *App) initDomainLayers() error {
@@ -55,10 +58,12 @@ func (a *App) initDomainLayers() error {
 	)
 	workloadService.Variables = a.Variables
 	workloadService.Domains = workloadsRepo.NewDomainStore(a.DB)
+	workloadService.Incidents = workloadsRepo.NewIncidentStore(a.DB)
 	workloadService.DomainCfg = &workloadsSvc.DomainSettings{
-		Resolver: workloadsSvc.NewResolver(a.Config.Kubernetes.DomainDNSServer),
-		Target:   firstNonEmptyString(a.Config.Kubernetes.IngressTarget, a.Config.Vps.AdressIp),
-		TLS:      !a.Config.Kubernetes.CustomDomainInsecure,
+		Resolver:     workloadsSvc.NewResolver(a.Config.Kubernetes.DomainDNSServer),
+		ResolverName: workloadsSvc.ResolverName(a.Config.Kubernetes.DomainDNSServer),
+		Target:       firstNonEmptyString(a.Config.Kubernetes.IngressTarget, a.Config.Vps.AdressIp),
+		TLS:          !a.Config.Kubernetes.CustomDomainInsecure,
 	}
 	// Identité des workloads : cluster des workloads connu et STS en place.
 	if a.STS != nil && a.STS.WorkloadClusterID != "" && a.ServiceAccounts != nil {
@@ -136,6 +141,10 @@ func (a *App) initDomainLayers() error {
 			return len(claims) > 0, err
 		}
 		siteController = sites.NewSiteController(siteService, a.Logger)
+	}
+
+	if ps, ok := projectService.(*projectSvc.ProjectService); ok {
+		ps.Databases = &databases.GormRepository{DB: a.DB}
 	}
 
 	buildController, err := a.newBuildController()

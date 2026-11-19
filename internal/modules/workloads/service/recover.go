@@ -279,3 +279,26 @@ func (r *Recoverer) stableFor() time.Duration {
 	}
 	return DefaultRecoverStableFor
 }
+
+// recoverOnRead : un déploiement marqué en échec (délai dépassé) dont la
+// version voulue tourne entièrement, sans pod indisponible : « Échec »
+// s'affichait à côté de « Prêts 1/1 » jusqu'à la passe du worker (test
+// Bomba). La lecture lève l'incident, avec la même écriture conditionnelle.
+func (s *WorkloadService) recoverOnRead(ctx context.Context, w *domain.Workload, dep *appsv1.Deployment, status *domain.LiveStatus) {
+	if s.Incidents == nil || w.Status != utils.WorkloadFailed || w.CurrentPhase != utils.PhaseHelmError {
+		return
+	}
+	desired := desiredReplicas(dep)
+	if desired == 0 || dep.Status.ObservedGeneration < dep.Generation || dep.Status.UpdatedReplicas < desired ||
+		dep.Status.ReadyReplicas < desired || dep.Status.UnavailableReplicas > 0 || !deploymentIsCurrent(dep, w) {
+		return
+	}
+	ok, err := s.Incidents.Recover(ctx, w.ID, w.Status, w.CurrentPhase, PhaseRecovered)
+	if err != nil {
+		s.Logger.Warnw("workload recovery not recorded", "workload", w.ID, "error", err)
+		return
+	}
+	if ok {
+		status.Status, status.Phase = utils.WorkloadRunning, PhaseRecovered
+	}
+}

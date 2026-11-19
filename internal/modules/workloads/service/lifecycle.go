@@ -305,6 +305,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 	} else if dep, err := s.K8sClient.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{}); err == nil {
 		status.ReadyReplicas = dep.Status.ReadyReplicas
 		status.AvailableReplicas = dep.Status.AvailableReplicas
+		s.recoverOnRead(ctx, w, dep, status)
 	} else if !kerrors.IsNotFound(err) {
 		s.Logger.Warnw("deployment lookup failed", "workload", id, "error", err)
 	}

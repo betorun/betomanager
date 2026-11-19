@@ -11,8 +11,8 @@ func TestInternalURL(t *testing.T) {
 		w    domain.Workload
 		want string
 	}{
-		"web":              {domain.Workload{Name: "bomba-api", Namespace: "km-abc", Kind: domain.KindWeb}, "http://bomba-api.km-abc.svc"},
-		"ancien sans kind": {domain.Workload{Name: "site", Namespace: "km-abc"}, "http://site.km-abc.svc"},
+		"web":              {domain.Workload{Name: "bomba-api", Namespace: "km-abc", Kind: domain.KindWeb}, "http://bomba-api"},
+		"ancien sans kind": {domain.Workload{Name: "site", Namespace: "km-abc"}, "http://site"},
 		"worker":           {domain.Workload{Name: "w", Namespace: "km-abc", Kind: domain.KindWorker}, ""},
 		"cron":             {domain.Workload{Name: "c", Namespace: "km-abc", Kind: domain.KindCron}, ""},
 	}

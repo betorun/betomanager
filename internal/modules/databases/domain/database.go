@@ -105,7 +105,22 @@ type DatabaseView struct {
 	// RestoredFrom : base source si celle-ci est une restauration.
 	RestoredFrom  string     `json:"restored_from,omitempty"`
 	RestoreTarget *time.Time `json:"restore_target,omitempty"`
+	// Attachments : conteneurs branchés sur la base (et leur variable).
+	Attachments []Attachment `json:"attachments"`
+	// LastImport : dernier import de dump, s'il y en a eu un.
+	LastImport *DatabaseImport `json:"last_import,omitempty"`
 }
+
+// Attachment : un branchement de la base sur un conteneur.
+type Attachment struct {
+	DatabaseID   uuid.UUID `gorm:"type:uuid;primaryKey" json:"-"`
+	WorkloadID   uuid.UUID `gorm:"type:uuid;primaryKey" json:"workload_id"`
+	WorkloadName string    `gorm:"not null" json:"workload_name"`
+	Variable     string    `gorm:"primaryKey" json:"variable"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (Attachment) TableName() string { return "database_attachments" }
 
 // Backups : sauvegardes continues (journal) et complètes (chaque nuit).
 type Backups struct {

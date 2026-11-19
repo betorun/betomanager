@@ -84,7 +84,29 @@ type DomainResponse struct {
 	// SharedProof : la preuve est celle d'un autre chemin du même nom dans le
 	// projet, déjà en place.
 	SharedProof bool `json:"shared_proof,omitempty"`
+	// HTTPS : la plateforme demande un certificat pour ce domaine (faux :
+	// mode sans certificat, le domaine n'est servi qu'en HTTP).
+	HTTPS bool `json:"https"`
+	// Check : ce que la vérification a lu dans le DNS (après « Vérifier »).
+	Check *DomainCheck `json:"check,omitempty"`
 }
+
+// DomainCheck : diagnostic d'une vérification, pour comprendre un échec.
+type DomainCheck struct {
+	// Resolver : résolveur interrogé (ex. 1.1.1.1:53, ou « system »).
+	Resolver string `json:"resolver"`
+	// Name : nom interrogé pour la preuve (_betorun-challenge.<nom>).
+	Name string `json:"name"`
+	// TXTFound : valeurs TXT lues sous ce nom (5 au plus).
+	TXTFound []string `json:"txt_found"`
+	// ProofFound : la valeur attendue est parmi elles.
+	ProofFound bool `json:"proof_found"`
+	// Error : NXDOMAIN, délai dépassé… ; vide si la lecture a réussi.
+	Error string `json:"error,omitempty"`
+}
+
+// MaxCheckValues : valeurs TXT rapportées au plus (et 255 caractères chacune).
+const MaxCheckValues = 5
 
 // AddDomainRequest : nouveau domaine.
 type AddDomainRequest struct {

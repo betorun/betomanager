@@ -45,7 +45,7 @@ type ListCustomRolesRequest struct {
 
 type CreateCustomRoleRequest struct {
 	Parent string `json:"parent" binding:"required" description:"organizations/<uuid> ou projects/<uuid>"`
-	RoleID string `json:"role_id" binding:"required" description:"3-64 caractères : lettres, chiffres, '_' ou '.' (ex: ciDeployer)"`
+	RoleID string `json:"role_id" binding:"required" description:"3-64 caractères : lettres, chiffres, '-', '_' ou '.' (ex: ciDeployer)"`
 	iam.CustomRoleInput
 }
 

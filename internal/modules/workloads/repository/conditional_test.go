@@ -49,6 +49,7 @@ func (s *recordingStmt) Exec([]driver.Value) (driver.Result, error) {
 	return driver.RowsAffected(s.d.affected.Load()), nil
 }
 func (s *recordingStmt) Query([]driver.Value) (driver.Rows, error) {
+	s.d.lastQuery.Store(s.q)
 	return nil, driver.ErrSkip
 }
 

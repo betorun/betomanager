@@ -44,6 +44,13 @@ type ProjectService struct {
 	// Images : place des images du projet au registre ; nil si les builds
 	// ne sont pas activés.
 	Images ImageUsage
+	// Databases : disques des bases gérées du projet ; nil : non comptés.
+	Databases DatabaseStorage
+}
+
+// DatabaseStorage : octets de disque réservés par les bases d'un projet.
+type DatabaseStorage interface {
+	StorageBytes(ctx context.Context, projectID uuid.UUID) (int64, error)
 }
 
 // ImageUsage : octets d'images d'un projet et son quota (0 : sans quota).

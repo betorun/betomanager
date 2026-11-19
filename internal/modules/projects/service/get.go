@@ -95,13 +95,24 @@ func (s *ProjectService) GetMetrics(ctx context.Context, projectID string) (*dom
 		return nil, fmt.Errorf("project usage: %w", err)
 	}
 
+	// Disques réservés : conteneurs (Mi) et bases gérées, en octets puis
+	// affichés en Mi (l'arrondi au Gi entier montrait « 0 o »).
+	storageBytes := resStorage * utils.BytesPerMi
+	if s.Databases != nil {
+		dbBytes, err := s.Databases.StorageBytes(ctx, project.ID)
+		if err != nil {
+			return nil, fmt.Errorf("project databases storage: %w", err)
+		}
+		storageBytes += dbBytes
+	}
+
 	out := &domain.NamespaceMetrics{
 		CPUUsage:    fmt.Sprintf("%dm", totalCPU),
 		MemoryUsage: fmt.Sprintf("%dMi", totalMem/utils.BytesPerMi),
 		ReservedUsage: domain.UsageDTO{
 			CPU:     fmt.Sprintf("%dm", resCPU),
 			Memory:  fmt.Sprintf("%dMi", resMem),
-			Storage: fmt.Sprintf("%dGi", resStorage*utils.BytesPerMi/utils.BytesPerGi),
+			Storage: fmt.Sprintf("%dMi", storageBytes/utils.BytesPerMi),
 		},
 		Limits: domain.UsageDTO{CPU: project.CpuLimit, Memory: project.MemoryLimit, Storage: project.StorageLimit},
 	}

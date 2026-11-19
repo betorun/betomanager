@@ -207,3 +207,42 @@ func TestRecover_DeployFailureOnOldVersionStays(t *testing.T) {
 		assert.Zero(t, n, name)
 	}
 }
+
+type recoverRecorder struct{ calls int }
+
+func (r *recoverRecorder) ListIncidents(context.Context, int) ([]domain.Workload, error) {
+	return nil, nil
+}
+func (r *recoverRecorder) Recover(context.Context, uuid.UUID, string, string, string) (bool, error) {
+	r.calls++
+	return true, nil
+}
+func (r *recoverRecorder) ListRunningCrons(context.Context, int) ([]domain.Workload, error) {
+	return nil, nil
+}
+func (r *recoverRecorder) MarkRunFailed(context.Context, uuid.UUID, string, string) (bool, error) {
+	return false, nil
+}
+
+// « Échec » à côté de « Prêts 1/1 » : la lecture lève l'incident si la version
+// voulue tourne ; pas si le Deployment porte encore l'ancienne image.
+func TestRecoverOnRead(t *testing.T) {
+	one := int32(1)
+	w := &domain.Workload{ID: uuid.New(), Image: "app:2", Status: utils.WorkloadFailed, CurrentPhase: utils.PhaseHelmError}
+	dep := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: &one, Template: corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Image: "app:2"}}}}},
+		Status: appsv1.DeploymentStatus{UpdatedReplicas: 1, ReadyReplicas: 1}}
+	rec := &recoverRecorder{}
+	s := &WorkloadService{Incidents: rec}
+	st := &domain.LiveStatus{Status: w.Status}
+	s.recoverOnRead(context.Background(), w, dep, st)
+	if rec.calls != 1 || st.Status != utils.WorkloadRunning {
+		t.Fatalf("incident non levé : %d appel(s), statut %s", rec.calls, st.Status)
+	}
+	dep.Spec.Template.Spec.Containers[0].Image = "app:1"
+	st = &domain.LiveStatus{Status: w.Status}
+	s.recoverOnRead(context.Background(), w, dep, st)
+	if rec.calls != 1 || st.Status != utils.WorkloadFailed {
+		t.Fatal("ancienne version : l'échec doit rester")
+	}
+}

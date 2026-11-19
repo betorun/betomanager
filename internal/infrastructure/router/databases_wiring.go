@@ -22,7 +22,8 @@ import (
 // newDatabasesController : bases gérées. Sans accès au cluster, le contrôleur
 // existe mais répond « indisponible » (Clusters nil).
 func (a *App) newDatabasesController() *databases.Controller {
-	s := &databases.Service{Repo: &databases.GormRepository{DB: a.DB}, Projects: a.Repos.Project, Logger: a.Logger}
+	repo := &databases.GormRepository{DB: a.DB}
+	s := &databases.Service{Repo: repo, Projects: a.Repos.Project, Attachments: repo, Logger: a.Logger}
 	if a.Services != nil && a.Services.Workload != nil && a.Repos.Workload != nil {
 		s.Workloads = &databaseWorkloads{repo: a.Repos.Workload, svc: a.Services.Workload}
 	}
@@ -78,6 +79,15 @@ func (a *App) databaseImports(importer databases.Importer) *databases.ImportConf
 type databaseWorkloads struct {
 	repo workloadsRepo.WorkloadRepository
 	svc  workloadsSvc.IWorkloadService
+}
+
+// NameOf : nom du conteneur (tracé avec le branchement).
+func (w *databaseWorkloads) NameOf(ctx context.Context, id uuid.UUID) (string, error) {
+	wl, err := w.repo.GetByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return wl.Name, nil
 }
 
 func (w *databaseWorkloads) ProjectOf(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {

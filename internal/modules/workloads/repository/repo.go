@@ -126,8 +126,12 @@ func (r *workloadRepository) DeleteByProject(ctx context.Context, projectID uuid
 func (r *workloadRepository) GetTotalUsageByProject(ctx context.Context, projectID uuid.UUID) (totalCPU int64, totalMem int64, totalStorage int64, err error) {
 	var workloads []domain.Workload
 
+	// Un conteneur en échec compte aussi : un déploiement en délai dépassé
+	// laisse ses pods tourner (application lente, base pas encore branchée), et
+	// l'exclure laissait dépasser les limites du projet (test Bomba : 4
+	// conteneurs sous 2 CPU). Seul un conteneur supprimé ne compte plus.
 	err = r.db.WithContext(ctx).
-		Where("project_id = ? AND status NOT IN ?", projectID, []string{utils.WorkloadFailed, utils.WorkloadDeleted}).
+		Where("project_id = ? AND status <> ?", projectID, utils.WorkloadDeleted).
 		Find(&workloads).Error
 	if err != nil {
 		return 0, 0, 0, err

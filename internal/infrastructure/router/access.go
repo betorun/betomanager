@@ -1,6 +1,8 @@
 package router
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
@@ -64,6 +66,25 @@ func newGuards(app *App) guards {
 func (g guards) Perm(p iam.Permission, resolve security.ResourceResolver) Access {
 	return Access{kind: accessPermission, permission: p, guard: g.mw.Require(p, resolve),
 		summary: "permission IAM `" + p.String() + "`"}
+}
+
+// PermAll : toutes ces permissions sur la même ressource (ex. dupliquer :
+// créer dans le projet et modifier les variables de la source).
+func (g guards) PermAll(resolve security.ResourceResolver, perms ...iam.Permission) Access {
+	checks := make([]gin.HandlerFunc, 0, len(perms))
+	names := make([]string, 0, len(perms))
+	for _, p := range perms {
+		checks = append(checks, g.mw.Require(p, resolve))
+		names = append(names, p.String())
+	}
+	summary := "permissions IAM `" + strings.Join(names, "`, `") + "`"
+	return Access{kind: accessPermission, permission: perms[0], summary: summary, guard: func(c *gin.Context) {
+		for _, check := range checks {
+			if check(c); c.IsAborted() {
+				return
+			}
+		}
+	}}
 }
 
 // PermFor : la permission dépend de la ressource (ex. getIamPolicy d'une
