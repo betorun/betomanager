@@ -40,18 +40,22 @@ func NormalizeCurrency(raw string) string {
 // CatalogUpdate : grille saisie par l'équipe (montants en unités de la
 // monnaie, par mois ; une minute pour les builds).
 type CatalogUpdate struct {
-	Currency        string     `path:"currency" json:"-" description:"Monnaie (code ISO 4217, ex. XAF)"`
-	Sizes           []SizeView `json:"sizes" description:"Tailles de conteneur, de la plus petite à la plus grande"`
-	DatabaseMonthly int64      `json:"database_monthly" description:"Prix mensuel d'une instance de base"`
-	DiskGiMonthly   int64      `json:"disk_gi_monthly" description:"Prix mensuel d'un Go de disque (base ou conteneur)"`
-	BuildMinute     int64      `json:"build_minute" description:"Prix d'une minute de build au-delà de l'offre gratuite"`
-	SiteDomain      int64      `json:"site_domain_monthly" description:"Prix mensuel d'un domaine personnalisé de site (0 : gratuit)"`
-	Free            FreeView   `json:"free_tier" description:"Offre gratuite par organisation et par mois"`
-	TopupMin        int64      `json:"topup_min" description:"Recharge minimale (0 avec topup_max : recharges fermées)"`
-	TopupMax        int64      `json:"topup_max" description:"Recharge maximale"`
-	TrialCredit     int64      `json:"trial_credit" description:"Crédit d'essai offert à l'activation de la facturation (0 : aucun)"`
-	TrialDays       int        `json:"trial_days" description:"Validité du crédit d'essai, en jours"`
-	GraceDays       int        `json:"grace_days" description:"Jours de solde négatif tolérés avant l'arrêt des conteneurs"`
+	Currency             string     `path:"currency" json:"-" description:"Monnaie (code ISO 4217, ex. XAF)"`
+	Sizes                []SizeView `json:"sizes" description:"Tailles de conteneur, de la plus petite à la plus grande"`
+	DatabaseMonthly      int64      `json:"database_monthly" description:"Prix mensuel d'une instance de base"`
+	DiskGiMonthly        int64      `json:"disk_gi_monthly" description:"Prix mensuel d'un Go de disque (base ou conteneur)"`
+	BuildMinute          int64      `json:"build_minute" description:"Prix d'une minute de build au-delà de l'offre gratuite"`
+	SiteDomain           int64      `json:"site_domain_monthly" description:"Prix mensuel d'un domaine personnalisé de site (0 : gratuit)"`
+	Free                 FreeView   `json:"free_tier" description:"Offre gratuite par organisation et par mois"`
+	TopupMin             int64      `json:"topup_min" description:"Recharge minimale (0 avec topup_max : recharges fermées)"`
+	TopupMax             int64      `json:"topup_max" description:"Recharge maximale"`
+	TrialCredit          int64      `json:"trial_credit" description:"Crédit d'essai offert à l'activation de la facturation (0 : aucun)"`
+	TrialDays            int        `json:"trial_days" description:"Validité du crédit d'essai, en jours"`
+	GraceDays            int        `json:"grace_days" description:"Jours de solde négatif tolérés avant l'arrêt des conteneurs"`
+	PostpaidCreditLimit  int64      `json:"postpaid_credit_limit" description:"Postpayé : plafond de dette par défaut"`
+	PostpaidTermsDays    int        `json:"postpaid_terms_days" description:"Postpayé : échéance des factures, en jours"`
+	PostpaidReminderDays int        `json:"postpaid_reminder_days" description:"Postpayé : relance, en jours après l'échéance"`
+	PostpaidSuspendDays  int        `json:"postpaid_suspend_days" description:"Postpayé : suspension, en jours après l'échéance"`
 }
 
 // CatalogFromUpdate : grille validée. Les tailles doivent croître (CPU,
@@ -91,6 +95,8 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 		"site_domain_monthly": u.SiteDomain, "free_tier.compute": u.Free.Compute, "free_tier.database": u.Free.Database,
 		"free_tier.build_minutes": u.Free.BuildMinutes, "topup_min": u.TopupMin, "topup_max": u.TopupMax,
 		"trial_credit": u.TrialCredit, "trial_days": int64(u.TrialDays), "grace_days": int64(u.GraceDays),
+		"postpaid_credit_limit": u.PostpaidCreditLimit, "postpaid_terms_days": int64(u.PostpaidTermsDays),
+		"postpaid_reminder_days": int64(u.PostpaidReminderDays), "postpaid_suspend_days": int64(u.PostpaidSuspendDays),
 	} {
 		if v < 0 {
 			return Catalog{}, invalid("%s cannot be negative", name)
@@ -111,6 +117,11 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 		return Catalog{}, invalid("grace_days must be at most 30")
 	}
 	c.GraceDays = u.GraceDays
+	if u.PostpaidSuspendDays > 0 && u.PostpaidSuspendDays < u.PostpaidReminderDays {
+		return Catalog{}, invalid("postpaid_suspend_days must come after postpaid_reminder_days")
+	}
+	c.PostpaidCreditLimit = FromUnits(u.PostpaidCreditLimit)
+	c.PostpaidTermsDays, c.PostpaidReminderDays, c.PostpaidSuspendDays = u.PostpaidTermsDays, u.PostpaidReminderDays, u.PostpaidSuspendDays
 	return c, nil
 }
 
@@ -119,7 +130,9 @@ func (c Catalog) Update() CatalogUpdate {
 	v := c.View()
 	return CatalogUpdate{Currency: c.Currency, Sizes: v.Sizes, DatabaseMonthly: v.DatabaseMonthly,
 		DiskGiMonthly: v.DiskGiMonthly, BuildMinute: v.BuildMinute, SiteDomain: v.SiteDomain, Free: v.Free,
-		TopupMin: v.TopupMin, TopupMax: v.TopupMax, TrialCredit: v.TrialCredit, TrialDays: v.TrialDays, GraceDays: v.GraceDays}
+		TopupMin: v.TopupMin, TopupMax: v.TopupMax, TrialCredit: v.TrialCredit, TrialDays: v.TrialDays, GraceDays: v.GraceDays,
+		PostpaidCreditLimit: v.PostpaidCreditLimit, PostpaidTermsDays: v.PostpaidTermsDays,
+		PostpaidReminderDays: v.PostpaidReminderDays, PostpaidSuspendDays: v.PostpaidSuspendDays}
 }
 
 // CatalogVersionView : une version de grille (administration).

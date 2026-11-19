@@ -320,3 +320,23 @@ func (h *Controller) AdminClearOverride(c *gin.Context, in *domain.ProjectLimits
 	}
 	return &domain.SavePlanResponse{NotApplied: missed}, nil
 }
+
+// ── Postpayé ────────────────────────────────────────────────────────────
+
+// AdminPostpaid : passer une organisation en postpayé, ou au prépayé.
+func (h *Controller) AdminPostpaid(c *gin.Context, in *domain.PostpaidRequest) (*domain.Wallet, error) {
+	org, err := parseOrg(in.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.SetPostpaid(c.Request.Context(), org, *in, principal(c))
+}
+
+// AdminPayment : virement reçu.
+func (h *Controller) AdminPayment(c *gin.Context, in *domain.PaymentRequest) (*domain.Wallet, error) {
+	org, err := parseOrg(in.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.RecordPayment(c.Request.Context(), org, *in, principal(c))
+}

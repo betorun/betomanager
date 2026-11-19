@@ -582,6 +582,8 @@ func addBillingRoutes(app *App) {
 		g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource), tonic.Handler(r.AdminSavePlan, http.StatusOK))
 	accounts.AddRoute("/projects/:id/limits-override", http.MethodDelete, "Retirer l'exception de limites d'un projet : il revient aux limites de son plan",
 		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.AdminClearOverride, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/postpaid", http.MethodPut, "Passer une organisation en postpayé (plafond de crédit, échéance) ou au prépayé", adminEdit, tonic.Handler(r.AdminPostpaid, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/payments", http.MethodPost, "Enregistrer un virement reçu (réduit la dette, solde les factures les plus anciennes)", adminEdit, tonic.Handler(r.AdminPayment, http.StatusOK))
 	accounts.AddRoute("/revenue", http.MethodGet, "Recettes par jour et par monnaie, recharges en attente ou ratées", adminView, tonic.Handler(r.AdminRevenue, http.StatusOK))
 
 	// Grilles de prix : équipe de la plateforme seulement. Une modification

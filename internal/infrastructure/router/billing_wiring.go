@@ -37,6 +37,7 @@ func (a *App) billingService() *billingSvc.Service {
 	if n := a.alertNotifier(); n != nil { // pas d'interface non nulle autour d'un nil
 		svc.Alerts = n
 		svc.Budgets = n
+		svc.Reminders = n
 	}
 	// Phase 4 : suspension (arrêt et relance des conteneurs), documents.
 	svc.Phase4 = billingRepo.NewPhase4(a.DB)
@@ -48,6 +49,7 @@ func (a *App) billingService() *billingSvc.Service {
 	// Phase 5 : plans ; le changement de plan passe par le service des projets
 	// (base, puis quota Kubernetes).
 	svc.Plans = billingRepo.NewPlans(a.DB)
+	svc.Postpaid = billingRepo.NewPostpaid(a.DB)
 	if a.Services != nil {
 		if ps, ok := a.Services.Project.(*projectSvc.ProjectService); ok && ps != nil {
 			svc.Limits = projectLimiter{ps}
@@ -55,7 +57,7 @@ func (a *App) billingService() *billingSvc.Service {
 	}
 	is := a.Config.Billing.Issuer
 	svc.Issuer = billingDomain.Issuer{Name: is.Name, Address: is.Address, TaxID: is.TaxID, Country: is.Country,
-		VATRateBP: is.VATRateBP, InvoicePrefix: or(is.InvoicePrefix, "BTR"), ReceiptPrefix: or(is.ReceiptPrefix, "REC")}
+		VATRateBP: is.VATRateBP, PaymentInstructions: is.PaymentInstructions, InvoicePrefix: or(is.InvoicePrefix, "BTR"), ReceiptPrefix: or(is.ReceiptPrefix, "REC")}
 	return svc
 }
 

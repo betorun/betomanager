@@ -48,7 +48,19 @@ func (s *Service) settleAccount(ctx context.Context, org uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	balance, now := cash+credit, s.now()
+	// Postpayé : la dette compte jusqu'au plafond, et une facture impayée
+	// trop longtemps suspend aussi.
+	balance, overdue, err := s.postpaidState(ctx, org, acc, cash+credit, cash)
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	if overdue {
+		if acc.SuspendedAt == nil {
+			return s.suspend(ctx, org)
+		}
+		return nil
+	}
 	if balance > 0 {
 		if acc.GraceStartedAt != nil {
 			if err := s.Phase4.SetGrace(ctx, org, nil); err != nil {
@@ -480,6 +492,11 @@ func (s *Service) issueInvoice(ctx context.Context, org uuid.UUID, month time.Ti
 	now := s.now()
 	doc := &domain.Document{ID: uuid.New(), OrganizationID: org, Kind: domain.DocInvoice, Period: period, Currency: c.Currency,
 		Total: cash, VAT: vat, VATRateBP: s.Issuer.VATRateBP, Data: raw, IssuedAt: now}
+	// Postpayé : facture à payer avant l'échéance (et non déjà réglée).
+	if acc.Postpaid {
+		due := now.Add(time.Duration(postpaidTerms(acc, c).TermsDays) * 24 * time.Hour)
+		doc.DueAt = &due
+	}
 	var vatTx *domain.Transaction
 	if vat > 0 {
 		// La TVA collectée sort du revenu vers son compte.
@@ -492,7 +509,7 @@ func (s *Service) issueInvoice(ctx context.Context, org uuid.UUID, month time.Ti
 	}
 	issued, err := s.Phase4.IssueDocument(ctx, doc, s.Issuer.InvoicePrefix, func(number string) ([]byte, error) {
 		return pdf.Render(pdf.Doc{Kind: domain.DocInvoice, Number: number, Period: period, Currency: c.Currency, IssuedAt: now,
-			Data: data, Total: cash, VAT: vat, VATRateBP: s.Issuer.VATRateBP})
+			Data: data, Total: cash, VAT: vat, VATRateBP: s.Issuer.VATRateBP, DueAt: doc.DueAt})
 	}, vatTx)
 	if issued {
 		s.log().Infow("billing: invoice issued", "organization", org, "period", period, "number", doc.Number)

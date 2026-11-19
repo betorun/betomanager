@@ -76,7 +76,9 @@ func TestE2E_SampleAndEstimate(t *testing.T) {
 	assert.Equal(t, int64(2), byMeter[domain.MeterDisk].Quantity)
 	assert.Equal(t, int64(5), byMeter[domain.MeterDatabaseDisk].Quantity)
 	assert.Equal(t, int64(7), byMeter[domain.MeterBuildMinutes].Quantity, "minutes commencées")
-	assert.Equal(t, "3", byMeter[domain.MeterCompute].CatalogVersion, "grille amorcée (000034) puis complétée (000035, 000036)")
+	active, err := store.ActiveCatalog(ctx, "XAF")
+	require.NoError(t, err)
+	assert.Equal(t, active.Version, byMeter[domain.MeterCompute].CatalogVersion, "la version de la grille en vigueur")
 
 	e, err := s.Estimate(ctx, org, "")
 	require.NoError(t, err)

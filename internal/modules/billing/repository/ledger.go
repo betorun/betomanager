@@ -65,6 +65,10 @@ type Account struct {
 	GraceStartedAt *time.Time
 	SuspendedAt    *time.Time
 	Profile        domain.Profile
+	// Postpayé : plafond et échéance propres au compte (nil : grille).
+	Postpaid    bool
+	CreditLimit *domain.Milli
+	TermsDays   *int
 }
 
 // Cursor : position dans l'historique.
@@ -118,16 +122,25 @@ func (s *ledgerStore) Account(ctx context.Context, org uuid.UUID) (Account, erro
 		TaxID          string
 		Address        string
 		Country        string
+		Postpaid       bool
+		CreditLimit    *int64
+		TermsDays      *int
 	}
 	err := s.db.WithContext(ctx).Raw(`SELECT currency, charging, charging_since, alert_level, grace_started_at, suspended_at,
-		legal_name, tax_id, address, country FROM billing_accounts WHERE organization_id = ?`, org).Scan(&rows).Error
+		legal_name, tax_id, address, country, postpaid, credit_limit, terms_days FROM billing_accounts WHERE organization_id = ?`, org).Scan(&rows).Error
 	if err != nil || len(rows) == 0 {
 		return Account{Currency: domain.DefaultCurrency}, err
 	}
 	r := rows[0]
-	return Account{Currency: r.Currency, Charging: r.Charging, ChargingSince: r.ChargingSince, AlertLevel: r.AlertLevel,
+	acc := Account{Currency: r.Currency, Charging: r.Charging, ChargingSince: r.ChargingSince, AlertLevel: r.AlertLevel,
 		GraceStartedAt: r.GraceStartedAt, SuspendedAt: r.SuspendedAt,
-		Profile: domain.Profile{LegalName: r.LegalName, TaxID: r.TaxID, Address: r.Address, Country: r.Country}}, nil
+		Profile:  domain.Profile{LegalName: r.LegalName, TaxID: r.TaxID, Address: r.Address, Country: r.Country},
+		Postpaid: r.Postpaid, TermsDays: r.TermsDays}
+	if r.CreditLimit != nil {
+		l := domain.Milli(*r.CreditLimit)
+		acc.CreditLimit = &l
+	}
+	return acc, nil
 }
 
 func (s *ledgerStore) SetCharging(ctx context.Context, org uuid.UUID, enabled bool, now time.Time) error {
