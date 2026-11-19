@@ -1,0 +1,71 @@
+# KubeManager — Documentation
+
+> Plateforme CaaS (Container-as-a-Service) multi-tenant en Go. Déploie des applications containerisées sur clusters K3s/K8s distants via une API unifiée.
+
+## Tu es nouveau ? Commence ici
+
+1. [Setup local (10 min)](onboarding/01-setup-local.md) — faire tourner la stack sur ta machine
+2. [Première contribution (30 min)](onboarding/02-first-contribution.md) — tests, PR, review
+3. [Tour du code (45 min)](onboarding/03-tour-du-code.md) — où vit quoi et pourquoi
+4. [Glossaire](onboarding/04-glossaire.md) — les mots qu'on utilise tous les jours
+
+## Tu cherches comment faire X ?
+
+- [Ajouter un endpoint HTTP](how-to/ajouter-un-endpoint.md)
+- [Ajouter un workflow Temporal](how-to/ajouter-un-workflow-temporal.md)
+- [Ajouter une migration SQL](how-to/ajouter-une-migration-sql.md)
+- [Ajouter une métrique Prometheus](how-to/ajouter-une-metric.md)
+- [Déboguer un déploiement bloqué](how-to/deboguer-un-deploy-bloque.md)
+- [Rotation d'une clé cluster](how-to/rotation-cluster-key.md)
+
+## Tu veux comprendre l'architecture ?
+
+- [Vue d'ensemble](architecture/overview.md) — 3 diagrammes C4
+- [Cycle de vie d'une requête](architecture/request-lifecycle.md) — que se passe-t-il quand `POST /workloads` ?
+- [Sagas Temporal](architecture/temporal-sagas.md) — compensation, idempotence, retries
+- [Sécurité](architecture/security.md) — JWT, API keys, RBAC, NetworkPolicy
+- [IAM — design cible](architecture/iam.md) — organisations, policies, comptes de service, clés (validé, phase A en cours)
+- [Observabilité](architecture/observability.md) — logs, metrics, traces
+
+## Tu travailles sur un module ?
+
+Chaque page décrit un module avec la même structure : rôle, endpoints, DB, activities, invariants, pitfalls, tests, fichiers clés.
+
+- [auth](modules/auth.md) — users, sessions, API keys, RBAC
+- [identity](modules/identity.md) — Keycloak (register, login, OAuth social)
+- [projects](modules/projects.md) — namespace K8s + saga provisioning
+- [workloads](modules/workloads.md) — lifecycle complet (12 endpoints)
+- [clusters](modules/clusters.md) — watcher protocol + enrollment
+- [realtime](modules/realtime.md) — Centrifugo (WebSocket events)
+- [sites](modules/sites.md) — sites statiques (upload .zip, S3, binaire static-edge, domaines perso)
+
+## Tu es ops / oncall ?
+
+- [Runbook](interne/runbook.md) — SLAs, playbooks incidents, DR plan 30 min
+- [Secrets management](interne/secrets-management.md) — Vault, ExternalSecrets, SOPS
+- [Rétention Prometheus/Loki](interne/observability-retention.md) — 30 j chaud, archivage
+- [Helm hardening](interne/helm-hardening.md) — PSA restricted, NetworkPolicy
+- [Dev stack locale](interne/dev-stack.md) — docker-compose complet
+
+## Décisions d'architecture (ADRs)
+
+Les "pourquoi on a choisi ça plutôt qu'autre chose". Lire dans l'ordre pour comprendre la philosophie.
+
+- [ADR-0001 — Temporal plutôt qu'Asynq](adr/0001-temporal-over-asynq.md)
+- [ADR-0002 — Helm SDK v3 intégré plutôt que shell](adr/0002-helm-sdk-v3.md)
+- [ADR-0003 — Centrifugo fail-open](adr/0003-centrifugo-fail-open.md)
+- [ADR-0004 — Cluster watcher comme binaire séparé](adr/0004-cluster-watcher-separate.md)
+- [ADR-0005 — Keycloak comme source unique auth](adr/0005-keycloak-source-of-truth.md)
+- [ADR-0006 — Rate limit Redis-only](adr/0006-ratelimit-redis-only.md)
+
+## Conventions doc
+
+- Chaque page répond à **une** question (son titre).
+- Les références code utilisent `[file.go:42](path#L42)` — cliquable depuis GitHub/IDE.
+- Les diagrammes sont en **Mermaid** inline (rendu natif GitHub, pas de PNG).
+- Les chunks `.md` de `docs/interne/` sont ingérés par le devportal (`go run ./cmd/dev-docs`).
+
+## Retrouver de l'aide
+
+- Canal Slack `#kubemanager-dev` — question pendant tes 2 premières semaines : no stupid question.
+- Oncall — voir [runbook](interne/runbook.md) pour la rotation et les SLAs.
