@@ -284,6 +284,9 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 		UpdatedAt:   w.UpdatedAt,
 		Kind:        kindOf(w),
 	}
+	if spec, err := s.specFor(w); err == nil {
+		status.Command, status.Args = spec.Command, spec.Args
+	}
 	if w.PersistenceEnabled {
 		status.Disk = &domain.DiskStatus{Size: w.StorageSize, BackedUp: false}
 	}
