@@ -50,7 +50,7 @@ var (
 
 	editorPerms = concat(developerPerms, []Permission{
 		ProjectsUpdate,
-		WorkloadsDelete, SitesDelete, SiteDomainsDelete,
+		WorkloadsDelete, SitesDelete, SiteDomainsDelete, BuildsDelete,
 		// Une base occupe du disque et sa suppression perd des données : éditeur.
 		DatabasesCreate, DatabasesDelete, DatabasesImport,
 		// Relier un compte GitHub ouvre au projet du code privé : pas un droit de développeur.

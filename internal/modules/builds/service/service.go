@@ -297,6 +297,24 @@ func (s *Service) Cancel(ctx context.Context, project, id uuid.UUID) error {
 	return s.Distributor.CancelWorkflow(ctx, workflows.WorkflowIDPrefix+id.String(), "")
 }
 
+// ImageRemover : suppression d'une image à la demande (images.Keeper).
+type ImageRemover interface {
+	Remove(ctx context.Context, b *domain.Build) error
+}
+
+// DeleteImage : retire du registre l'image d'un build terminé.
+func (s *Service) DeleteImage(ctx context.Context, project, id uuid.UUID) error {
+	b, err := s.Repo.Get(ctx, project, id)
+	if err != nil {
+		return err
+	}
+	rm, ok := s.Images.(ImageRemover)
+	if !ok {
+		return domain.ErrBuildsDisabled
+	}
+	return rm.Remove(ctx, b)
+}
+
 // Logs : journal du pod pendant le build, journal conservé ensuite.
 func (s *Service) Logs(ctx context.Context, project, id uuid.UUID, follow bool) (io.ReadCloser, error) {
 	b, err := s.Repo.Get(ctx, project, id)

@@ -161,6 +161,43 @@ func (k *Keeper) prune(ctx context.Context, project uuid.UUID, name string, keep
 	return nil
 }
 
+// Remove : retire du registre l'image d'un build, à la demande. Refusé si
+// un conteneur du projet la fait tourner. Le digest n'est effacé du registre
+// que si aucune autre image gardée du dépôt ne le porte ; le build reste,
+// marqué « image retirée ».
+func (k *Keeper) Remove(ctx context.Context, b *domain.Build) error {
+	repo := registry.Repository(k.Host, b.Image)
+	if b.Status != domain.StatusSucceeded || b.Digest == "" || b.ImagePrunedAt != nil || repo == "" {
+		return domain.ErrNoImage
+	}
+	inUse, err := k.Store.WorkloadImages(ctx, b.ProjectID)
+	if err != nil {
+		return err
+	}
+	for _, img := range inUse {
+		if img == b.Image || strings.HasSuffix(img, "@"+b.Digest) {
+			return domain.ErrImageInUse
+		}
+	}
+	rows, err := k.Store.Images(ctx, b.ProjectID, b.Name)
+	if err != nil {
+		return err
+	}
+	shared := false
+	for _, r := range rows {
+		if r.ID != b.ID && r.Digest == b.Digest {
+			shared = true
+			break
+		}
+	}
+	if !shared {
+		if err := k.Registry.Delete(ctx, b.ProjectID, repo, b.Digest); err != nil {
+			return err
+		}
+	}
+	return k.Store.MarkPruned(ctx, b.ID)
+}
+
 func (k *Keeper) keep() int {
 	if k.Keep > 0 {
 		return k.Keep

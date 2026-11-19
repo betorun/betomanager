@@ -1290,5 +1290,9 @@
  {
   "fr": "Worker : commande de santé lancée dans le conteneur (code 0 = sain), ex. [\"cat\",\"/tmp/healthy\"]",
   "en": "Worker: health command run in the container (exit code 0 = healthy), e.g. [\"cat\",\"/tmp/healthy\"]"
+ },
+ {
+  "fr": "Supprimer l'image d'un build (refusé si un conteneur l'utilise ; le journal du build reste)",
+  "en": "Delete a build's image (refused while a container uses it; the build log stays)"
  }
 ]

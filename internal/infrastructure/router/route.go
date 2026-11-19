@@ -345,6 +345,7 @@ func addBuildRoutes(app *App) {
 		ForCopilot(CopilotTool{Name: "get_build_logs", Fixed: map[string]string{"follow": "false"}, Hint: "Returns the build log as plain text; for a long log only the end is kept."})
 	b.AddRoute("/:buildID/cancel", http.MethodPost, "Annuler un build en cours", g.Perm(iam.BuildsCancel, build), tonic.Handler(r.Cancel, http.StatusNoContent)).
 		ForCopilot(CopilotTool{Name: "cancel_build", Write: true, Risk: tools.RiskLow})
+	b.AddRoute("/:buildID/image", http.MethodDelete, "Supprimer l'image d'un build (refusé si un conteneur l'utilise ; le journal du build reste)", g.Perm(iam.BuildsDelete, build), tonic.Handler(r.DeleteImage, http.StatusNoContent))
 
 	// Internes, sans session : les Jobs et le registre y accèdent avec leurs
 	// propres preuves (URL signée, identifiant du registre).
