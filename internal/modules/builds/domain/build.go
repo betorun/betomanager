@@ -142,7 +142,33 @@ type BuildPath struct {
 type ListBuildsRequest struct {
 	ProjectID string `path:"id" binding:"required"`
 	Name      string `query:"name" description:"Uniquement les builds de cette image"`
+	Status    string `query:"status" description:"active (en file ou en cours), QUEUED, BUILDING, SUCCEEDED, FAILED ou CANCELLED ; vide : tous"`
+	Image     string `query:"image" description:"available : image encore au registre (ou build pas encore réussi) ; removed : image retirée ; vide : tous"`
+	Query     string `query:"q" description:"Recherche dans le nom de l'image et le commit"`
+	Before    string `query:"before" description:"Curseur : l'en-tête X-Next-Cursor de la page précédente"`
+	Limit     int    `query:"limit" description:"Builds par page (1 à 100, 50 par défaut)"`
 }
+
+// BuildFilter : liste filtrée et paginée (du plus récent au plus ancien).
+type BuildFilter struct {
+	Name, Status, Image, Query string
+	// Before : builds créés avant cet instant (ou au même instant, d'ID plus petit).
+	BeforeAt *time.Time
+	BeforeID uuid.UUID
+	Limit    int
+}
+
+// Filtres de ListBuildsRequest.
+const (
+	FilterActive         = "active"
+	FilterImageAvailable = "available"
+	FilterImageRemoved   = "removed"
+	DefaultListLimit     = 50
+	MaxListLimit         = 100
+)
+
+// ErrInvalidFilter : filtre ou curseur de liste inconnu.
+var ErrInvalidFilter = errors.New("invalid build list filter: status, image or cursor")
 
 // LogsRequest : journal d'un build.
 type LogsRequest struct {

@@ -470,5 +470,29 @@
  {
   "fr": "Créer, modifier et supprimer les politiques de refus",
   "en": "Create, change and delete deny policies"
+ },
+ {
+  "fr": "Lister les services d'un projet",
+  "en": "List a project's services"
+ },
+ {
+  "fr": "Voir un service",
+  "en": "View a service"
+ },
+ {
+  "fr": "Ajouter un service (Redis…)",
+  "en": "Add a service (Redis…)"
+ },
+ {
+  "fr": "Mettre à jour la version d'un service",
+  "en": "Update a service's version"
+ },
+ {
+  "fr": "Supprimer un service (ses données sont perdues)",
+  "en": "Delete a service (its data is lost)"
+ },
+ {
+  "fr": "Brancher un service sur un conteneur",
+  "en": "Attach a service to a container"
  }
 ]

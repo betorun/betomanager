@@ -54,6 +54,46 @@ spec:
                     - {{ .Release.Name }}
             topologyKey: kubernetes.io/hostname
 
+  {{- with .Values.waitFor }}
+  # Attente du réseau : un nouveau pod n'est autorisé par la politique réseau
+  # qu'après quelques secondes ; sans cette attente, l'application qui se
+  # connecte dès son démarrage (base, Redis) reçoit « connexion refusée ».
+  # Jamais bloquant : après 60 s par adresse, l'application démarre quand même.
+  initContainers:
+    - name: wait-network
+      image: {{ .image | quote }}
+      imagePullPolicy: IfNotPresent
+      command:
+        - sh
+        - -c
+        - |
+          for t in $WAIT_FOR; do
+            h="${t%:*}"; p="${t##*:}"; i=0
+            until nc -z -w 2 "$h" "$p"; do
+              i=$((i+1))
+              if [ "$i" -ge 60 ]; then echo "$t injoignable après 60 s : démarrage quand même"; break; fi
+              sleep 1
+            done
+          done
+      env:
+        - name: WAIT_FOR
+          value: {{ .targets | quote }}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 65534
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 8Mi
+        limits:
+          cpu: 50m
+          memory: 16Mi
+  {{- end }}
+
   containers:
     - name: app
       image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -77,6 +117,11 @@ spec:
         - name: http
           containerPort: {{ .Values.service.targetPort | default 8080 }}
           protocol: {{ .Values.service.protocol | default "TCP" }}
+      {{- else if eq (include "standard-app.kind" .) "service" }}
+      ports:
+        - name: tcp
+          containerPort: {{ .Values.service.targetPort }}
+          protocol: TCP
       {{- end }}
 
       # Env depuis le Secret (buildé par EnsureSecret côté Go).

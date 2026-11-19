@@ -36,6 +36,16 @@ func TestNormalizeProcess(t *testing.T) {
 					t.Fatalf("%+v", r)
 				}
 			}},
+		{"service sans port", CreateWorkloadRequest{Kind: KindService}, ErrPortRequired, nil},
+		{"service à plusieurs instances", CreateWorkloadRequest{Kind: KindService, TargetPort: 6379, Replicas: 2}, ErrSingleInstance, nil},
+		{"service avec autoscaling", CreateWorkloadRequest{Kind: KindService, TargetPort: 6379, Autoscaling: &AutoscalingConfig{}}, ErrSingleInstance, nil},
+		{"service : port gardé, jamais public, sonde par commande", CreateWorkloadRequest{Kind: KindService, TargetPort: 6379, TLSEnabled: true,
+			HealthPath: "/h", HealthCommand: []string{"valkey-cli", "ping"}, PDBEnabled: true}, nil,
+			func(t *testing.T, r CreateWorkloadRequest) {
+				if r.TargetPort != 6379 || r.TLSEnabled || !r.NoPublicURL || r.HealthPath != "" || len(r.HealthCommand) != 2 || r.Replicas != 1 || r.PDBEnabled {
+					t.Fatalf("%+v", r)
+				}
+			}},
 		{"commande trop longue", CreateWorkloadRequest{Command: make([]string, MaxCommandParts+1)}, ErrInvalidCommand, nil},
 	}
 	for _, tc := range cases {

@@ -1,0 +1,62 @@
+[
+ {
+  "fr": "Un conteneur ou un service porte déjà ce nom dans le projet",
+  "en": "a container or service with this name already exists in the project"
+ },
+ {
+  "fr": "Un service ne peut pas être branché sur lui-même",
+  "en": "a service cannot be attached to itself"
+ },
+ {
+  "fr": "Les services additionnels ne sont pas disponibles sur cette plateforme",
+  "en": "additional services are not available on this platform"
+ },
+ {
+  "fr": "Taille de disque invalide : voir les disques du catalogue",
+  "en": "invalid disk size: see the disks of the catalog"
+ },
+ {
+  "fr": "Nom de service invalide : 3 à 30 caractères (minuscules, chiffres, tirets), commençant par une lettre",
+  "en": "invalid service name: 3 to 30 lowercase letters, digits and hyphens, starting with a letter"
+ },
+ {
+  "fr": "Taille invalide : voir les tailles du catalogue",
+  "en": "invalid size: see the sizes of the catalog"
+ },
+ {
+  "fr": "Service introuvable",
+  "en": "service not found"
+ },
+ {
+  "fr": "Le projet a atteint son nombre maximal de services",
+  "en": "the project has reached its maximum number of services"
+ },
+ {
+  "fr": "Le service a déjà cette version ou une plus récente : on ne revient jamais en arrière",
+  "en": "the service already runs this version or a newer one: versions never go back"
+ },
+ {
+  "fr": "Le service n'est pas encore prêt",
+  "en": "the service is not ready yet"
+ },
+ {
+  "fr": "Cet usage n'est pas proposé pour ce service",
+  "en": "this usage mode is not offered for this service"
+ },
+ {
+  "fr": "Cette version n'est pas proposée pour ce service",
+  "en": "this version is not offered for this service"
+ },
+ {
+  "fr": "Service inconnu : voir le catalogue",
+  "en": "unknown service: see the catalog"
+ },
+ {
+  "fr": "Ce service n'est pas annoncé comme à venir",
+  "en": "this service is not announced as coming soon"
+ },
+ {
+  "fr": "Seul un compte utilisateur peut demander à être prévenu",
+  "en": "only a user account can ask to be notified"
+ }
+]

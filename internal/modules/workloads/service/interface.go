@@ -25,6 +25,9 @@ type IWorkloadService interface {
 	ListVariables(ctx context.Context, id uuid.UUID) ([]domain.VariableView, error)
 	PatchVariables(ctx context.Context, id uuid.UUID, req domain.PatchVariablesRequest) (*domain.VariablesResponse, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	// AddWaitFor : adresse nom:port à attendre avant le démarrage (posée au
+	// branchement d'une base ou d'un service ; prise au prochain déploiement).
+	AddWaitFor(ctx context.Context, id uuid.UUID, target string) error
 
 	//  Lifecycle K8s (scaling / rollout)
 	// Stop : scale deployment à 0 replicas. Billing peut s'arrêter.

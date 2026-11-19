@@ -43,6 +43,7 @@ func (f *fakeRepo) OrganizationQuotas(context.Context, []uuid.UUID) ([]repositor
 	return nil, nil
 }
 func (f *fakeRepo) SetMaxProjects(context.Context, uuid.UUID, int) error { return nil }
+func (f *fakeRepo) SetMaxAddons(context.Context, uuid.UUID, int) error   { return nil }
 
 // Ligne déjà écrite par CreateProject : l'activité la renvoie sans la recréer.
 func TestCreateProjectInDB_ExistingRow(t *testing.T) {

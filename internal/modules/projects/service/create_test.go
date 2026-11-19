@@ -131,6 +131,7 @@ func (f *fakeProjectRepo) OrganizationQuotas(_ context.Context, ids []uuid.UUID)
 	return out, nil
 }
 func (f *fakeProjectRepo) SetMaxProjects(context.Context, uuid.UUID, int) error { return nil }
+func (f *fakeProjectRepo) SetMaxAddons(context.Context, uuid.UUID, int) error   { return nil }
 
 // ── tests ─────────────────────────────────────────────────────────────────
 

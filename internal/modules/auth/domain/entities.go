@@ -20,6 +20,9 @@ type Project struct {
 	CpuLimit     string `gorm:"type:varchar(20);not null;default:'2000m'"`
 	MemoryLimit  string `gorm:"type:varchar(20);not null;default:'4Gi'"`
 	StorageLimit string `gorm:"type:varchar(20);not null;default:'10Gi'"`
+	// MaxAddons : services additionnels au plus (Redis…, hors bases
+	// PostgreSQL), réglable par le staff (migration 000044).
+	MaxAddons int `gorm:"not null;default:10"`
 
 	Status       string `gorm:"type:varchar(20);not null;default:'PENDING';index"`
 	CurrentPhase string `gorm:"type:varchar(50);not null;default:'DB_INITIALIZING'"`

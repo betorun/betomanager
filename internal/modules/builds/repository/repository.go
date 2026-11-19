@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,8 @@ type BuildRepository interface {
 	Get(ctx context.Context, project, id uuid.UUID) (*domain.Build, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Build, error)
 	List(ctx context.Context, project uuid.UUID, name string) ([]domain.Build, error)
+	// Search : liste filtrée et paginée par curseur (créé le, ID) décroissant.
+	Search(ctx context.Context, project uuid.UUID, f domain.BuildFilter) ([]domain.Build, error)
 	CountActive(ctx context.Context, project uuid.UUID) (int64, error)
 	MarkBuilding(ctx context.Context, id uuid.UUID) error
 	Finish(ctx context.Context, id uuid.UUID, status, failure, digest, detected string) error
@@ -69,6 +72,44 @@ func (r *gormRepository) List(ctx context.Context, project uuid.UUID, name strin
 	}
 	out := []domain.Build{}
 	return out, q.Order("created_at DESC").Limit(listLimit).Find(&out).Error
+}
+
+func (r *gormRepository) Search(ctx context.Context, project uuid.UUID, f domain.BuildFilter) ([]domain.Build, error) {
+	q := r.db.WithContext(ctx).Where("project_id = ?", project)
+	if f.Name != "" {
+		q = q.Where("name = ?", f.Name)
+	}
+	switch f.Status {
+	case "":
+	case domain.FilterActive:
+		q = q.Where("status IN ?", []string{domain.StatusQueued, domain.StatusBuilding})
+	default:
+		q = q.Where("status = ?", f.Status)
+	}
+	switch f.Image {
+	case domain.FilterImageAvailable:
+		q = q.Where("image_pruned_at IS NULL")
+	case domain.FilterImageRemoved:
+		q = q.Where("image_pruned_at IS NOT NULL")
+	}
+	if f.Query != "" {
+		like := "%" + escapeLike(strings.ToLower(f.Query)) + "%"
+		q = q.Where("(lower(name) LIKE ? ESCAPE '\\' OR lower(git_commit) LIKE ? ESCAPE '\\')", like, like)
+	}
+	if f.BeforeAt != nil {
+		q = q.Where("(created_at, id) < (?, ?)", *f.BeforeAt, f.BeforeID)
+	}
+	limit := f.Limit
+	if limit <= 0 || limit > domain.MaxListLimit {
+		limit = domain.DefaultListLimit
+	}
+	out := []domain.Build{}
+	return out, q.Order("created_at DESC, id DESC").Limit(limit).Find(&out).Error
+}
+
+// escapeLike : %, _ et \ cherchés tels quels.
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(s)
 }
 
 func (r *gormRepository) CountActive(ctx context.Context, project uuid.UUID) (int64, error) {

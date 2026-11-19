@@ -62,5 +62,9 @@
  {
   "fr": "Un conteneur du projet fait tourner cette image : déployez-lui une autre image, ou supprimez-le, d'abord",
   "en": "a container of the project runs this image: deploy another image on it, or delete it, first"
+ },
+ {
+  "fr": "Filtre de liste invalide : statut, image ou curseur",
+  "en": "invalid build list filter: status, image or cursor"
  }
 ]

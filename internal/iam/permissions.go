@@ -77,7 +77,19 @@ const (
 	// être remplacées).
 	DatabasesImport Permission = "databases.databases.import"
 	// DatabasesReset : vider une base (une copie est gardée 24 h).
-	DatabasesReset        Permission = "databases.databases.reset"
+	DatabasesReset Permission = "databases.databases.reset"
+
+	// Services additionnels (ADR 0013 : Redis via Valkey…).
+	AddonsList   Permission = "addons.instances.list"
+	AddonsGet    Permission = "addons.instances.get"
+	AddonsCreate Permission = "addons.instances.create"
+	// AddonsUpdate : changer de version (le service redémarre ; jamais de
+	// retour en arrière).
+	AddonsUpdate Permission = "addons.instances.update"
+	AddonsDelete Permission = "addons.instances.delete"
+	// AddonsConnect : brancher un service sur un conteneur (il reçoit
+	// l'adresse de connexion, mot de passe compris).
+	AddonsConnect         Permission = "addons.instances.connect"
 	SiteDeploymentsList   Permission = "sites.deployments.list"
 	SiteDeploymentsCreate Permission = "sites.deployments.create"
 	SiteDeploymentsActive Permission = "sites.deployments.activate"
@@ -200,6 +212,12 @@ var catalog = map[Permission]PermissionInfo{
 	DatabasesConnect:      {Title: "Brancher une base de données sur un conteneur", CustomRoles: true},
 	DatabasesImport:       {Title: "Importer un dump dans une base de données (ses données peuvent être remplacées)", CustomRoles: true, Sensitive: true},
 	DatabasesReset:        {Title: "Vider une base de données (copie de sécurité gardée 24 h)", CustomRoles: true, Sensitive: true},
+	AddonsList:            {Title: "Lister les services d'un projet", CustomRoles: true},
+	AddonsGet:             {Title: "Voir un service", CustomRoles: true},
+	AddonsCreate:          {Title: "Ajouter un service (Redis…)", CustomRoles: true},
+	AddonsUpdate:          {Title: "Mettre à jour la version d'un service", CustomRoles: true},
+	AddonsDelete:          {Title: "Supprimer un service (ses données sont perdues)", CustomRoles: true, Sensitive: true},
+	AddonsConnect:         {Title: "Brancher un service sur un conteneur", CustomRoles: true},
 	SitesUpdate:           {Title: "Modifier un site", CustomRoles: true},
 	SitesDelete:           {Title: "Supprimer un site", CustomRoles: true},
 	SiteDeploymentsList:   {Title: "Voir les déploiements d'un site", CustomRoles: true},

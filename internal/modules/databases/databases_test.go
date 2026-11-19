@@ -223,6 +223,12 @@ func TestCNPGObjects(t *testing.T) {
 type fakeWorkloads struct {
 	project uuid.UUID
 	set     map[string]string
+	waits   []string
+}
+
+func (f *fakeWorkloads) WaitFor(_ context.Context, _ uuid.UUID, target string) error {
+	f.waits = append(f.waits, target)
+	return nil
 }
 
 func (f *fakeWorkloads) ProjectOf(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -261,6 +267,9 @@ func TestAttach(t *testing.T) {
 	}
 	if wl.set["DATABASE_URL"] == "" {
 		t.Fatal("URI non posée en secret")
+	}
+	if len(wl.waits) != 1 || !strings.HasSuffix(wl.waits[0], "-rw:5432") {
+		t.Fatalf("le conteneur doit attendre la base au démarrage : %v", wl.waits)
 	}
 	raw := fmt.Sprintf("%+v", res)
 	if strings.Contains(raw, "s3cret") {

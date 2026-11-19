@@ -30,7 +30,9 @@ func (r *recordingRepo) Create(_ context.Context, b *domain.Build) error {
 	r.created = append(r.created, b)
 	return nil
 }
-func (*recordingRepo) ActiveForWorkload(context.Context, uuid.UUID) ([]domain.Build, error) { return nil, nil }
+func (*recordingRepo) ActiveForWorkload(context.Context, uuid.UUID) ([]domain.Build, error) {
+	return nil, nil
+}
 
 // Un push refusé pour quota laisse une trace visible (build FAILED IMAGE_QUOTA).
 func TestFromGitHub_QuotaRejectionRecorded(t *testing.T) {

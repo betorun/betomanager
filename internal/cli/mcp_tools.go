@@ -31,6 +31,7 @@ const mcpInstructions = `betorun hosts containers built from code, and managed P
 	`(no Dockerfile needed for Next.js, Vite/React/Vue/Astro, Node, Django, FastAPI, Flask, Streamlit or static sites); ` +
 	`it builds, deploys and returns the public URL. If the build fails, the result contains the decisive log lines: fix the ` +
 	`code and call deploy again. If the app needs a database, call create_database with attach_to set to the container: it gets DATABASE_URL. ` +
+	`For a cache, sessions or a task queue (Sidekiq, BullMQ, Celery, Laravel queues), call create_addon with attach_to: it gets REDIS_URL. ` +
 	`To investigate a running container, call diagnose_workload. Never put secrets in env: ` +
 	`tell the person to set them with "betorun workloads secrets" or in the console.`
 
@@ -132,7 +133,7 @@ func (e mcpEnv) toolList() []mcp.Tool {
 				`"name":{"type":"string","description":"Container name, 3-30 lowercase characters (default: the directory name)"},`+projectProp+
 				`,"port":{"type":"integer","description":"Port the app listens on (default 8080, which betorun builds use)"}`+
 				`,"env":{"type":"object","additionalProperties":{"type":"string"},"description":"Plain environment variables (never secrets)"}`+
-				`,"kind":{"type":"string","enum":["web","worker","cron"],"description":"web (default, HTTP service with a URL), worker (long-running, no port) or cron (scheduled task)"}`+
+				`,"kind":{"type":"string","enum":["web","worker","cron","service"],"description":"web (default, HTTP service with a URL), worker (long-running, no port), cron (scheduled task) or service (internal TCP port reachable only inside the project, e.g. Redis on 6379; needs port)"}`+
 				`,"command":{"type":"array","items":{"type":"string"},"description":"Start command replacing the image's, e.g. [\"node\",\"queue.js\"] (optional)"}`+
 				`,"schedule":{"type":"string","description":"cron only: 5 fields (\"0 2 * * *\") or @hourly, @daily, @weekly, @monthly"}`+
 				`,"time_zone":{"type":"string","description":"cron only: IANA time zone of the schedule, e.g. Africa/Dakar (default UTC)"}`, "path"),
@@ -157,6 +158,24 @@ func (e mcpEnv) toolList() []mcp.Tool {
 			InputSchema: schema(`"database":{"type":"string","description":"Source database ID or name"},"name":{"type":"string","description":"Name of the new database"},`+projectProp+
 				`,"target_time":{"type":"string","description":"Instant to restore, RFC 3339 (default: latest)"}`, "database", "name"),
 			Annotations: mcp.Annotations{Title: "Restore a database", OpenWorldHint: true}, Handler: e.restoreDatabase},
+		{Name: "list_addons", Description: "Additional services of a project (Redis via Valkey…), with their state, address and attached containers.",
+			InputSchema: schema(projectProp), Annotations: readOnly("List services"), Handler: e.listAddons},
+		{Name: "create_addon", Title: "Add a service (Redis via Valkey)",
+			Description: "Add a catalog service to the project (template redis = Valkey, compatible with Redis clients), reachable only from its containers, " +
+				"wait until it runs, and optionally attach it to a container: its connection URL becomes the SECRET variable REDIS_URL and the container is redeployed. " +
+				"Mode persistent (default, disk; task queues, sessions) or cache (no disk, data lost on restart). The password never appears in the result.",
+			InputSchema: schema(`"template":{"type":"string","enum":["redis"],"description":"Catalog service (default redis)"},`+
+				`"name":{"type":"string","description":"Service name, also its address in the project: 3-30 lowercase letters, digits, hyphens"},`+projectProp+
+				`,"mode":{"type":"string","enum":["persistent","cache"],"description":"Usage (default persistent)"}`+
+				`,"size":{"type":"string","enum":["mini","small","medium"],"description":"Size (default small)"}`+
+				`,"disk":{"type":"string","enum":["1Gi","2Gi","5Gi"],"description":"Disk in persistent mode (default 1Gi)"}`+
+				`,"version":{"type":"string","description":"Version (default: the recommended one)"}`+
+				`,"attach_to":{"type":"string","description":"Container ID or name to attach it to (optional)"}`, "name"),
+			Annotations: mcp.Annotations{Title: "Add a service", OpenWorldHint: true}, Handler: e.createAddon},
+		{Name: "attach_addon", Description: "Give a container access to a service: sets its connection URL (password included) as a SECRET variable (REDIS_URL by default for redis) and redeploys the container.",
+			InputSchema: schema(`"addon":{"type":"string","description":"Service ID or name"},"workload":{"type":"string","description":"Container ID or name"},`+projectProp+
+				`,"variable":{"type":"string","description":"Variable name (default depends on the service, e.g. REDIS_URL)"}`, "addon", "workload"),
+			Annotations: mcp.Annotations{Title: "Attach a service", IdempotentHint: true, OpenWorldHint: true}, Handler: e.attachAddon},
 		{Name: "restart_workload", Description: "Restart a container (rolling replacement, no downtime with several replicas). For a cron container: run it now, outside its schedule.",
 			InputSchema: schema(`"workload":{"type":"string","description":"Container ID or name"},`+projectProp, "workload"),
 			Annotations: mcp.Annotations{Title: "Restart a container", IdempotentHint: true, OpenWorldHint: true}, Handler: e.restart},
@@ -517,11 +536,14 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 		kind = existingKind
 	}
 	kind = firstNonEmpty(kind, kindWeb)
-	if kind != kindWeb && kind != kindWorker && kind != kindCron {
-		return mcp.Result{}, fmt.Errorf("invalid kind %q: web, worker or cron", kind)
+	if kind != kindWeb && kind != kindWorker && kind != kindCron && kind != kindService {
+		return mcp.Result{}, fmt.Errorf("invalid kind %q: web, worker, cron or service", kind)
 	}
-	if kind != kindWeb {
-		port = 0 // ni port ni URL hors web
+	if kind == kindService && res.WorkloadID == "" && in["port"] == nil {
+		return mcp.Result{}, errors.New(`kind "service" needs its port, e.g. 6379`)
+	}
+	if kind != kindWeb && kind != kindService {
+		port = 0 // ni port ni URL hors web et service
 	}
 	if kind == kindCron && res.WorkloadID == "" && schedule == "" {
 		return mcp.Result{}, errors.New(`kind "cron" needs a schedule, e.g. "0 2 * * *" or "@daily"`)

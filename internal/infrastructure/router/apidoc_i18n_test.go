@@ -2,10 +2,6 @@ package router
 
 import (
 	"encoding/json"
-	"github.com/thekrauss/kubemanager/internal/modules/billing"
-	"github.com/thekrauss/kubemanager/internal/modules/databases"
-	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
-	"github.com/thekrauss/kubemanager/internal/modules/registries"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -13,6 +9,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/thekrauss/kubemanager/internal/modules/addons"
+	"github.com/thekrauss/kubemanager/internal/modules/billing"
+	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
+	"github.com/thekrauss/kubemanager/internal/modules/registries"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -71,6 +73,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Billing:     &billing.Controller{},
 				DomainSales: &domainsales.Controller{},
 				Databases:   &databases.Controller{},
+				Addons:      &addons.Controller{},
 			},
 		}
 		docFizz = fizz.NewFromEngine(gin.New())

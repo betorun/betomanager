@@ -197,6 +197,9 @@ func addProjectRoutes(app *App) {
 	adminProjects.AddRoute("/:id/limits", http.MethodPatch,
 		"Changer les limites CPU, mémoire et stockage d'un projet (base puis quota Kubernetes)",
 		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetProjectLimits, http.StatusOK))
+	adminProjects.AddRoute("/:id/max-addons", http.MethodPatch,
+		"Changer le nombre maximal de services additionnels d'un projet (Redis…)",
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetProjectMaxAddons, http.StatusOK))
 	adminOrgs := RootGroup.NewGroup("/admin/organizations", "Admin — plafonds des organisations").Internal()
 	adminOrgs.AddRoute("/:id/limits", http.MethodPatch,
 		"Changer le nombre maximal de projets d'une organisation",

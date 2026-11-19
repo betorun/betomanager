@@ -136,8 +136,8 @@
   "en": "invalid command or args: at most 32 parts of 4096 characters, without NUL"
  },
  {
-  "fr": "Sorte invalide : web, worker ou cron",
-  "en": "invalid kind: web, worker or cron"
+  "fr": "Sorte invalide : web, worker, cron ou service",
+  "en": "invalid kind: web, worker, cron or service"
  },
  {
   "fr": "Horaire invalide : 5 champs (minute heure jour mois jour-de-semaine) ou @hourly, @daily, @weekly, @monthly",
@@ -170,5 +170,21 @@
  {
   "fr": "startup_timeout_seconds : entre 10 et 600 secondes",
   "en": "startup_timeout_seconds: between 10 and 600 seconds"
+ },
+ {
+  "fr": "Un conteneur service a besoin de son port (target_port, ex. 6379)",
+  "en": "a service container needs its port (target_port, e.g. 6379)"
+ },
+ {
+  "fr": "Un conteneur service tourne en une seule instance : ses données sont sur son disque",
+  "en": "a service container runs a single instance: its data lives on its disk"
+ },
+ {
+  "fr": "Ce conteneur est géré par un service : modifiez-le depuis la page Services",
+  "en": "this container is managed by a service: change it from the Services page"
+ },
+ {
+  "fr": "wait_for : 8 adresses nom:port du projet au plus",
+  "en": "wait_for: at most 8 addresses name:port of the project"
  }
 ]

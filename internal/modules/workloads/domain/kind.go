@@ -15,6 +15,9 @@ const (
 	KindWorker = "worker"
 	// KindCron : tâche planifiée (CronJob), une exécution à chaque échéance.
 	KindCron = "cron"
+	// KindService : service interne TCP (Redis, gRPC…) : son vrai port,
+	// joignable par son nom depuis le projet seulement, une instance.
+	KindService = "service"
 )
 
 const (
@@ -29,12 +32,16 @@ const (
 )
 
 var (
-	ErrInvalidKind      = errors.New("invalid kind: web, worker or cron")
+	ErrInvalidKind      = errors.New("invalid kind: web, worker, cron or service")
 	ErrKindImmutable    = errors.New("the kind of a container cannot change: create a new container")
 	ErrScheduleRequired = errors.New("a cron container needs a schedule (e.g. \"0 2 * * *\")")
 	ErrInvalidSchedule  = errors.New("invalid schedule: 5 fields (minute hour day month weekday) or @hourly, @daily, @weekly, @monthly")
 	ErrInvalidCommand   = errors.New("invalid command or args: at most 32 parts of 4096 characters, without NUL")
 	ErrNotWeb           = errors.New("this action is only available for a web container")
+	ErrPortRequired     = errors.New("a service container needs its port (target_port, e.g. 6379)")
+	ErrSingleInstance   = errors.New("a service container runs a single instance: its data lives on its disk")
+	ErrInvalidWaitFor   = errors.New("wait_for: at most 8 addresses name:port of the project")
+	ErrManaged          = errors.New("this container is managed by a service: change it from the Services page")
 	ErrNotCron          = errors.New("this action is only available for a cron container")
 	ErrInvalidTimeZone  = errors.New("invalid time zone: use an IANA name such as Africa/Dakar")
 	ErrMaxDuration      = errors.New("max_duration_seconds: at most 86400 (24 hours)")
@@ -50,6 +57,8 @@ func NormalizeKind(k string) (string, error) {
 		return KindWorker, nil
 	case KindCron:
 		return KindCron, nil
+	case KindService:
+		return KindService, nil
 	}
 	return "", ErrInvalidKind
 }
@@ -104,6 +113,7 @@ func ValidCommand(parts []string) bool {
 // NormalizeProcess : règles de la sorte, appliquées à la création. Web : un
 // port (8080 par défaut). Worker et cron : ni port, ni TLS, ni sondes ; cron :
 // un horaire valide, une seule exécution à la fois, ni autoscaling ni PDB.
+// Service : un port obligatoire, jamais d'adresse publique, une instance.
 func NormalizeProcess(in *CreateWorkloadRequest) error {
 	kind, err := NormalizeKind(in.Kind)
 	if err != nil {
@@ -116,6 +126,9 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 	if !ValidStartupTimeout(in.StartupTimeoutSeconds) {
 		return ErrStartupTimeout
 	}
+	if !ValidWaitFor(in.WaitFor) {
+		return ErrInvalidWaitFor
+	}
 	switch kind {
 	case KindWeb:
 		if in.TargetPort == 0 {
@@ -127,8 +140,18 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 	case KindWorker, KindCron:
 		in.TargetPort, in.TLSEnabled, in.NoPublicURL = 0, false, false
 		in.HealthPath, in.ReadinessPath = "", ""
+	case KindService:
+		if in.TargetPort == 0 {
+			return ErrPortRequired
+		}
+		if in.Replicas > 1 || in.Autoscaling != nil {
+			return ErrSingleInstance
+		}
+		in.TLSEnabled, in.NoPublicURL = false, true
+		in.HealthPath, in.ReadinessPath = "", ""
+		in.Replicas, in.Autoscaling, in.PDBEnabled = 1, nil, false
 	}
-	if kind != KindWorker {
+	if kind != KindWorker && kind != KindService {
 		in.HealthCommand = nil // web : sondes HTTP ; cron : une exécution se juge à sa fin
 	}
 	if kind == KindCron {
@@ -153,6 +176,24 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 		return ErrNotCron
 	}
 	return nil
+}
+
+// MaxWaitFor : adresses attendues au plus avant le démarrage.
+const MaxWaitFor = 8
+
+var waitForRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]{0,61}[a-z0-9])?:[0-9]{1,5}$`)
+
+// ValidWaitFor : adresses nom:port (noms de Services du projet).
+func ValidWaitFor(list []string) bool {
+	if len(list) > MaxWaitFor {
+		return false
+	}
+	for _, t := range list {
+		if !waitForRe.MatchString(t) {
+			return false
+		}
+	}
+	return true
 }
 
 // MaxStartupTimeoutSeconds : délai de démarrage toléré au plus.

@@ -15,6 +15,7 @@ func TestInternalURL(t *testing.T) {
 		"ancien sans kind": {domain.Workload{Name: "site", Namespace: "km-abc"}, "http://site"},
 		"worker":           {domain.Workload{Name: "w", Namespace: "km-abc", Kind: domain.KindWorker}, ""},
 		"cron":             {domain.Workload{Name: "c", Namespace: "km-abc", Kind: domain.KindCron}, ""},
+		"service":          {domain.Workload{Name: "cache", Namespace: "km-abc", Kind: domain.KindService, TargetPort: 6379}, "cache:6379"},
 	}
 	for name, c := range cases {
 		if got := InternalURL(&c.w); got != c.want {

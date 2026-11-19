@@ -15,4 +15,23 @@ spec:
       protocol: {{ .Values.service.protocol | default "TCP" }}
   selector:
     {{- include "standard-app.selectorLabels" . | nindent 4 }}
+{{- else if eq (include "standard-app.kind" .) "service" }}
+{{- /* Service interne (Redis, gRPC…) : le vrai port, joignable par son nom
+       depuis les conteneurs du projet ; jamais d'Ingress ni d'adresse publique. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "standard-app.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: tcp
+      port: {{ .Values.service.targetPort }}
+      targetPort: tcp
+      protocol: TCP
+  selector:
+    {{- include "standard-app.selectorLabels" . | nindent 4 }}
 {{- end }}

@@ -1208,8 +1208,8 @@
   "en": "New schedule (cron)"
  },
  {
-  "fr": "Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)",
-  "en": "Kind: web (default, HTTP service), worker (long-running process without a port) or cron (scheduled task)"
+  "fr": "Sorte : web (défaut, service HTTP), worker (processus continu sans port), cron (tâche planifiée) ou service (port TCP interne au projet, ex. Redis ; target_port obligatoire)",
+  "en": "Kind: web (default, HTTP service), worker (long-running process without a port), cron (scheduled task) or service (TCP port inside the project, e.g. Redis; target_port required)"
  },
  {
   "fr": "Chemin servi par ce conteneur (défaut /), ex. /auth : le reste du domaine peut aller à un autre conteneur du projet",
@@ -1702,5 +1702,121 @@
  {
   "fr": "Renommer un projet ou changer sa description",
   "en": "Rename a project or change its description"
+ },
+ {
+  "fr": "active (en file ou en cours), QUEUED, BUILDING, SUCCEEDED, FAILED ou CANCELLED ; vide : tous",
+  "en": "active (queued or building), QUEUED, BUILDING, SUCCEEDED, FAILED or CANCELLED; empty: all"
+ },
+ {
+  "fr": "available : image encore au registre (ou build pas encore réussi) ; removed : image retirée ; vide : tous",
+  "en": "available: image still in the registry (or build not succeeded yet); removed: image removed; empty: all"
+ },
+ {
+  "fr": "Recherche dans le nom de l'image et le commit",
+  "en": "Search in the image name and the commit"
+ },
+ {
+  "fr": "Curseur : l'en-tête X-Next-Cursor de la page précédente",
+  "en": "Cursor: the X-Next-Cursor header of the previous page"
+ },
+ {
+  "fr": "Builds par page (1 à 100, 50 par défaut)",
+  "en": "Builds per page (1 to 100, default 50)"
+ },
+ {
+  "fr": "Ajouter un service (Redis via Valkey…) ; mot de passe généré, jamais renvoyé",
+  "en": "Add a service (Redis via Valkey…); generated password, never returned"
+ },
+ {
+  "fr": "Brancher le service sur un conteneur (adresse posée en variable secrète, conteneur redéployé)",
+  "en": "Attach the service to a container (address set as a secret variable, container redeployed)"
+ },
+ {
+  "fr": "Catalogue des services : versions, usages, tailles et disques proposés",
+  "en": "Service catalog: offered versions, usage modes, sizes and disks"
+ },
+ {
+  "fr": "Détails et état d'un service (jamais le mot de passe)",
+  "en": "Service details and status (never the password)"
+ },
+ {
+  "fr": "Disque en mode persistant : 1Gi (défaut), 2Gi ou 5Gi",
+  "en": "Disk in persistent mode: 1Gi (default), 2Gi or 5Gi"
+ },
+ {
+  "fr": "ID du conteneur qui utilisera le service",
+  "en": "ID of the container that will use the service"
+ },
+ {
+  "fr": "ID du service",
+  "en": "Service ID"
+ },
+ {
+  "fr": "Lister les services du projet (avec le plafond)",
+  "en": "List the project's services (with the limit)"
+ },
+ {
+  "fr": "Modèle du catalogue (ex. redis)",
+  "en": "Catalog template (e.g. redis)"
+ },
+ {
+  "fr": "Nom du service, aussi son adresse dans le projet (3 à 30 caractères : minuscules, chiffres, tirets)",
+  "en": "Service name, also its address in the project (3 to 30 characters: lowercase letters, digits, hyphens)"
+ },
+ {
+  "fr": "Passer à une version plus récente (le service redémarre ; jamais de retour en arrière)",
+  "en": "Move to a newer version (the service restarts; never goes back)"
+ },
+ {
+  "fr": "Services additionnels (Redis via Valkey…) : installés et surveillés par betorun, joignables seulement depuis les conteneurs du projet.",
+  "en": "Additional services (Redis via Valkey…): installed and monitored by betorun, reachable only from the project's containers."
+ },
+ {
+  "fr": "Supprimer un service et son disque (les conteneurs branchés gardent leur variable)",
+  "en": "Delete a service and its disk (attached containers keep their variable)"
+ },
+ {
+  "fr": "Taille : mini, small (défaut) ou medium",
+  "en": "Size: mini, small (default) or medium"
+ },
+ {
+  "fr": "Usage (redis : persistent, par défaut, ou cache)",
+  "en": "Usage mode (redis: persistent, the default, or cache)"
+ },
+ {
+  "fr": "Variable qui reçoit l'adresse de connexion (défaut selon le service, ex. REDIS_URL)",
+  "en": "Variable that receives the connection address (default depends on the service, e.g. REDIS_URL)"
+ },
+ {
+  "fr": "Version (défaut : la recommandée)",
+  "en": "Version (default: the recommended one)"
+ },
+ {
+  "fr": "Version visée (défaut : la plus récente maintenue)",
+  "en": "Target version (default: the newest maintained one)"
+ },
+ {
+  "fr": "Services",
+  "en": "Additional services"
+ },
+ {
+  "fr": "Adresses nom:port du projet à attendre avant de démarrer (ex. cache:6379), 8 au plus ; posées au branchement d'une base ou d'un service",
+  "en": "Project name:port addresses to wait for before starting (e.g. cache:6379), at most 8; set when a database or service is attached"
+ },
+ {
+  "fr": "Services annoncés pour lesquels je serai prévenu par e-mail à l'ouverture",
+  "en": "Announced services I will be emailed about when they open"
+ },
+ {
+  "fr": "Être prévenu par e-mail quand un service annoncé ouvre (un seul e-mail)",
+  "en": "Get an email when an announced service opens (a single email)"
+ },
+ {
+  "fr": "Ne plus être prévenu de l'ouverture d'un service annoncé",
+  "en": "Stop being notified when an announced service opens"
+ },
+ {
+  "fr": "Service annoncé (ex. mariadb)",
+  "en": "Announced service (e.g. mariadb)"
  }
 ]

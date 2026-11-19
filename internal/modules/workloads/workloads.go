@@ -131,6 +131,9 @@ func (h *WorkloadController) DuplicateWorkload(c *gin.Context, in *DuplicateWork
 	if err != nil {
 		return nil, err
 	}
+	if err := h.ensureNotManaged(c, id); err != nil {
+		return nil, err
+	}
 	caller, _ := security.PrincipalFromContext(c)
 	workload, err := h.WorkloadService.Duplicate(c.Request.Context(), id, in.Name, caller)
 	if err != nil {
@@ -138,6 +141,22 @@ func (h *WorkloadController) DuplicateWorkload(c *gin.Context, in *DuplicateWork
 	}
 	return &domain.WorkloadResponse{WorkloadID: workload.ID.String(), Status: workload.Status, Namespace: workload.Namespace,
 		Message: "Deployment initiated successfully"}, nil
+}
+
+// ensureNotManaged : un conteneur porteur d'un service (Redis…) ne se
+// modifie, ne se supprime, ne se duplique et ne revient en arrière que par la
+// page Services : changer son image, sa commande ou son mot de passe
+// casserait le service et les conteneurs qui y sont branchés. Arrêter,
+// démarrer, redémarrer et lire ses journaux restent permis.
+func (h *WorkloadController) ensureNotManaged(c *gin.Context, id uuid.UUID) error {
+	w, err := h.WorkloadService.Get(c.Request.Context(), id)
+	if err != nil {
+		return err
+	}
+	if w.ManagedBy != "" {
+		return domain.ErrManaged
+	}
+	return nil
 }
 
 func parseWorkload(raw string) (uuid.UUID, error) {
@@ -173,6 +192,9 @@ func (h *WorkloadController) ListDomains(c *gin.Context, in *WorkloadIDRequest) 
 func (h *WorkloadController) AddDomain(c *gin.Context, in *AddDomainParams) (*domain.DomainResponse, error) {
 	id, err := parseWorkload(in.ID)
 	if err != nil {
+		return nil, err
+	}
+	if err := h.ensureNotManaged(c, id); err != nil {
 		return nil, err
 	}
 	return h.WorkloadService.AddDomain(c.Request.Context(), id, in.Hostname, in.Path)
@@ -215,6 +237,9 @@ func (h *WorkloadController) PatchVariables(c *gin.Context, in *PatchVariablesPa
 	if err != nil {
 		return nil, betoerrors.New(betoerrors.CodeNotFound, "workload not found")
 	}
+	if err := h.ensureNotManaged(c, id); err != nil {
+		return nil, err
+	}
 	return h.WorkloadService.PatchVariables(c.Request.Context(), id, in.PatchVariablesRequest)
 }
 
@@ -235,6 +260,13 @@ func (h *WorkloadController) ListWorkloads(c *gin.Context, in *ListWorkloadsRequ
 }
 
 func (h *WorkloadController) UpdateWorkload(c *gin.Context, in *UpdateWorkloadParams) error {
+	id, err := parseWorkload(in.ID)
+	if err != nil {
+		return err
+	}
+	if err := h.ensureNotManaged(c, id); err != nil {
+		return err
+	}
 	return h.WorkloadService.Update(c.Request.Context(), in.ID, in.UpdateWorkloadRequest)
 }
 
@@ -242,6 +274,9 @@ func (h *WorkloadController) DeleteWorkload(c *gin.Context, in *WorkloadIDReques
 	id, err := uuid.Parse(in.ID)
 	if err != nil {
 		return betoerrors.New(betoerrors.CodeInvalidInput, "invalid workload id")
+	}
+	if err := h.ensureNotManaged(c, id); err != nil {
+		return err
 	}
 	return h.WorkloadService.Delete(c.Request.Context(), id)
 }
@@ -276,6 +311,9 @@ func (h *WorkloadController) RollbackWorkload(c *gin.Context, in *RollbackReques
 	id, err := uuid.Parse(in.ID)
 	if err != nil {
 		return betoerrors.New(betoerrors.CodeInvalidInput, "invalid workload id")
+	}
+	if err := h.ensureNotManaged(c, id); err != nil {
+		return err
 	}
 	return h.WorkloadService.Rollback(c.Request.Context(), id, in.Revision)
 }

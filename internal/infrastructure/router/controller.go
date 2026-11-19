@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	controller "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authRepos "github.com/thekrauss/kubemanager/internal/modules/auth/repository"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
@@ -64,6 +65,8 @@ type ControllerContainer struct {
 	Registries *registries.Controller
 	Copilot    *copilot.Controller
 	Databases  *databases.Controller
+	// Addons : services additionnels (Redis via Valkey…).
+	Addons *addons.Controller
 	// Billing : facturation (coût estimé, grille de prix).
 	Billing *billing.Controller
 	// DomainSales : revente de noms de domaine.
@@ -85,6 +88,7 @@ func AddAllRoutes(a *App) {
 	addIAMRoutes(a)
 	addCopilotRoutes(a)
 	addDatabaseRoutes(a)
+	addAddonRoutes(a)
 	addBillingRoutes(a)
 	addDomainSalesRoutes(a)
 }

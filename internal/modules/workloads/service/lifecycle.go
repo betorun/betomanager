@@ -290,6 +290,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 		Replicas:    int32(w.Replicas),
 		UpdatedAt:   w.UpdatedAt,
 		Kind:        kindOf(w),
+		ManagedBy:   w.ManagedBy,
 	}
 	if spec, err := s.specFor(w); err == nil {
 		status.Command, status.Args = spec.Command, spec.Args

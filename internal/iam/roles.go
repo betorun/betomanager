@@ -32,6 +32,7 @@ var (
 		WorkloadsList, WorkloadsGet, WorkloadLogsRead, WorkloadMetrics, WorkloadVariablesList, WorkloadDomainsList, BuildsList, BuildsGet,
 		SitesList, SitesGet, SiteDeploymentsList, SiteDomainsList,
 		DatabasesList, DatabasesGet,
+		AddonsList, AddonsGet,
 		ServiceAccountsList, ServiceAccountsGet, ServiceAccountKeysList, APIKeysList,
 		RolesList, GroupsList, GroupsGet,
 		// Savoir pourquoi une action est refusée.
@@ -44,7 +45,7 @@ var (
 		WorkloadsCreate, WorkloadsUpdate, WorkloadsStart, WorkloadsStop,
 		WorkloadsRestart, WorkloadsRollback, WorkloadVariablesUpdate, WorkloadDomainsUpdate, BuildsCreate, BuildsCancel,
 		RegistriesList,
-		DatabasesConnect,
+		DatabasesConnect, AddonsConnect,
 		SitesCreate, SitesUpdate, SiteDeploymentsCreate, SiteDeploymentsActive,
 		SiteDomainsCreate, SiteDomainsVerify,
 		ServiceAccountsActAs,
@@ -55,6 +56,8 @@ var (
 		WorkloadsDelete, SitesDelete, SiteDomainsDelete, BuildsDelete,
 		// Une base occupe du disque et sa suppression perd des données : éditeur.
 		DatabasesCreate, DatabasesDelete, DatabasesImport, DatabasesReset,
+		// Un service occupe des ressources et sa suppression perd des données : éditeur.
+		AddonsCreate, AddonsUpdate, AddonsDelete,
 		// Relier un compte GitHub ouvre au projet du code privé : pas un droit de développeur.
 		WorkloadsGitHubManage,
 		// Un jeton de registre ouvre les images privées de l'entreprise : même règle.

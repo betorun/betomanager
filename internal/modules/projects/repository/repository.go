@@ -36,6 +36,8 @@ type ProjectRepository interface {
 	OrganizationQuotas(ctx context.Context, orgIDs []uuid.UUID) ([]OrgQuota, error)
 	// SetMaxProjects : plafond de projets d'une organisation.
 	SetMaxProjects(ctx context.Context, orgID uuid.UUID, max int) error
+	// SetMaxAddons : plafond de services additionnels d'un projet.
+	SetMaxAddons(ctx context.Context, projectID uuid.UUID, max int) error
 }
 
 // ErrNameTaken : un projet de l'organisation porte déjà ce nom.
@@ -212,6 +214,17 @@ func (r *pgProjectRepo) OrganizationQuotas(ctx context.Context, orgIDs []uuid.UU
 		FROM organizations o WHERE o.id IN ? AND o.deleted_at IS NULL
 		ORDER BY o.display_name, o.id`, orgIDs).Scan(&out).Error
 	return out, err
+}
+
+func (r *pgProjectRepo) SetMaxAddons(ctx context.Context, projectID uuid.UUID, max int) error {
+	res := r.db.WithContext(ctx).Exec(`UPDATE projects SET max_addons = ?, updated_at = now() WHERE id = ? AND deleted_at IS NULL`, max, projectID)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *pgProjectRepo) SetMaxProjects(ctx context.Context, orgID uuid.UUID, max int) error {

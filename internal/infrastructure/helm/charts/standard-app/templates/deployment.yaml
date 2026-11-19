@@ -13,10 +13,16 @@ spec:
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   strategy:
+    {{- if eq (include "standard-app.kind" .) "service" }}
+    # Service à état (disque) : jamais deux instances sur les mêmes données ;
+    # l'ancienne s'arrête avant que la nouvelle démarre.
+    type: Recreate
+    {{- else }}
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 25%
       maxSurge: 25%
+    {{- end }}
   selector:
     matchLabels:
       {{- include "standard-app.selectorLabels" . | nindent 6 }}

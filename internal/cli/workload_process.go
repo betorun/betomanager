@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,9 +17,10 @@ import (
 )
 
 const (
-	kindWeb    = workloadsdomain.KindWeb
-	kindWorker = workloadsdomain.KindWorker
-	kindCron   = workloadsdomain.KindCron
+	kindWeb     = workloadsdomain.KindWeb
+	kindWorker  = workloadsdomain.KindWorker
+	kindCron    = workloadsdomain.KindCron
+	kindService = workloadsdomain.KindService
 )
 
 // processFlags : sorte du conteneur, commande de démarrage, horaire d'un cron.
@@ -53,7 +55,16 @@ func (p *processFlags) changed(cmd *cobra.Command) bool {
 func (p *processFlags) applyCreate(cmd *cobra.Command, req *api.CreateWorkloadRequest) error {
 	kind := strings.ToLower(strings.TrimSpace(p.kind))
 	req.Kind = kind
-	if kind != kindWeb && kind != "" {
+	if kind == kindService {
+		// Service interne : son vrai port est obligatoire, jamais public.
+		if !cmd.Flags().Changed("port") {
+			return errors.New(i18n.T("wl.kind.port_needed"))
+		}
+		if cmd.Flags().Changed("tls") {
+			return errors.New(i18n.T("wl.kind.no_tls"))
+		}
+		req.TLSEnabled = false
+	} else if kind != kindWeb && kind != "" {
 		if cmd.Flags().Changed("port") || cmd.Flags().Changed("tls") {
 			return errors.New(i18n.T("wl.kind.no_port", kind))
 		}
@@ -191,10 +202,19 @@ func newWorkloadsRun() *cobra.Command {
 	}
 }
 
-// internalURL : adresse dans le réseau privé du projet (conteneur web).
+// internalURL : adresse dans le réseau privé du projet (web : http://nom ;
+// service : nom:port).
 func internalURL(w *api.Workload) string {
-	if (w.Kind != "" && w.Kind != kindWeb) || w.Name == "" {
+	if w.Name == "" {
 		return ""
 	}
-	return "http://" + w.Name
+	switch w.Kind {
+	case "", kindWeb:
+		return "http://" + w.Name
+	case kindService:
+		if w.TargetPort > 0 {
+			return w.Name + ":" + strconv.Itoa(w.TargetPort)
+		}
+	}
+	return ""
 }

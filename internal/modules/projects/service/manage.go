@@ -118,6 +118,15 @@ func (s *ProjectService) OrganizationQuotas(ctx context.Context, orgIDs []uuid.U
 // SetMaxProjects : plafond de projets d'une organisation (staff). Il peut
 // être inférieur au nombre actuel : seules les nouvelles créations sont
 // refusées.
+// SetMaxAddons : plafond de services additionnels (Redis…) d'un projet. Un
+// plafond sous le nombre actuel n'efface rien : il bloque seulement les ajouts.
+func (s *ProjectService) SetMaxAddons(ctx context.Context, projectID uuid.UUID, max int) (*typesproject.ProjectAddonsLimit, error) {
+	if err := s.Repos.SetMaxAddons(ctx, projectID, max); err != nil {
+		return nil, err
+	}
+	return &typesproject.ProjectAddonsLimit{ProjectID: projectID.String(), MaxAddons: max}, nil
+}
+
 func (s *ProjectService) SetMaxProjects(ctx context.Context, orgID uuid.UUID, max int) (*typesproject.OrganizationQuota, error) {
 	if err := s.Repos.SetMaxProjects(ctx, orgID, max); err != nil {
 		return nil, err

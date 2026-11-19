@@ -7,6 +7,7 @@ import (
 	"fmt"
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -333,7 +334,8 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 	if err := domain.NormalizeProcess(&in.CreateWorkloadRequest); err != nil {
 		return nil, none, err // erreurs nommées : 400 traduit (router/errors.go)
 	}
-	if in.Kind == domain.KindWeb {
+	replicas = int64(in.Replicas) // cron, service : ramené à une instance
+	if in.Kind == domain.KindWeb || in.Kind == domain.KindService {
 		if err := s.validateNetwork(in.TargetPort); err != nil {
 			return nil, none, err
 		}
@@ -416,6 +418,7 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 		Status:             status,
 		CurrentPhase:       phase,
 		ServiceAccountID:   runAs,
+		ManagedBy:          in.ManagedBy,
 	}
 	spec := specOf(in.CreateWorkloadRequest)
 	if runAs != nil {
@@ -530,8 +533,8 @@ func (s *WorkloadService) update(ctx context.Context, id string, req domain.Upda
 		current.Image, spec.Image = req.Image, req.Image
 	}
 	runtimeChanged, err := s.applyRuntime(ctx, current, &spec, req)
-	if spec.Kind == domain.KindCron {
-		// Une exécution à la fois : jamais plus d'une réplique.
+	if spec.Kind == domain.KindCron || spec.Kind == domain.KindService {
+		// Cron : une exécution à la fois ; service : un seul pod sur son disque.
 		current.Replicas, spec.Replicas = 1, 1
 	}
 	if err != nil {
@@ -573,6 +576,35 @@ func (s *WorkloadService) update(ctx context.Context, id string, req domain.Upda
 	}
 	url := routeFor(spec.Kind, current.Name, current.ProjectID, spec.TLSEnabled, spec.NoPublicURL).URL
 	return s.Repo.UpdateSpec(save, current.ID, current.Image, current.StorageSize, url, raw)
+}
+
+// AddWaitFor : ajoute target aux adresses attendues avant le démarrage. Seule
+// la spec change : le déploiement suivant (le branchement en lance un, en
+// posant la variable) rend le conteneur d'initialisation.
+func (s *WorkloadService) AddWaitFor(ctx context.Context, id uuid.UUID, target string) error {
+	if !domain.ValidWaitFor([]string{target}) {
+		return domain.ErrInvalidWaitFor
+	}
+	w, err := s.Repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	spec, err := s.specFor(w)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(spec.WaitFor, target) {
+		return nil
+	}
+	if len(spec.WaitFor) >= domain.MaxWaitFor {
+		return nil // déjà assez d'attentes : l'application se reconnectera seule
+	}
+	spec.WaitFor = append(spec.WaitFor, target)
+	raw, err := json.Marshal(specOf(spec))
+	if err != nil {
+		return err
+	}
+	return s.Repo.UpdateSpec(ctx, id, w.Image, w.StorageSize, w.ExternalURL, raw)
 }
 
 // ensureNoDeployRunning : refus clair avant toute écriture. Le démarrage du
@@ -841,6 +873,7 @@ func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWork
 		Process: activities.ProcessSpec{
 			Kind: kindOf(w), Command: spec.Command, Args: spec.Args, HealthCommand: spec.HealthCommand,
 			Schedule: spec.Schedule, TimeZone: spec.TimeZone, MaxDurationSeconds: spec.MaxDurationSeconds,
+			WaitFor: spec.WaitFor,
 			// Cron arrêté : reste suspendu à chaque déploiement (mise à jour,
 			// variables, retour arrière).
 			Suspend: kindOf(w) == domain.KindCron && w.Status == utils.WorkloadStopped,
@@ -924,7 +957,15 @@ func kindOf(w *domain.Workload) string {
 // les envoyer par défaut, comme la CLI ou MCP).
 func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *domain.UpdateWorkloadRequest) error {
 	kind := kindOf(w)
-	if kind != domain.KindWeb {
+	switch kind {
+	case domain.KindWeb:
+	case domain.KindService:
+		// Le port reste réglable (c'est celui du Service) ; jamais public.
+		req.TLSEnabled, req.NoPublicURL = nil, nil
+		if req.Replicas > 1 {
+			return domain.ErrSingleInstance
+		}
+	default:
 		req.TargetPort, req.TLSEnabled, req.NoPublicURL = 0, nil, nil
 	}
 	if req.StartupTimeoutSeconds != nil {
@@ -939,7 +980,7 @@ func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *d
 		}
 		spec.Command = *req.Command
 	}
-	if req.HealthCommand != nil && kind == domain.KindWorker {
+	if req.HealthCommand != nil && (kind == domain.KindWorker || kind == domain.KindService) {
 		if !domain.ValidCommand(*req.HealthCommand) {
 			return domain.ErrInvalidCommand
 		}

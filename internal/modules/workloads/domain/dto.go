@@ -9,7 +9,7 @@ type CreateWorkloadRequest struct {
 	Replicas  int    `json:"replicas" default:"1"`
 
 	// Sorte et processus.
-	Kind string `json:"kind" description:"Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)"`
+	Kind string `json:"kind" description:"Sorte : web (défaut, service HTTP), worker (processus continu sans port), cron (tâche planifiée) ou service (port TCP interne au projet, ex. Redis ; target_port obligatoire)"`
 	// Command / Args : commande de démarrage (remplace l'ENTRYPOINT / le CMD
 	// de l'image), ex. une image pour le web et le worker.
 	Command []string `json:"command,omitempty" description:"Commande de démarrage (remplace l'ENTRYPOINT de l'image)"`
@@ -64,6 +64,15 @@ type CreateWorkloadRequest struct {
 	// ImageFrom : conteneur du projet dont ce conteneur reprend chaque nouvelle
 	// image (worker qui suit l'API : même code, autre commande).
 	ImageFrom string `json:"image_from,omitempty" description:"Nom d'un conteneur du projet : chaque nouvelle image de celui-ci est déployée ici aussi"`
+
+	// WaitFor : adresses nom:port du projet attendues avant de démarrer
+	// l'application (conteneur d'initialisation) : le réseau d'un nouveau pod
+	// n'est ouvert qu'après quelques secondes. Posées au branchement d'une
+	// base ou d'un service ; jamais bloquant (60 s au plus par adresse).
+	WaitFor []string `json:"wait_for,omitempty" description:"Adresses nom:port du projet à attendre avant de démarrer (ex. cache:6379), 8 au plus ; posées au branchement d'une base ou d'un service"`
+
+	// ManagedBy : module qui gère ce conteneur (jamais lu de la requête).
+	ManagedBy string `json:"-"`
 
 	// HealthCommand : sonde d'un worker (pas de port à interroger) : commande
 	// lancée dans le conteneur, code 0 = en bonne santé ; sinon il redémarre.
@@ -155,8 +164,11 @@ type LiveStatus struct {
 	Pods              []PodStatus `json:"pods,omitempty"`
 	// Disk : disque persistant, absent sans stockage.
 	Disk *DiskStatus `json:"disk,omitempty"`
-	// Kind : web, worker ou cron.
+	// Kind : web, worker, cron ou service.
 	Kind string `json:"kind"`
+	// ManagedBy : module qui gère le conteneur (« addon/redis/<id> ») ; ses
+	// actions sensibles passent par ce module. Absent : conteneur du client.
+	ManagedBy string `json:"managed_by,omitempty"`
 	// Command / Args : commande de démarrage enregistrée (vide : celle de
 	// l'image).
 	Command []string `json:"command,omitempty"`

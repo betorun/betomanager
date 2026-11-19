@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
 	domainsalesSvc "github.com/thekrauss/kubemanager/internal/modules/domainsales/service"
 	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
@@ -180,6 +181,13 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// Domaines revendus : commandes à passer et à suivre, renouvellements.
 	if sales := a.domainSalesService(); sales != nil && sales.Registrar != nil {
 		go sales.Run(ctx, domainsalesSvc.DefaultEvery)
+	}
+
+	// « Me prévenir » : e-mail quand un service annoncé ouvre (ADR 0013).
+	if n := a.alertNotifier(); n != nil {
+		waitlist := &addons.Service{Waitlists: &addons.GormWaitlist{DB: a.DB}, Announcer: n,
+			Logger: a.Logger.With("component", "addon-waitlist")}
+		go waitlist.RunWaitlistNotifier(ctx, addons.WaitlistEvery)
 	}
 
 	// Une panne du worker doit sortir en erreur : sinon le code 0 ne déclenche

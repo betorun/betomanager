@@ -71,6 +71,66 @@ func TestChart_WorkerHasNoPortServiceOrProbe(t *testing.T) {
 	}
 }
 
+// Service interne : Service TCP sur le vrai port, sondes TCP, une instance
+// arrêtée avant la suivante (disque), jamais d'Ingress ni d'autoscaling.
+func TestChart_ServiceRendersTCPServiceWithoutIngress(t *testing.T) {
+	in := baseInput("service")
+	in.TargetPort, in.Replicas, in.AutoscalingEnabled, in.PDBEnabled = 6379, 3, true, true
+	in.PersistenceEnabled, in.StorageSize, in.MountPath = true, "1Gi", "/data"
+	y := renderKind(t, in)
+	for _, want := range []string{
+		"kind: Deployment", "kind: Service\n", "name: tcp", "port: 6379", "containerPort: 6379", "targetPort: tcp",
+		"type: Recreate", "tcpSocket", "readinessProbe", "livenessProbe", "replicas: 1", "mountPath: /data",
+	} {
+		if !strings.Contains(y, want) {
+			t.Fatalf("service : %q absent\n%s", want, y)
+		}
+	}
+	for _, banned := range []string{"kind: Ingress", "HorizontalPodAutoscaler", "PodDisruptionBudget", "httpGet", "kind: CronJob", "RollingUpdate"} {
+		if strings.Contains(y, banned) {
+			t.Fatalf("service : %q rendu\n%s", banned, y)
+		}
+	}
+}
+
+func TestChart_ServiceHealthCommand(t *testing.T) {
+	in := baseInput("service")
+	in.TargetPort = 6379
+	in.Process.HealthCommand = []string{"valkey-cli", "ping"}
+	y := renderKind(t, in)
+	i := strings.Index(y, "livenessProbe:")
+	if i < 0 || !strings.Contains(y[i:], "- valkey-cli") {
+		t.Fatalf("service : vivacité par commande absente\n%s", y)
+	}
+}
+
+// Sonde par commande d'un worker : la sonde HTTP par défaut du chart ne doit
+// pas s'y ajouter (Kubernetes refuse deux types de sonde).
+func TestChart_WorkerHealthCommandHasNoHTTPProbe(t *testing.T) {
+	in := baseInput("worker")
+	in.Process.HealthCommand = []string{"cat", "/tmp/ok"}
+	y := renderKind(t, in)
+	if !strings.Contains(y, "livenessProbe") || strings.Contains(y, "httpGet") {
+		t.Fatalf("worker : sonde par commande seule attendue\n%s", y)
+	}
+}
+
+// Attente du réseau : conteneur d'initialisation seulement si des adresses
+// sont données, jamais bloquant, non root.
+func TestChart_WaitForInitContainer(t *testing.T) {
+	in := baseInput("web")
+	in.Process.WaitFor = []string{"cache:6379", "db-app-rw:5432"}
+	y := renderKind(t, in)
+	for _, want := range []string{"initContainers:", "name: wait-network", `image: "busybox:1.37.0"`, `value: "cache:6379 db-app-rw:5432"`, "nc -z -w 2", "runAsUser: 65534"} {
+		if !strings.Contains(y, want) {
+			t.Fatalf("attente : %q absent\n%s", want, y)
+		}
+	}
+	if strings.Contains(renderKind(t, baseInput("web")), "initContainers") {
+		t.Fatal("conteneur d'initialisation rendu sans adresse à attendre")
+	}
+}
+
 func TestChart_CronRendersCronJobOnly(t *testing.T) {
 	in := baseInput("cron")
 	in.Process.Schedule, in.Process.TimeZone, in.Process.Suspend = "0 2 * * *", "Africa/Dakar", true
@@ -128,7 +188,7 @@ func TestChart_CustomDomainPaths(t *testing.T) {
 // Réseau privé : entrée ET sortie ouvertes entre pods du même projet, pour
 // toutes les sortes (un worker appelle l'API, un site appelle Keycloak).
 func TestChart_ProjectPrivateNetwork(t *testing.T) {
-	for _, kind := range []string{"web", "worker", "cron"} {
+	for _, kind := range []string{"web", "worker", "cron", "service"} {
 		in := baseInput(kind)
 		in.ProjectID = "11111111-1111-1111-1111-111111111111"
 		if kind == "cron" {

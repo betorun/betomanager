@@ -132,7 +132,7 @@ func (a *App) startHTTPServer() {
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key", "Idempotency-Key", "X-Request-ID"},
-		ExposeHeaders:    []string{"Idempotency-Status", "Retry-After", "X-Request-ID"},
+		ExposeHeaders:    []string{"Idempotency-Status", "Retry-After", "X-Request-ID", "X-Next-Cursor"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))

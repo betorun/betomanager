@@ -56,7 +56,7 @@ type WorkloadIdentity struct {
 // de l'image). Ajouté aux entrées des workflows : les historiques en cours,
 // qui ne le portent pas, restent des conteneurs web.
 type ProcessSpec struct {
-	Kind    string   `json:",omitempty"` // web | worker | cron
+	Kind    string   `json:",omitempty"` // web | worker | cron | service
 	Command []string `json:",omitempty"`
 	Args    []string `json:",omitempty"`
 	// Cron
@@ -66,7 +66,11 @@ type ProcessSpec struct {
 	// Suspend : cron arrêté (statut STOPPED) ; rendu à chaque déploiement
 	// pour qu'une mise à jour ne le réactive pas.
 	Suspend bool `json:",omitempty"`
-	// HealthCommand : sonde par commande d'un worker (vide : aucune sonde).
+	// WaitFor : adresses nom:port attendues par un conteneur d'initialisation
+	// avant le démarrage (réseau du projet pas encore ouvert pour un nouveau pod).
+	WaitFor []string `json:",omitempty"`
+	// HealthCommand : sonde par commande d'un worker ou d'un service (vide :
+	// aucune sonde pour un worker, sonde TCP sur le port pour un service).
 	HealthCommand []string `json:",omitempty"`
 }
 
@@ -454,8 +458,21 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 	if len(proc.Args) > 0 {
 		vals["args"] = proc.Args
 	}
+	if len(proc.WaitFor) > 0 {
+		vals["waitFor"] = map[string]any{"targets": strings.Join(proc.WaitFor, " "), "image": waitForImage}
+	}
 	if !web {
 		vals["customDomains"] = []any{}
+	}
+	if proc.Kind == "service" {
+		// Service interne : une instance (état sur disque), sondes sur le port
+		// (TCP) ou par commande (ex. valkey-cli ping). Pas de readiness par
+		// commande : le Service n'envoie du trafic qu'à un pod prêt, et le
+		// port ouvert suffit à le dire.
+		vals["replicaCount"] = 1
+		vals["autoscaling"].(map[string]any)["enabled"] = false
+		vals["pdb"].(map[string]any)["enabled"] = false
+		vals["probes"] = serviceProbes(proc.HealthCommand, input.StartupTimeoutSeconds)
 	}
 	if proc.Kind == "worker" && len(proc.HealthCommand) > 0 {
 		// Worker : pas de port, la sonde lance une commande. Démarrage toléré
@@ -463,9 +480,11 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 		// Service ne lui envoie de trafic).
 		exec := map[string]any{"command": proc.HealthCommand}
 		probes := vals["probes"].(map[string]any)
-		probes["startup"] = map[string]any{"enabled": true, "exec": exec, "periodSeconds": startupProbePeriodSeconds,
+		// httpGet: nil retire la sonde HTTP par défaut du chart (values.yaml) :
+		// Helm fusionne, et Kubernetes refuse deux types de sonde à la fois.
+		probes["startup"] = map[string]any{"enabled": true, "exec": exec, "httpGet": nil, "periodSeconds": startupProbePeriodSeconds,
 			"timeoutSeconds": livenessProbeTimeoutSeconds, "failureThreshold": startupFailureThreshold(input.StartupTimeoutSeconds)}
-		probes["liveness"] = map[string]any{"enabled": true, "exec": exec, "periodSeconds": livenessProbePeriodSeconds,
+		probes["liveness"] = map[string]any{"enabled": true, "exec": exec, "httpGet": nil, "periodSeconds": livenessProbePeriodSeconds,
 			"timeoutSeconds": livenessProbeTimeoutSeconds, "failureThreshold": livenessProbeFailureThreshold}
 	}
 	if proc.Kind == "cron" {
@@ -486,6 +505,35 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 	}
 	return vals
 }
+
+// serviceProbes : sondes d'un conteneur « service ». Démarrage et
+// disponibilité : le port répond ; vivacité : la commande donnée, sinon le
+// port aussi.
+func serviceProbes(health []string, startupTimeout int) map[string]any {
+	tcp := map[string]any{"port": serviceContainerPortName}
+	// httpGet: nil : retire la sonde HTTP par défaut du chart (voir worker).
+	live := map[string]any{"enabled": true, "tcpSocket": tcp, "httpGet": nil}
+	if len(health) > 0 {
+		live = map[string]any{"enabled": true, "exec": map[string]any{"command": health}, "httpGet": nil}
+	}
+	live["periodSeconds"] = livenessProbePeriodSeconds
+	live["timeoutSeconds"] = livenessProbeTimeoutSeconds
+	live["failureThreshold"] = livenessProbeFailureThreshold
+	return map[string]any{
+		"startup": map[string]any{"enabled": true, "tcpSocket": tcp, "httpGet": nil, "periodSeconds": startupProbePeriodSeconds,
+			"failureThreshold": startupFailureThreshold(startupTimeout)},
+		"readiness": map[string]any{"enabled": true, "tcpSocket": tcp, "httpGet": nil, "periodSeconds": readinessProbePeriodSeconds,
+			"timeoutSeconds": readinessProbeTimeoutSeconds, "failureThreshold": readinessProbeFailureThreshold},
+		"liveness": live,
+	}
+}
+
+// waitForImage : conteneur d'initialisation qui attend les adresses WaitFor
+// (nc -z de busybox). Étiquette figée.
+const waitForImage = "busybox:1.37.0"
+
+// serviceContainerPortName : nom du port d'un conteneur « service » (chart).
+const serviceContainerPortName = "tcp"
 
 // defaultCronMaxDurationSeconds : durée maximale d'une exécution (1 h).
 const defaultCronMaxDurationSeconds = 3600

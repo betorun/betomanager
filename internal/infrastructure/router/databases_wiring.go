@@ -101,6 +101,10 @@ func (w *databaseWorkloads) ProjectOf(ctx context.Context, id uuid.UUID) (uuid.U
 	return wl.ProjectID, nil
 }
 
+func (w *databaseWorkloads) WaitFor(ctx context.Context, id uuid.UUID, target string) error {
+	return w.svc.AddWaitFor(ctx, id, target)
+}
+
 // SetSecret : variable secrète, avec redéploiement si la valeur change
 // (même chemin que la console : chiffrement, journal, saga).
 func (w *databaseWorkloads) SetSecret(ctx context.Context, id uuid.UUID, name, value string) (bool, error) {

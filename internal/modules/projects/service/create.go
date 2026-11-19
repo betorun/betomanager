@@ -35,6 +35,8 @@ type IProjectService interface {
 	OrganizationQuotas(ctx context.Context, orgIDs []uuid.UUID) ([]typesproject.OrganizationQuota, error)
 	// SetMaxProjects : plafond de projets d'une organisation (staff).
 	SetMaxProjects(ctx context.Context, orgID uuid.UUID, max int) (*typesproject.OrganizationQuota, error)
+	// SetMaxAddons : plafond de services additionnels d'un projet (staff).
+	SetMaxAddons(ctx context.Context, projectID uuid.UUID, max int) (*typesproject.ProjectAddonsLimit, error)
 	// SetLimits : plafonds du projet (staff de la plateforme uniquement).
 	SetLimits(ctx context.Context, projectID string, in typesproject.ProjectLimits) (*typesproject.ProjectLimitsResponse, error)
 }

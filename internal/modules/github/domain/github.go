@@ -192,7 +192,7 @@ type CreateWorkloadRequest struct {
 	HealthPath            string            `json:"health_path"`
 	ReadinessPath         string            `json:"readiness_path"`
 	ServiceAccount        string            `json:"service_account,omitempty"`
-	Kind                  string            `json:"kind" description:"Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)"`
+	Kind                  string            `json:"kind" description:"Sorte : web (défaut, service HTTP), worker (processus continu sans port), cron (tâche planifiée) ou service (port TCP interne au projet, ex. Redis ; target_port obligatoire)"`
 	Command               []string          `json:"command,omitempty" description:"Commande de démarrage (remplace l'ENTRYPOINT de l'image)"`
 	Args                  []string          `json:"args,omitempty" description:"Arguments de la commande (remplacent le CMD de l'image)"`
 	Schedule              string            `json:"schedule,omitempty" description:"Horaire d'un cron (5 champs, ex. 0 2 * * *, ou @daily)"`

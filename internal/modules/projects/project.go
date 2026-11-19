@@ -25,6 +25,7 @@ type IProjectController interface {
 	GetProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectDetail, error)
 	UpdateProject(c *gin.Context, in *typeiam.UpdateProjectRequest) (*typeiam.ProjectDetail, error)
 	SetOrganizationLimits(c *gin.Context, in *SetOrganizationLimitsRequest) (*typeiam.OrganizationQuota, error)
+	SetProjectMaxAddons(c *gin.Context, in *SetProjectMaxAddonsRequest) (*typeiam.ProjectAddonsLimit, error)
 }
 
 // ProjectAccess : où l'appelant détient une permission (iam.Engine).
@@ -169,6 +170,22 @@ func (h *ProjectHandler) GetProject(c *gin.Context, in *GetProjectStatusRequest)
 // UpdateProject : renommer, changer la description.
 func (h *ProjectHandler) UpdateProject(c *gin.Context, in *typeiam.UpdateProjectRequest) (*typeiam.ProjectDetail, error) {
 	return h.ProjectService.UpdateProject(c.Request.Context(), *in)
+}
+
+// SetProjectMaxAddonsRequest : nombre maximal de services additionnels d'un
+// projet (0 : aucun nouveau service).
+type SetProjectMaxAddonsRequest struct {
+	ProjectID string `path:"id" binding:"required" description:"ID du projet"`
+	MaxAddons *int   `json:"max_addons" binding:"required,min=0,max=100" description:"Nombre maximal de services (Redis…) du projet, de 0 à 100"`
+}
+
+// SetProjectMaxAddons : réservé au staff de la plateforme (garde de la route).
+func (h *ProjectHandler) SetProjectMaxAddons(c *gin.Context, in *SetProjectMaxAddonsRequest) (*typeiam.ProjectAddonsLimit, error) {
+	id, err := uuid.Parse(in.ProjectID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid project id")
+	}
+	return h.ProjectService.SetMaxAddons(c.Request.Context(), id, *in.MaxAddons)
 }
 
 // SetOrganizationLimitsRequest : nombre maximal de projets d'une organisation.

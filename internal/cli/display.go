@@ -56,6 +56,14 @@ var workloadStates = map[string]struct {
 	"RUN_FAILED":        {ui.ToneError, "st.run_failed"},
 }
 
+// workloadTone : tonalité d'un état (neutre s'il est inconnu).
+func workloadTone(status string) ui.Tone {
+	if st, ok := workloadStates[status]; ok {
+		return st.tone
+	}
+	return ui.ToneNeutral
+}
+
 func workloadStatus(p *ui.Printer, status string) string {
 	if st, ok := workloadStates[status]; ok {
 		return p.Status(st.tone, i18n.T(st.key))

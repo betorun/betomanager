@@ -98,8 +98,8 @@ func TestBuildHelmValues_WorkerHealthCommand(t *testing.T) {
 	live := probes["liveness"].(map[string]any)
 	assert.Equal(t, true, live["enabled"])
 	assert.Equal(t, map[string]any{"command": cmd}, live["exec"])
-	_, http := live["httpGet"]
-	assert.False(t, http)
+	// Clé présente à nil : retire la sonde HTTP par défaut du chart au rendu.
+	assert.Nil(t, live["httpGet"])
 	assert.Equal(t, false, probes["readiness"].(map[string]any)["enabled"])
 
 	// Sans commande : aucune sonde pour un worker.

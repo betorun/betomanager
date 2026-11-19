@@ -67,6 +67,10 @@ type Workload struct {
 	// transmise aux workflows. 0 : variables pas encore importées.
 	EnvRevision int64 `gorm:"not null;default:0"`
 
+	// ManagedBy : module qui gère ce conteneur (« addon/redis/<id> » : porteur
+	// d'un service). Vide : conteneur du client. Fixé à la création.
+	ManagedBy string `gorm:"type:varchar(80);not null;default:''"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

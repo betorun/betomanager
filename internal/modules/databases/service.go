@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,9 @@ type WorkloadNamer interface {
 type Workloads interface {
 	ProjectOf(ctx context.Context, workloadID uuid.UUID) (uuid.UUID, error)
 	SetSecret(ctx context.Context, workloadID uuid.UUID, name, value string) (redeploy bool, err error)
+	// WaitFor : le conteneur attendra host:port avant de démarrer (réseau
+	// d'un nouveau pod ouvert après quelques secondes).
+	WaitFor(ctx context.Context, workloadID uuid.UUID, target string) error
 }
 
 // Service : cycle de vie des bases. Clusters nil = fonction indisponible.
@@ -334,6 +338,9 @@ func (s *Service) Attach(ctx context.Context, projectID, id, workloadID uuid.UUI
 			return nil, domain.ErrNotReady
 		}
 		return nil, err
+	}
+	if err := s.Workloads.WaitFor(ctx, workloadID, d.ClusterName()+"-rw:"+strconv.Itoa(domain.Port)); err != nil && s.Logger != nil {
+		s.Logger.Warnw("database: wait-for not set", "workload", workloadID, "error", err)
 	}
 	redeploy, err := s.Workloads.SetSecret(ctx, workloadID, variable, uri)
 	if err != nil {

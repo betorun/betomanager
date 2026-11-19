@@ -285,6 +285,11 @@ func (s *Service) List(ctx context.Context, project uuid.UUID, name string) ([]d
 	return s.Repo.List(ctx, project, name)
 }
 
+// Search : liste filtrée et paginée.
+func (s *Service) Search(ctx context.Context, project uuid.UUID, f domain.BuildFilter) ([]domain.Build, error) {
+	return s.Repo.Search(ctx, project, f)
+}
+
 // Cancel : arrête un build en cours (le workflow supprime le Job).
 func (s *Service) Cancel(ctx context.Context, project, id uuid.UUID) error {
 	b, err := s.Repo.Get(ctx, project, id)

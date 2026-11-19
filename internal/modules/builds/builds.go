@@ -4,6 +4,9 @@ package builds
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -106,7 +109,72 @@ func (h *Controller) List(c *gin.Context, in *domain.ListBuildsRequest) ([]domai
 	if err != nil {
 		return nil, err
 	}
-	return h.Service.List(c.Request.Context(), project, in.Name)
+	f, err := buildFilter(in)
+	if err != nil {
+		return nil, err
+	}
+	out, err := h.Service.Search(c.Request.Context(), project, f)
+	if err != nil {
+		return nil, err
+	}
+	// Page pleine : il y en a peut-être d'autres. La réponse reste une liste
+	// (CLI, Copilot) ; le curseur suivant passe par un en-tête.
+	if len(out) == f.Limit && len(out) > 0 {
+		last := out[len(out)-1]
+		c.Header("X-Next-Cursor", encodeCursor(last.CreatedAt, last.ID))
+	}
+	return out, nil
+}
+
+func buildFilter(in *domain.ListBuildsRequest) (domain.BuildFilter, error) {
+	f := domain.BuildFilter{Name: in.Name, Query: strings.TrimSpace(in.Query), Limit: in.Limit}
+	if f.Limit <= 0 || f.Limit > domain.MaxListLimit {
+		f.Limit = domain.DefaultListLimit
+	}
+	if len(f.Query) > 100 {
+		return f, domain.ErrInvalidFilter
+	}
+	switch in.Status {
+	case "", domain.FilterActive, domain.StatusQueued, domain.StatusBuilding, domain.StatusSucceeded, domain.StatusFailed, domain.StatusCancelled:
+		f.Status = in.Status
+	default:
+		return f, domain.ErrInvalidFilter
+	}
+	switch in.Image {
+	case "", domain.FilterImageAvailable, domain.FilterImageRemoved:
+		f.Image = in.Image
+	default:
+		return f, domain.ErrInvalidFilter
+	}
+	if in.Before != "" {
+		at, id, err := decodeCursor(in.Before)
+		if err != nil {
+			return f, domain.ErrInvalidFilter
+		}
+		f.BeforeAt, f.BeforeID = &at, id
+	}
+	return f, nil
+}
+
+// Curseur : « <créé le en nanosecondes Unix>_<ID> ».
+func encodeCursor(at time.Time, id uuid.UUID) string {
+	return strconv.FormatInt(at.UnixNano(), 10) + "_" + id.String()
+}
+
+func decodeCursor(s string) (time.Time, uuid.UUID, error) {
+	ns, rawID, ok := strings.Cut(s, "_")
+	if !ok {
+		return time.Time{}, uuid.Nil, domain.ErrInvalidFilter
+	}
+	n, err := strconv.ParseInt(ns, 10, 64)
+	if err != nil {
+		return time.Time{}, uuid.Nil, err
+	}
+	id, err := uuid.Parse(rawID)
+	if err != nil {
+		return time.Time{}, uuid.Nil, err
+	}
+	return time.Unix(0, n).UTC(), id, nil
 }
 
 // Get : détails d'un build.

@@ -115,6 +115,12 @@ type ProjectLimits struct {
 	Storage string `json:"storage_limit,omitempty" description:"Plafond de stockage (ex. 20Gi)"`
 }
 
+// ProjectAddonsLimit : plafond de services additionnels d'un projet.
+type ProjectAddonsLimit struct {
+	ProjectID string `json:"project_id"`
+	MaxAddons int    `json:"max_addons"`
+}
+
 // ProjectLimitsResponse : limites enregistrées ; le quota Kubernetes suit
 // via le workflow WorkflowID.
 type ProjectLimitsResponse struct {
