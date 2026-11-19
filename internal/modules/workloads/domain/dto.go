@@ -135,6 +135,10 @@ type LiveStatus struct {
 	Disk *DiskStatus `json:"disk,omitempty"`
 	// Kind : web, worker ou cron.
 	Kind string `json:"kind"`
+	// Command / Args : commande de démarrage enregistrée (vide : celle de
+	// l'image).
+	Command []string `json:"command,omitempty"`
+	Args    []string `json:"args,omitempty"`
 	// Cron : état de la tâche planifiée (cron seulement).
 	Cron      *CronStatus `json:"cron,omitempty"`
 	UpdatedAt time.Time   `json:"updated_at"`
