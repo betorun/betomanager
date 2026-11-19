@@ -1,5 +1,5 @@
 // Package domain : accès d'un projet à des registres d'images externes
-// (docs/adr/0008-registres-externes.md).
+// (docs/adr/0011-registres-externes.md).
 package domain
 
 import (

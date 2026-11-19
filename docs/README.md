@@ -24,7 +24,7 @@
 - [Cycle de vie d'une requête](architecture/request-lifecycle.md) — que se passe-t-il quand `POST /workloads` ?
 - [Sagas Temporal](architecture/temporal-sagas.md) — compensation, idempotence, retries
 - [Sécurité](architecture/security.md) — JWT, API keys, RBAC, NetworkPolicy
-- [IAM — design cible](architecture/iam.md) — organisations, policies, comptes de service, clés (validé, phase A en cours)
+- [IAM](architecture/iam.md) — organisations, policies, comptes de service, clés, permissions plateforme
 - [Observabilité](architecture/observability.md) — logs, metrics, traces
 
 ## Tu travailles sur un module ?
@@ -34,10 +34,18 @@ Chaque page décrit un module avec la même structure : rôle, endpoints, DB, ac
 - [auth](modules/auth.md) — users, sessions, API keys, RBAC
 - [identity](modules/identity.md) — Keycloak (register, login, OAuth social)
 - [projects](modules/projects.md) — namespace K8s + saga provisioning
-- [workloads](modules/workloads.md) — lifecycle complet (12 endpoints)
+- [workloads](modules/workloads.md) — conteneurs web, worker et cron : cycle de vie, variables, domaines
 - [clusters](modules/clusters.md) — watcher protocol + enrollment
 - [realtime](modules/realtime.md) — Centrifugo (WebSocket events)
 - [sites](modules/sites.md) — sites statiques (upload .zip, S3, binaire static-edge, domaines perso)
+- [databases](modules/databases.md) — Postgres gérées (CloudNativePG) : branchement, import, contenu, remise à zéro
+- [builds](modules/builds.md) — construction d'images (BuildKit), registre de la plateforme, ménage et quota
+- [registries](modules/registries.md) — identifiants des registres d'images privés
+- [github](modules/github.md) — GitHub App, dépôts, déploiement à chaque push
+- [organizations](modules/organizations.md) — organisations, groupes, membres
+- [iamapi](modules/iamapi.md) — routes IAM : policies, rôles personnalisés, comptes de service, clés, audit
+- [alerts](modules/alerts.md) — alertes e-mail (conteneur en échec, build échoué)
+- [copilot](modules/copilot.md) — assistant (outils dérivés des routes, LLM, SSE)
 
 ## Tu es ops / oncall ?
 
@@ -57,6 +65,11 @@ Les "pourquoi on a choisi ça plutôt qu'autre chose". Lire dans l'ordre pour co
 - [ADR-0004 — Cluster watcher comme binaire séparé](adr/0004-cluster-watcher-separate.md)
 - [ADR-0005 — Keycloak comme source unique auth](adr/0005-keycloak-source-of-truth.md)
 - [ADR-0006 — Rate limit Redis-only](adr/0006-ratelimit-redis-only.md)
+- [ADR-0007 — Keycloak derrière le backend](adr/0007-keycloak-behind-backend.md)
+- [ADR-0008 — Couche d'accès aux modèles de langage](adr/0008-llm-provider-layer.md)
+- [ADR-0009 — Alertes e-mail minimales](adr/0009-alertes-email.md)
+- [ADR-0010 — Ménage et quota du registre de la plateforme](adr/0010-registre-menage-quota.md)
+- [ADR-0011 — Accès aux registres d'images externes](adr/0011-registres-externes.md)
 
 ## Conventions doc
 
