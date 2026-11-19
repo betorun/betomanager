@@ -69,6 +69,10 @@ type Snapshot struct {
 	TakenBy   string    `gorm:"not null" json:"-"`
 	TakenAt   time.Time `gorm:"not null" json:"taken_at"`
 	ExpiresAt time.Time `gorm:"not null" json:"expires_at"`
+	// RestoreImportID : dernier import lancé pour restaurer cette copie.
+	RestoreImportID *uuid.UUID `gorm:"type:uuid" json:"-"`
+	// RestoredAt : fin de la restauration réussie (calculé, pas en base).
+	RestoredAt *time.Time `gorm:"-" json:"restored_at,omitempty"`
 }
 
 func (Snapshot) TableName() string { return "database_snapshots" }
