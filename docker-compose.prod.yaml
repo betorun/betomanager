@@ -499,7 +499,7 @@ services:
     entrypoint:
       - sh
       - -c
-      - psql -v ON_ERROR_STOP=1 -h k8sdb -U "$$PGUSER" -d "$$PGDATABASE" -c 'GRANT SELECT ON sites, site_domains TO edge_ro'
+      - psql -v ON_ERROR_STOP=1 -h k8sdb -U "$$PGUSER" -d "$$PGDATABASE" -c 'GRANT SELECT ON sites, site_domains, edge_suspended_projects TO edge_ro'
     environment:
       PGUSER: ${DB_USER:?}
       PGPASSWORD: ${DB_PASSWORD:?}

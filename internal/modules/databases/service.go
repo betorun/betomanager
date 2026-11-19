@@ -67,7 +67,10 @@ type Service struct {
 	Shell Shell
 	// Snapshots : copies prises avant une remise à zéro (nil : pas de remise à zéro).
 	Snapshots SnapshotStore
-	Logger    *zap.SugaredLogger
+	// Archives : copies finales avant suppression par la plateforme (nil :
+	// la plateforme ne supprime aucune base).
+	Archives ArchiveStore
+	Logger   *zap.SugaredLogger
 }
 
 func (s *Service) available() error {

@@ -19,6 +19,10 @@ type Site struct {
 	ID           string
 	DeploymentID string
 	SPAFallback  bool
+	// Suspended : l'organisation du site est suspendue (facturation). L'edge
+	// sert alors une page neutre « temporairement indisponible » (503), sans
+	// rien dire de la raison aux visiteurs.
+	Suspended bool
 }
 
 // Prefix : même format que domain.ObjectPrefix côté API (internal/modules/sites).
@@ -38,10 +42,14 @@ type SQLResolver struct {
 	BaseDomain string
 }
 
+// suspendedColumn : la vue edge_suspended_projects (migration 000041) ne
+// donne que des identifiants de projet ; l'edge ne lit aucun solde.
+const suspendedColumn = `EXISTS (SELECT 1 FROM edge_suspended_projects e WHERE e.project_id = s.project_id)`
+
 const (
-	querySubdomain = `SELECT id, active_deployment_id, spa_fallback FROM sites
-		WHERE subdomain = $1 AND status = 'LIVE' AND active_deployment_id IS NOT NULL`
-	queryCustomDomain = `SELECT s.id, s.active_deployment_id, s.spa_fallback
+	querySubdomain = `SELECT s.id, s.active_deployment_id, s.spa_fallback, ` + suspendedColumn + ` FROM sites s
+		WHERE s.subdomain = $1 AND s.status = 'LIVE' AND s.active_deployment_id IS NOT NULL`
+	queryCustomDomain = `SELECT s.id, s.active_deployment_id, s.spa_fallback, ` + suspendedColumn + `
 		FROM site_domains d JOIN sites s ON s.id = d.site_id
 		WHERE d.hostname = $1 AND d.verified AND s.status = 'LIVE' AND s.active_deployment_id IS NOT NULL`
 )
@@ -55,7 +63,7 @@ func (r *SQLResolver) Resolve(ctx context.Context, host string) (*Site, error) {
 		query, arg = querySubdomain, sub
 	}
 	var s Site
-	err := r.DB.QueryRowContext(ctx, query, arg).Scan(&s.ID, &s.DeploymentID, &s.SPAFallback)
+	err := r.DB.QueryRowContext(ctx, query, arg).Scan(&s.ID, &s.DeploymentID, &s.SPAFallback, &s.Suspended)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

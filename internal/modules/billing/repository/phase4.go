@@ -74,8 +74,15 @@ func (s *phase4Store) SetGrace(ctx context.Context, org uuid.UUID, at *time.Time
 	return s.upsertAccount(ctx, org, "grace_started_at", at)
 }
 
+// SetSuspended : à la reprise (at nil), le compte à rebours de la
+// suppression des données repart de zéro.
 func (s *phase4Store) SetSuspended(ctx context.Context, org uuid.UUID, at *time.Time) error {
-	return s.upsertAccount(ctx, org, "suspended_at", at)
+	if at != nil {
+		return s.upsertAccount(ctx, org, "suspended_at", at)
+	}
+	return s.db.WithContext(ctx).Exec(`INSERT INTO billing_accounts (organization_id) VALUES (?)
+		ON CONFLICT (organization_id) DO UPDATE SET suspended_at = NULL, purge_stage = 0, purge_noticed_at = NULL, data_purged_at = NULL, updated_at = NOW()`,
+		org).Error
 }
 
 func (s *phase4Store) SetProfile(ctx context.Context, org uuid.UUID, p domain.Profile) error {

@@ -50,6 +50,9 @@ func (a *App) billingService() *billingSvc.Service {
 	// (base, puis quota Kubernetes).
 	svc.Plans = billingRepo.NewPlans(a.DB)
 	svc.Postpaid = billingRepo.NewPostpaid(a.DB)
+	// Suppression des données après la suspension : l'état (console) ; la
+	// boucle tourne dans le processus API (startSuspensionPurge).
+	svc.Purges = billingRepo.NewPurges(a.DB)
 	if a.Services != nil {
 		if ps, ok := a.Services.Project.(*projectSvc.ProjectService); ok && ps != nil {
 			svc.Limits = projectLimiter{ps}

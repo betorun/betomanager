@@ -53,10 +53,10 @@ var balanceCopies = map[string]map[i18n.Locale]alertCopy{
 			"Top up"}),
 	"suspended": pair(
 		alertCopy{"Conteneurs arrêtés dans « {{.Project}} »", "Vos conteneurs sont arrêtés",
-			"Le solde de l'organisation « {{.Project}} » est resté épuisé après le délai de grâce ({{.Name}}) : ses conteneurs ont été arrêtés. Leurs données sont conservées. Rechargez : ils redémarreront tout seuls.",
+			"Le solde de l'organisation « {{.Project}} » est resté épuisé après le délai de grâce ({{.Name}}) : ses conteneurs ont été arrêtés. Leurs données sont conservées pour un temps limité : vous serez prévenu avant toute suppression. Rechargez : ils redémarreront tout seuls.",
 			"Recharger"},
 		alertCopy{"Containers stopped in \"{{.Project}}\"", "Your containers are stopped",
-			"The balance of organization \"{{.Project}}\" stayed used up after the grace period ({{.Name}}): its containers were stopped. Their data is kept. Top up: they will restart by themselves.",
+			"The balance of organization \"{{.Project}}\" stayed used up after the grace period ({{.Name}}): its containers were stopped. Their data is kept for a limited time: you will be warned before anything is deleted. Top up: they will restart by themselves.",
 			"Top up"}),
 }
 
@@ -218,6 +218,84 @@ func (n *Notifier) InvoiceOverdue(ctx context.Context, org uuid.UUID, number str
 			}
 			if err != nil {
 				n.log().Warnw("invoice reminder email failed", "organization", org, zap.Error(err))
+			}
+		}
+	})
+}
+
+// ── Suppression des données après une longue suspension ────────────────
+
+// KindPurge : un e-mail par organisation et par étape (le module billing la retient aussi).
+const KindPurge = "billing.purge"
+
+// Étapes (billing/domain) : 1 à 3 avertissements, 4 suppression faite.
+var purgeCopies = map[int]map[i18n.Locale]alertCopy{
+	1: pair(
+		alertCopy{"« {{.Project}} » : vos données seront supprimées le {{.Name}}", "Vos données seront supprimées",
+			"L'organisation « {{.Project}} » est suspendue faute de paiement. Sans paiement d'ici le {{.Name}}, ses conteneurs et leurs disques, ses bases de données et ses sites seront supprimés. Rechargez dès maintenant : tout redémarre tout seul.",
+			"Recharger"},
+		alertCopy{"\"{{.Project}}\": your data will be deleted on {{.Name}}", "Your data will be deleted",
+			"Organization \"{{.Project}}\" is suspended for lack of payment. Without payment by {{.Name}}, its containers and their disks, its databases and its sites will be deleted. Top up now: everything restarts by itself.",
+			"Top up"}),
+	2: pair(
+		alertCopy{"Une semaine avant la suppression des données de « {{.Project}} »", "Plus qu'une semaine",
+			"Les conteneurs et leurs disques, les bases de données et les sites de l'organisation « {{.Project}} » seront supprimés le {{.Name}}. Rechargez pour les garder : tout redémarre tout seul.",
+			"Recharger"},
+		alertCopy{"One week before the data of \"{{.Project}}\" is deleted", "One week left",
+			"The containers and their disks, the databases and the sites of organization \"{{.Project}}\" will be deleted on {{.Name}}. Top up to keep them: everything restarts by itself.",
+			"Top up"}),
+	3: pair(
+		alertCopy{"Dernier avertissement : données de « {{.Project}} » supprimées le {{.Name}}", "Dernier avertissement",
+			"Sans paiement, les conteneurs et leurs disques, les bases de données et les sites de l'organisation « {{.Project}} » seront supprimés le {{.Name}}. Cette suppression est définitive.",
+			"Recharger"},
+		alertCopy{"Last warning: data of \"{{.Project}}\" deleted on {{.Name}}", "Last warning",
+			"Without payment, the containers and their disks, the databases and the sites of organization \"{{.Project}}\" will be deleted on {{.Name}}. This deletion is permanent.",
+			"Top up"}),
+	4: pair(
+		alertCopy{"Données de « {{.Project}} » supprimées", "Vos données ont été supprimées",
+			"L'organisation « {{.Project}} » est restée suspendue : ses conteneurs, ses bases de données et ses sites ont été supprimés le {{.Name}}. L'organisation, ses projets et ses factures restent ; une copie de chaque base est gardée quelque temps : écrivez au support pour la récupérer.",
+			"Voir la facturation"},
+		alertCopy{"Data of \"{{.Project}}\" deleted", "Your data was deleted",
+			"Organization \"{{.Project}}\" stayed suspended: its containers, databases and sites were deleted on {{.Name}}. The organization, its projects and its invoices remain; a copy of each database is kept for a while: write to support to get it back.",
+			"View billing"}),
+}
+
+// PurgeNotice : avertissement avant la suppression des données (stage 1 à
+// 3), ou suppression faite (4). purgeAt : date de la suppression.
+func (n *Notifier) PurgeNotice(ctx context.Context, org uuid.UUID, stage int, purgeAt time.Time) {
+	if n == nil {
+		return
+	}
+	copies, ok := purgeCopies[stage]
+	if !ok {
+		return
+	}
+	date := purgeAt.UTC().Format("2006-01-02")
+	n.run(ctx, func(ctx context.Context) {
+		if n.Mail == nil || n.Store == nil {
+			return
+		}
+		subject := uuid.NewSHA1(org, []byte(fmt.Sprintf("purge-%d-%s", stage, date)))
+		if claimed, err := n.Store.Claim(ctx, subject, KindPurge, BalanceEvery); err != nil || !claimed {
+			return
+		}
+		recipients, err := n.Store.OrgRecipients(ctx, org)
+		if err != nil {
+			n.log().Warnw("purge notice recipients lookup failed", "organization", org, zap.Error(err))
+			return
+		}
+		name, err := n.Store.OrgName(ctx, org)
+		if err != nil {
+			return
+		}
+		link := strings.TrimRight(n.ConsoleURL, "/") + pageBilling
+		for _, r := range recipients {
+			msg, err := renderWith(ctx, copies, r, name, date, link, orgOutro)
+			if err == nil {
+				err = n.Mail.Send(ctx, msg)
+			}
+			if err != nil {
+				n.log().Warnw("purge notice email failed", "organization", org, zap.Error(err))
 			}
 		}
 	})

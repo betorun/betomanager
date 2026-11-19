@@ -70,6 +70,10 @@ type Catalog struct {
 	PostpaidTermsDays    int
 	PostpaidReminderDays int
 	PostpaidSuspendDays  int
+	// PurgeDays : jours de suspension après lesquels les données de
+	// l'organisation (conteneurs et disques, bases, sites) sont supprimées,
+	// après une copie finale des bases (0 : jamais).
+	PurgeDays int
 	// Domaines revendus : prix = prix du registraire (en euros) × EURRate,
 	// plus la marge (points de base), arrondi au palier supérieur.
 	DomainMarginBP int

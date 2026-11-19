@@ -161,14 +161,30 @@ Pour les entreprises, activé par l'équipe (`PUT /admin/billing/organizations/:
 
 Le wallet (`GET …/billing/wallet`) porte alors `postpaid` : plafond, échéance, dette, disponible, factures à payer.
 
+## Organisation suspendue : sites et suppression des données (migration 000041)
+
+**Sites** : vue `edge_suspended_projects` (projets des organisations facturées et suspendues, rien d'autre). `static-edge` la lit avec son rôle en lecture seule (`GRANT SELECT … edge_suspended_projects TO edge_ro`) et sert une page neutre « Site temporairement indisponible » (503, `Retry-After: 3600`, `noindex`). Le cache de l'edge (TTL court) retarde au plus d'autant la bascule.
+
+**Suppression** (`service/purge.go`, boucle horaire `RunPurge` dans le **processus API**, une seule instance) :
+- `purge_days` de la grille (30 ; 0 : jamais ; minimum 14) ;
+- étapes dans `billing_accounts.purge_stage` : 1 à J+7, 2 à J-7, 3 à J-2 (un e-mail par étape, celui de l'étape atteinte seulement), 4 suppression lancée ; `purge_noticed_at` : la suppression attend au moins deux jours après le dernier avertissement envoyé (avertissements manqués, délai raccourci) ;
+- `orgPurger` (`router/billing_purge_wiring.go`) : conteneurs d'abord (`WorkloadService.Delete`, disques compris), puis chaque base par `databases.Service.ArchiveAndDelete`, puis les sites (`DeleteSite`). Un échec : reprise au passage suivant, pas de `data_purged_at` ni d'e-mail « supprimé » ;
+- **copie finale des bases** : Job pg_dump (`CNPG.Dump`) envoyé à l'API par URL signée, rangé sous `database-archives/<org>/<base>/…pgc`, ligne dans `database_archives` (expire `purge_days` jours après). Sans copie arrivée et enregistrée, la base n'est pas supprimée. Limite de taille : celle des imports (`MaxDumpBytes`). Copies expirées effacées chaque jour ;
+- **restauration par l'équipe** : retrouver la ligne (`SELECT * FROM database_archives WHERE organization_id = …`), télécharger l'objet, `pg_restore` dans une nouvelle base (ou l'importer depuis la console) ;
+- **reprise** (`SetSuspended(nil)`) : `purge_stage`, `purge_noticed_at`, `data_purged_at` remis à zéro.
+
+Gardé : organisation, projets, grand livre, factures, domaines achetés.
+
 ## Tests
 
 - `domain/` : tailles, prix, plafond, offre gratuite, projection, validation d'une grille.
 - `service/` : relevé idempotent, plus grande taille de l'heure, nouvelle version de grille, monnaie inconnue.
 - `xykpay/` : signature des webhooks, client (faux serveur).
 - `pdf/` : rendu d'une facture et d'un reçu (`PDF_OUT=… go test ./internal/modules/billing/pdf/` écrit l'exemple).
-- `repository/` (vrai Postgres, `IAM_E2E=1` après `bash scripts/iam_e2e_db.sh`) : relevé et estimation de bout en bout, versions de grille ; grand livre équilibré et immuable ; activation, crédit d'essai, débit (crédits d'abord, idempotent), recharge par webhook signé (créditée une fois), ajustement, expiration, historique, administration ; grâce puis suspension, reprise après recharge (seuls les conteneurs arrêtés par elle), crédit d'essai une fois par numéro, budget avec arrêt puis relance, facture et reçu (numéros, TVA, PDF, immuables) ; plans (offre publique, plan payant sans facturation refusé, limites appliquées à tous les projets, abonnement mesuré, descente refusée sans rien appliquer, nouveau projet aligné, plan modifié appliqué aussitôt avec les projets en retard signalés, exception respectée puis retirée) ; postpayé (dette sous le plafond, facture à échéance, suspension après le retard, virement qui solde et relance).
+- `repository/` (vrai Postgres, `IAM_E2E=1` après `bash scripts/iam_e2e_db.sh`) : relevé et estimation de bout en bout, versions de grille ; grand livre équilibré et immuable ; activation, crédit d'essai, débit (crédits d'abord, idempotent), recharge par webhook signé (créditée une fois), ajustement, expiration, historique, administration ; grâce puis suspension, reprise après recharge (seuls les conteneurs arrêtés par elle), crédit d'essai une fois par numéro, budget avec arrêt puis relance, facture et reçu (numéros, TVA, PDF, immuables) ; plans (offre publique, plan payant sans facturation refusé, limites appliquées à tous les projets, abonnement mesuré, descente refusée sans rien appliquer, nouveau projet aligné, plan modifié appliqué aussitôt avec les projets en retard signalés, exception respectée puis retirée) ; postpayé (dette sous le plafond, facture à échéance, suspension après le retard, virement qui solde et relance) ; suppression après suspension (vue de l'edge, avertissements une fois chacun, échec repris, copies gardées `purge_days` jours, jamais sans dernier avertissement depuis deux jours, reprise qui remet à zéro).
+- `databases/archive_test.go` : copie finale puis suppression ; copie impossible ou non enregistrée : la base reste ; copies expirées effacées.
+- `internal/edge/server_test.go` : site suspendu → 503 neutre.
 
 ## Suite
 
-Phase 5 (suite) : cartes (Stripe, plus tard), revente de domaines (OVH : vérification de disponibilité validée sur le vrai compte ; achat à coder). Restent aussi : la page « compte suspendu » des sites statiques (serveur des sites à trancher), la suppression des données après 30 jours de suspension (aujourd'hui décision de l'équipe, pas automatique).
+Phase 5 (suite) : cartes (Stripe, plus tard), revente de domaines (OVH : vérification de disponibilité validée sur le vrai compte ; achat à coder).

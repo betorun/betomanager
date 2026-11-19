@@ -51,3 +51,25 @@ func TestPlanMeteredLikeAResource(t *testing.T) {
 	assert.Equal(t, int64(15000), e.Total)
 	assert.Equal(t, "Abonnement", c.InvoiceLines(totals)[0].Label)
 }
+
+func TestPurgeStage(t *testing.T) {
+	s := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+	for _, c := range []struct {
+		after time.Duration
+		want  int
+	}{
+		{0, PurgeStageNone}, {7*day - time.Second, PurgeStageNone}, {7 * day, PurgeStageFirst},
+		{23 * day, PurgeStageWeek}, {28 * day, PurgeStageLast}, {30 * day, PurgeStageDue},
+	} {
+		if got := PurgeStage(s, 30, s.Add(c.after)); got != c.want {
+			t.Errorf("after %v: stage %d, want %d", c.after, got, c.want)
+		}
+	}
+	if PurgeStage(s, 0, s.AddDate(1, 0, 0)) != PurgeStageNone {
+		t.Error("purge_days 0 : jamais")
+	}
+	if _, err := CatalogFromUpdate(CatalogUpdate{Currency: "XAF", Sizes: []SizeView{{ID: "s", CPUMilli: 1, MemMi: 1, Monthly: 1}}, PurgeDays: 5}); err == nil {
+		t.Error("purge_days sous le minimum accepté")
+	}
+}
