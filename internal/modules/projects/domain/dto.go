@@ -2,12 +2,19 @@ package domain
 
 import "time"
 
+// Limites par défaut d'un projet (identiques aux défauts de la table
+// projects), fixées par la plateforme.
+const (
+	DefaultProjectCPU    = "2000m"
+	DefaultProjectMemory = "4Gi"
+)
+
 type CreateProjectRequest struct {
 	Name        string `json:"name" binding:"required,min=3,max=30"`
 	Description string `json:"description"`
-
-	CpuLimit    string `json:"cpu_limit"`
-	MemoryLimit string `json:"memory_limit"`
+	// Pas de limites ici : elles sont fixées par la plateforme (défauts du
+	// projet), jamais par le client. Un champ cpu_limit ou memory_limit
+	// envoyé est ignoré.
 }
 
 type ProjectResponse struct {
