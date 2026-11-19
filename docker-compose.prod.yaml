@@ -103,6 +103,9 @@ x-app-env: &app-env
   KUBEMANAGER_IAM_API_KEY_PEPPER: ${IAM_API_KEY_PEPPER:?}
   KUBEMANAGER_IAM_STS_KEY_ENCRYPTION_KEY: ${IAM_STS_KEY_ENCRYPTION_KEY:?}
   KUBEMANAGER_IAM_PLATFORM_ADMINS: ${PLATFORM_ADMINS:?}
+  # Double authentification : le step-up demande acr=gold au flux
+  # betorun-browser créé par keycloak-bootstrap (KEYCLOAK_MFA_ENABLED).
+  KUBEMANAGER_IAM_MFA_ACR_VALUES: gold
   KUBEMANAGER_MAIL_ENABLED: "true"
   KUBEMANAGER_MAIL_SMTP_HOST: ${SMTP_HOST:?}
   KUBEMANAGER_MAIL_SMTP_PORT: ${SMTP_PORT:?}
@@ -141,6 +144,24 @@ x-app-env: &app-env
   KUBEMANAGER_KUBERNETES_INGRESS_TARGET: ${SERVER2_IP:?}
   KUBEMANAGER_KUBERNETES_CLUSTER_ID: ${CLUSTER_ID:-}
   KUBEMANAGER_VPS_VPS_IP: ${SERVER2_IP:?}
+  # Application GitHub (builds depuis un dépôt) : tout vide, désactivée ;
+  # sinon complète, clé privée dans <secrets>/github (deploy/README.txt, 5 bis).
+  KUBEMANAGER_GITHUB_APP_APP_ID: ${GITHUB_APP_ID:-}
+  KUBEMANAGER_GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+  KUBEMANAGER_GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
+  KUBEMANAGER_GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
+  KUBEMANAGER_GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
+  KUBEMANAGER_GITHUB_APP_PRIVATE_KEY_FILE: ${GITHUB_APP_PRIVATE_KEY_FILE:-}
+  # Sauvegardes continues des bases des clients (plugin Barman Cloud) : un
+  # stockage S3 joignable DEPUIS LE CLUSTER. Désactivées si vides.
+  KUBEMANAGER_DATABASES_BACKUP_ENDPOINT: ${DATABASES_BACKUP_ENDPOINT:-}
+  KUBEMANAGER_DATABASES_BACKUP_BUCKET: ${DATABASES_BACKUP_BUCKET:-}
+  KUBEMANAGER_DATABASES_BACKUP_REGION: ${DATABASES_BACKUP_REGION:-}
+  KUBEMANAGER_DATABASES_BACKUP_ACCESS_KEY: ${DATABASES_BACKUP_ACCESS_KEY:-}
+  KUBEMANAGER_DATABASES_BACKUP_SECRET_KEY: ${DATABASES_BACKUP_SECRET_KEY:-}
+  KUBEMANAGER_DATABASES_BACKUP_RETENTION: ${DATABASES_BACKUP_RETENTION:-7d}
+  # Copilot : désactivé tant qu'aucun fournisseur n'est choisi (ADR 0008).
+  KUBEMANAGER_LLM_ENABLED: "false"
   # Facultatifs : Swagger désactivé et fournisseurs absents si vides.
   KUBEMANAGER_SWAGGER_USER: ${SWAGGER_USER:-}
   KUBEMANAGER_SWAGGER_PASSWORD: ${SWAGGER_PASSWORD:-}
@@ -153,6 +174,7 @@ x-app-volumes: &app-volumes
   - ${BETORUN_SECRETS_DIR:?}/registry/token.crt:/etc/betorun/registry/token.crt:ro
   - ${BETORUN_SECRETS_DIR:?}/registry/token.key:/etc/betorun/registry/token.key:ro
   - ${BETORUN_SECRETS_DIR:?}/kubeconfig:/etc/betorun/kubeconfig:ro
+  - ${BETORUN_SECRETS_DIR:?}/github:/etc/betorun/github:ro
 
 services:
   k8sdb:
@@ -324,6 +346,8 @@ services:
       WEB_FRONTEND_ALT_BASE_URL: https://${CONSOLE_HOST:?}
       # Les emails partent du backend (docs/architecture/auth.md), jamais de Keycloak.
       KEYCLOAK_SMTP_ENABLED: "false"
+      # Flux betorun-browser : mot de passe (silver), code TOTP à la demande (gold).
+      KEYCLOAK_MFA_ENABLED: "true"
       OPERATOR_UID: ${OPERATOR_UID:-0}
     volumes:
       - ./docker/keycloak/bootstrap.sh:/bootstrap/bootstrap.sh:ro
