@@ -57,6 +57,18 @@ type CreateWorkloadRequest struct {
 	// TLS ingress via cert-manager.
 	TLSEnabled bool `json:"tls_enabled" default:"false"`
 
+	// NoPublicURL : pas d'adresse publique automatique (<nom>-<projet>.<ip>.sslip.io) ;
+	// le conteneur reste joignable par ses domaines vérifiés et en interne.
+	NoPublicURL bool `json:"no_public_url,omitempty" description:"Sans adresse publique automatique (sslip.io) : seulement les domaines vérifiés et l'adresse interne"`
+
+	// ImageFrom : conteneur du projet dont ce conteneur reprend chaque nouvelle
+	// image (worker qui suit l'API : même code, autre commande).
+	ImageFrom string `json:"image_from,omitempty" description:"Nom d'un conteneur du projet : chaque nouvelle image de celui-ci est déployée ici aussi"`
+
+	// HealthCommand : sonde d'un worker (pas de port à interroger) : commande
+	// lancée dans le conteneur, code 0 = en bonne santé ; sinon il redémarre.
+	HealthCommand []string `json:"health_command,omitempty" description:"Worker : commande de santé lancée dans le conteneur (code 0 = sain), ex. [\"cat\",\"/tmp/healthy\"]"`
+
 	// Probes paths (par défaut "/" sur targetPort).
 	HealthPath    string `json:"health_path" default:"/"`
 	ReadinessPath string `json:"readiness_path" default:"/"`
@@ -111,6 +123,11 @@ type UpdateWorkloadRequest struct {
 	CPULimit    string `json:"cpu_limit" description:"Limite CPU (ex: 500m)"`
 	MemoryLimit string `json:"memory_limit" description:"Limite mémoire (ex: 512Mi)"`
 	TLSEnabled  *bool  `json:"tls_enabled" description:"Certificat HTTPS"`
+	NoPublicURL *bool  `json:"no_public_url" description:"Sans adresse publique automatique (sslip.io)"`
+	// ImageFrom : chaîne vide = ne plus suivre.
+	ImageFrom *string `json:"image_from" description:"Conteneur dont suivre les nouvelles images (vide : ne plus suivre)"`
+	// HealthCommand : liste vide = plus de sonde (worker seulement).
+	HealthCommand *[]string `json:"health_command" description:"Worker : commande de santé (liste vide : aucune)"`
 	// Processus : absents = inchangés ; liste vide = commande de l'image.
 	Command  *[]string `json:"command" description:"Commande de démarrage (liste vide : celle de l'image)"`
 	Args     *[]string `json:"args" description:"Arguments (liste vide : ceux de l'image)"`

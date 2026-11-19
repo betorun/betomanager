@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/databases/domain"
@@ -34,6 +36,17 @@ type Repository interface {
 // MaxPerProject : bases par projet.
 const MaxPerProject = 5
 
+// AttachmentStore : branchements enregistrés (absent : non tracés).
+type AttachmentStore interface {
+	SaveAttachment(ctx context.Context, a *domain.Attachment) error
+	ListAttachments(ctx context.Context, databaseID uuid.UUID) ([]domain.Attachment, error)
+}
+
+// WorkloadNamer : nom d'un conteneur (facultatif, pour tracer un branchement).
+type WorkloadNamer interface {
+	NameOf(ctx context.Context, workloadID uuid.UUID) (string, error)
+}
+
 // Workloads : conteneurs (projet d'appartenance, secret posé avec redéploiement).
 type Workloads interface {
 	ProjectOf(ctx context.Context, workloadID uuid.UUID) (uuid.UUID, error)
@@ -48,7 +61,9 @@ type Service struct {
 	Workloads Workloads
 	// Imports : import de dumps (nil : indisponible).
 	Imports *ImportConfig
-	Logger  *zap.SugaredLogger
+	// Attachments : branchements tracés (nil : la carte n'en montre aucun).
+	Attachments AttachmentStore
+	Logger      *zap.SugaredLogger
 }
 
 func (s *Service) available() error {
@@ -180,9 +195,29 @@ func (s *Service) List(ctx context.Context, projectID uuid.UUID) ([]domain.Datab
 		return nil, err
 	}
 	for _, d := range rows {
-		out = append(out, s.live(ctx, d, ns))
+		v := s.live(ctx, d, ns)
+		s.enrich(ctx, &v, d.ID)
+		out = append(out, v)
 	}
 	return out, nil
+}
+
+// enrich : branchements et dernier import (au mieux : une lecture en échec
+// laisse la carte sans ces informations).
+func (s *Service) enrich(ctx context.Context, v *domain.DatabaseView, id uuid.UUID) {
+	v.Attachments = []domain.Attachment{}
+	if s.Attachments != nil {
+		if list, err := s.Attachments.ListAttachments(ctx, id); err == nil {
+			v.Attachments = list
+		} else {
+			s.warn("database attachments unavailable", "database", id, "error", err)
+		}
+	}
+	if s.Imports.ready() {
+		if list, err := s.Imports.Store.ListImports(ctx, id, 1); err == nil && len(list) > 0 {
+			v.LastImport = &list[0]
+		}
+	}
 }
 
 // Get : une base, avec son état en direct.
@@ -196,6 +231,7 @@ func (s *Service) Get(ctx context.Context, projectID, id uuid.UUID) (*domain.Dat
 		return nil, err
 	}
 	v := s.live(ctx, *d, ns)
+	s.enrich(ctx, &v, d.ID)
 	return &v, nil
 }
 
@@ -294,6 +330,7 @@ func (s *Service) Attach(ctx context.Context, projectID, id, workloadID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
+	s.recordAttachment(ctx, id, workloadID, variable)
 	return &domain.AttachResponse{WorkloadID: workloadID.String(), Variable: variable, Redeploy: redeploy}, nil
 }
 
@@ -372,4 +409,51 @@ func (r *GormRepository) SetStatus(ctx context.Context, id uuid.UUID, status str
 
 func (r *GormRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.DB.WithContext(ctx).Where("id = ?", id).Delete(&domain.Database{}).Error
+}
+
+// recordAttachment : trace le branchement (au mieux : la variable est posée,
+// une trace manquante ne doit pas faire échouer l'opération).
+func (s *Service) recordAttachment(ctx context.Context, databaseID, workloadID uuid.UUID, variable string) {
+	if s.Attachments == nil {
+		return
+	}
+	name := workloadID.String()
+	if n, ok := s.Workloads.(WorkloadNamer); ok {
+		if got, err := n.NameOf(ctx, workloadID); err == nil && got != "" {
+			name = got
+		}
+	}
+	a := &domain.Attachment{DatabaseID: databaseID, WorkloadID: workloadID, WorkloadName: name, Variable: variable, CreatedAt: time.Now()}
+	if err := s.Attachments.SaveAttachment(ctx, a); err != nil {
+		s.warn("database attachment not recorded", "database", databaseID, "workload", workloadID, "error", err)
+	}
+}
+
+func (r *GormRepository) SaveAttachment(ctx context.Context, a *domain.Attachment) error {
+	return r.DB.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(a).Error
+}
+
+// ListAttachments : branchements vers des conteneurs toujours présents.
+func (r *GormRepository) ListAttachments(ctx context.Context, databaseID uuid.UUID) ([]domain.Attachment, error) {
+	out := []domain.Attachment{}
+	err := r.DB.WithContext(ctx).Table("database_attachments AS a").Select("a.*").
+		Joins("JOIN workloads w ON w.id = a.workload_id").
+		Where("a.database_id = ? AND w.status NOT IN ?", databaseID, []string{"DELETED", "DELETING"}).
+		Order("a.workload_name, a.variable").Scan(&out).Error
+	return out, err
+}
+
+// StorageBytes : disques demandés par les bases du projet (vue d'ensemble).
+func (r *GormRepository) StorageBytes(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	var sizes []string
+	if err := r.DB.WithContext(ctx).Model(&domain.Database{}).Where("project_id = ?", projectID).Pluck("storage_size", &sizes).Error; err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, sz := range sizes {
+		if q, err := resource.ParseQuantity(sz); err == nil {
+			total += q.Value()
+		}
+	}
+	return total, nil
 }

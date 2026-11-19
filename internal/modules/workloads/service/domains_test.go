@@ -172,6 +172,12 @@ func TestVerifyDomain_PointingIsNotProof(t *testing.T) {
 	v, err = s.VerifyDomain(context.Background(), id, d.ID)
 	require.NoError(t, err)
 	assert.False(t, v.Verified)
+	require.NotNil(t, v.Check, "diagnostic après vérification")
+	assert.Equal(t, []string{"betorun-verify=autre"}, v.Check.TXTFound)
+	assert.False(t, v.Check.ProofFound)
+	assert.Equal(t, "_betorun-challenge.www.exemple.sn", v.Check.Name)
+	assert.Equal(t, DefaultDomainDNSServers, v.Check.Resolver)
+	assert.True(t, v.HTTPS)
 
 	dns.txt["_betorun-challenge.www.exemple.sn"] = []string{store.rows[d.ID].Token}
 	v, err = s.VerifyDomain(context.Background(), id, d.ID)

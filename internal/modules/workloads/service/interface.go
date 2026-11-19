@@ -6,12 +6,15 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 )
 
 type IWorkloadService interface {
 	//  CRUD
 	Deploy(ctx context.Context, req *WorkloadServiceRequest) (*domain.Workload, error)
+	// Duplicate : copie (image, réglages, variables et secrets) sous un autre nom.
+	Duplicate(ctx context.Context, source uuid.UUID, name string, caller iam.Principal) (*domain.Workload, error)
 	Get(ctx context.Context, id uuid.UUID) (*domain.Workload, error)
 	List(ctx context.Context, projectID uuid.UUID) ([]domain.Workload, error)
 	Update(ctx context.Context, id string, req domain.UpdateWorkloadRequest) error

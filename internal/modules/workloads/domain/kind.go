@@ -110,7 +110,7 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 		return err
 	}
 	in.Kind = kind
-	if !ValidCommand(in.Command) || !ValidCommand(in.Args) {
+	if !ValidCommand(in.Command) || !ValidCommand(in.Args) || !ValidCommand(in.HealthCommand) {
 		return ErrInvalidCommand
 	}
 	if !ValidStartupTimeout(in.StartupTimeoutSeconds) {
@@ -125,8 +125,11 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 			return ErrNotCron
 		}
 	case KindWorker, KindCron:
-		in.TargetPort, in.TLSEnabled = 0, false
+		in.TargetPort, in.TLSEnabled, in.NoPublicURL = 0, false, false
 		in.HealthPath, in.ReadinessPath = "", ""
+	}
+	if kind != KindWorker {
+		in.HealthCommand = nil // web : sondes HTTP ; cron : une exécution se juge à sa fin
 	}
 	if kind == KindCron {
 		in.Schedule = strings.TrimSpace(in.Schedule)

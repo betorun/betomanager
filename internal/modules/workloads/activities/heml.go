@@ -66,6 +66,8 @@ type ProcessSpec struct {
 	// Suspend : cron arrêté (statut STOPPED) ; rendu à chaque déploiement
 	// pour qu'une mise à jour ne le réactive pas.
 	Suspend bool `json:",omitempty"`
+	// HealthCommand : sonde par commande d'un worker (vide : aucune sonde).
+	HealthCommand []string `json:",omitempty"`
 }
 
 // IsWeb : conteneur web (y compris sorte absente des entrées antérieures).
@@ -454,6 +456,17 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 	}
 	if !web {
 		vals["customDomains"] = []any{}
+	}
+	if proc.Kind == "worker" && len(proc.HealthCommand) > 0 {
+		// Worker : pas de port, la sonde lance une commande. Démarrage toléré
+		// comme pour un web (startup), puis vivacité ; pas de readiness (aucun
+		// Service ne lui envoie de trafic).
+		exec := map[string]any{"command": proc.HealthCommand}
+		probes := vals["probes"].(map[string]any)
+		probes["startup"] = map[string]any{"enabled": true, "exec": exec, "periodSeconds": startupProbePeriodSeconds,
+			"timeoutSeconds": livenessProbeTimeoutSeconds, "failureThreshold": startupFailureThreshold(input.StartupTimeoutSeconds)}
+		probes["liveness"] = map[string]any{"enabled": true, "exec": exec, "periodSeconds": livenessProbePeriodSeconds,
+			"timeoutSeconds": livenessProbeTimeoutSeconds, "failureThreshold": livenessProbeFailureThreshold}
 	}
 	if proc.Kind == "cron" {
 		maxDuration := proc.MaxDurationSeconds

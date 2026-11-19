@@ -29,14 +29,14 @@ import (
 //   - supprimer un rôle retire aussi tous ses bindings (un nom réutilisé ne
 //     ressuscite aucun droit).
 
-var customRoleNameRe = regexp.MustCompile(`^(organizations|projects)/([0-9a-f-]{36})/roles/([A-Za-z0-9_.]{3,64})$`)
-var roleIDRe = regexp.MustCompile(`^[A-Za-z0-9_.]{3,64}$`)
+var customRoleNameRe = regexp.MustCompile(`^(organizations|projects)/([0-9a-f-]{36})/roles/([A-Za-z0-9_.-]{3,64})$`)
+var roleIDRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,64}$`)
 
 // MaxCustomRolePermissions : borne raisonnable d'un rôle.
 const MaxCustomRolePermissions = 300
 
 var (
-	ErrInvalidRoleID             = errors.New("role_id must be 3-64 chars: letters, digits, '_' or '.'")
+	ErrInvalidRoleID             = errors.New("role_id must be 3-64 chars: letters, digits, '-', '_' or '.'")
 	ErrRoleNotFound              = errors.New("custom role not found")
 	ErrRoleIDTaken               = errors.New("a custom role with this role_id already exists here")
 	ErrInvalidRolePermissions    = errors.New("invalid permissions for a custom role")

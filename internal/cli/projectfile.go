@@ -33,17 +33,24 @@ var envRefRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 var invalidNameChars = regexp.MustCompile(`[^a-z0-9-]+`)
 
 type projectFile struct {
-	Name           string     `yaml:"name"`
-	Project        string     `yaml:"project,omitempty"`
-	Image          string     `yaml:"image,omitempty"`
-	Build          *fileBuild `yaml:"build,omitempty"`
-	Git            *fileGit   `yaml:"git,omitempty"`
-	Port           int        `yaml:"port,omitempty"`
-	Replicas       int        `yaml:"replicas,omitempty"`
-	CPU            string     `yaml:"cpu,omitempty"`
-	Memory         string     `yaml:"memory,omitempty"`
-	TLS            *bool      `yaml:"tls,omitempty"`
-	ServiceAccount string     `yaml:"service_account,omitempty"`
+	Name     string     `yaml:"name"`
+	Project  string     `yaml:"project,omitempty"`
+	Image    string     `yaml:"image,omitempty"`
+	Build    *fileBuild `yaml:"build,omitempty"`
+	Git      *fileGit   `yaml:"git,omitempty"`
+	Port     int        `yaml:"port,omitempty"`
+	Replicas int        `yaml:"replicas,omitempty"`
+	CPU      string     `yaml:"cpu,omitempty"`
+	Memory   string     `yaml:"memory,omitempty"`
+	TLS      *bool      `yaml:"tls,omitempty"`
+	// PublicURL : false = pas d'adresse sslip.io (domaines vérifiés seulement).
+	PublicURL *bool `yaml:"public_url,omitempty"`
+	// ImageFrom : conteneur du projet dont reprendre chaque nouvelle image
+	// (ex. worker de l'API : pas de build propre).
+	ImageFrom string `yaml:"image_from,omitempty"`
+	// HealthCommand : sonde d'un worker (code 0 = sain), ex. ["cat", "/tmp/ok"].
+	HealthCommand  []string `yaml:"health_command,omitempty"`
+	ServiceAccount string   `yaml:"service_account,omitempty"`
 	// Kind : web (défaut), worker ou cron. Command / Args remplacent
 	// l'ENTRYPOINT / le CMD de l'image ; Schedule, TimeZone et MaxDuration
 	// (ex. 30m) ne valent que pour un cron.
@@ -105,6 +112,10 @@ func loadProjectFile(path string) (*projectFile, error) {
 		origins++
 	}
 	if pf.Git != nil {
+		origins++
+	}
+	// image_from seul : l'image actuelle de la source tient lieu d'origine.
+	if origins == 0 && pf.ImageFrom != "" {
 		origins++
 	}
 	if origins != 1 {
@@ -179,6 +190,17 @@ func newDeploy() *cobra.Command {
 				return err
 			}
 			image := pf.Image
+			// Suiveur sans build ni image : l'image actuelle de la source.
+			if image == "" && pf.ImageFrom != "" && pf.source(filepath.Dir(file)).empty() {
+				for i := range workloads {
+					if workloads[i].Name == pf.ImageFrom {
+						image = workloads[i].Image
+					}
+				}
+				if image == "" {
+					return errors.New(i18n.T("deploy.image_from_missing", pf.ImageFrom))
+				}
+			}
 			if src := pf.source(filepath.Dir(file)); !src.empty() {
 				built, err := runBuild(cmd, cl, project, pf.Name, src)
 				if err != nil {
@@ -193,6 +215,16 @@ func newDeploy() *cobra.Command {
 				id := workloads[i].ID.String()
 				req := api.UpdateWorkloadRequest{Image: image, EnvVars: pf.Env, SecretData: secrets, Replicas: pf.Replicas, TargetPort: pf.Port,
 					CPULimit: pf.CPU, MemoryLimit: pf.Memory, TLSEnabled: pf.TLS, Schedule: pf.Schedule}
+				if pf.PublicURL != nil {
+					noPublic := !*pf.PublicURL
+					req.NoPublicURL = &noPublic
+				}
+				imageFrom := pf.ImageFrom // le fichier fait foi : absent = ne plus suivre
+				req.ImageFrom = &imageFrom
+				if pf.Kind == "worker" {
+					health := append([]string{}, pf.HealthCommand...)
+					req.HealthCommand = &health
+				}
 				// Le fichier fait foi : sans commande, celle de l'image.
 				command, cmdArgs := append([]string{}, pf.Command...), append([]string{}, pf.Args...)
 				req.Command, req.Args = &command, &cmdArgs
@@ -219,6 +251,11 @@ func newDeploy() *cobra.Command {
 			if pf.TLS != nil {
 				req.TLSEnabled = *pf.TLS
 			}
+			if pf.PublicURL != nil {
+				req.NoPublicURL = !*pf.PublicURL
+			}
+			req.ImageFrom = pf.ImageFrom
+			req.HealthCommand = pf.HealthCommand
 			printer(cmd).Title(i18n.T("wl.deploy.sending", pf.Name, image), "")
 			res, err := cl.CreateWorkload(ctx, req)
 			if err != nil {

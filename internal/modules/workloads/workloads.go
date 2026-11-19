@@ -33,6 +33,7 @@ type IWorkloadController interface {
 	StopWorkload(c *gin.Context, in *WorkloadIDRequest) error
 	StartWorkload(c *gin.Context, in *WorkloadIDRequest) error
 	RestartWorkload(c *gin.Context, in *WorkloadIDRequest) error
+	DuplicateWorkload(c *gin.Context, in *DuplicateWorkloadRequest) (*domain.WorkloadResponse, error)
 	RollbackWorkload(c *gin.Context, in *RollbackRequest) error
 
 	// Observabilité
@@ -116,6 +117,27 @@ func (h *WorkloadController) CreateWorkload(c *gin.Context, in *domain.CreateWor
 		Namespace:  workload.Namespace,
 		Message:    "Deployment initiated successfully",
 	}, nil
+}
+
+// DuplicateWorkloadRequest : copie d'un conteneur sous un autre nom.
+type DuplicateWorkloadRequest struct {
+	ID   string `path:"id" binding:"required" description:"ID du conteneur à copier"`
+	Name string `json:"name" binding:"required" description:"Nom de la copie"`
+}
+
+// DuplicateWorkload : même image, réglages, variables et secrets (copiés côté serveur).
+func (h *WorkloadController) DuplicateWorkload(c *gin.Context, in *DuplicateWorkloadRequest) (*domain.WorkloadResponse, error) {
+	id, err := parseWorkload(in.ID)
+	if err != nil {
+		return nil, err
+	}
+	caller, _ := security.PrincipalFromContext(c)
+	workload, err := h.WorkloadService.Duplicate(c.Request.Context(), id, in.Name, caller)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.WorkloadResponse{WorkloadID: workload.ID.String(), Status: workload.Status, Namespace: workload.Namespace,
+		Message: "Deployment initiated successfully"}, nil
 }
 
 func parseWorkload(raw string) (uuid.UUID, error) {

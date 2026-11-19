@@ -61,6 +61,9 @@ var ErrWorkloadIdentityDisabled = errors.New("workload identity is not enabled o
 var ErrWorkloadNameTaken = errors.New("a container with this name already exists in the project")
 
 type WorkloadService struct {
+	// Incidents : lever à la lecture un échec que le cluster dément (nil : la
+	// seule passe du worker s'en charge).
+	Incidents repository.IncidentStore
 	// Identity : nil si l'identité des workloads est désactivée.
 	Identity    *IdentitySettings
 	Distributor temporal.TaskDistributor
@@ -397,7 +400,7 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 	if workload.Spec, err = json.Marshal(spec); err != nil {
 		return nil, none, err
 	}
-	workload.ExternalURL = routeFor(in.Kind, in.Name, pID, in.TLSEnabled).URL
+	workload.ExternalURL = routeFor(in.Kind, in.Name, pID, in.TLSEnabled, in.NoPublicURL).URL
 
 	if err := s.Repo.Create(ctx, workload); err != nil {
 		if errors.Is(err, repository.ErrNameTaken) {
@@ -444,7 +447,19 @@ func positiveQuantity(v string) bool {
 // configuration est repris du workload enregistré : avant, le workflow était
 // relancé avec la seule image, et perdait port, ressources, réplicas, TLS,
 // URL publique et variables d'environnement.
+// Update : modification d'un conteneur ; une nouvelle image est ensuite
+// reprise par les conteneurs qui la suivent (image_from).
 func (s *WorkloadService) Update(ctx context.Context, id string, req domain.UpdateWorkloadRequest) error {
+	if err := s.update(ctx, id, req); err != nil {
+		return err
+	}
+	if req.Image != "" {
+		s.propagateImage(ctx, id, req.Image)
+	}
+	return nil
+}
+
+func (s *WorkloadService) update(ctx context.Context, id string, req domain.UpdateWorkloadRequest) error {
 	wID, err := uuid.Parse(id)
 	if err != nil {
 		return betoerrors.New(betoerrors.CodeNotFound, "workload not found")
@@ -529,7 +544,7 @@ func (s *WorkloadService) Update(ctx context.Context, id string, req domain.Upda
 			return err
 		}
 	}
-	url := routeFor(spec.Kind, current.Name, current.ProjectID, spec.TLSEnabled).URL
+	url := routeFor(spec.Kind, current.Name, current.ProjectID, spec.TLSEnabled, spec.NoPublicURL).URL
 	return s.Repo.UpdateSpec(save, current.ID, current.Image, current.StorageSize, url, raw)
 }
 
@@ -781,16 +796,23 @@ func (s *WorkloadService) applyRuntime(ctx context.Context, w *domain.Workload, 
 	if req.TLSEnabled != nil && *req.TLSEnabled != w.TLSEnabled {
 		w.TLSEnabled, spec.TLSEnabled, changed = *req.TLSEnabled, *req.TLSEnabled, true
 	}
+	if req.NoPublicURL != nil && *req.NoPublicURL != spec.NoPublicURL {
+		spec.NoPublicURL, changed = *req.NoPublicURL, true
+	}
+	if req.ImageFrom != nil && *req.ImageFrom != spec.ImageFrom {
+		// Pas un changement d'exécution : enregistré avec la spec, sans redéploiement propre.
+		spec.ImageFrom = *req.ImageFrom
+	}
 	return changed, nil
 }
 
 // deployInput : entrée du workflow de déploiement, construite de la même
 // façon à la création et à chaque mise à jour.
 func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWorkloadRequest) workflows.DeployWorkloadInput {
-	route := routeFor(spec.Kind, w.Name, w.ProjectID, spec.TLSEnabled)
+	route := routeFor(spec.Kind, w.Name, w.ProjectID, spec.TLSEnabled, spec.NoPublicURL)
 	in := workflows.DeployWorkloadInput{
 		Process: activities.ProcessSpec{
-			Kind: kindOf(w), Command: spec.Command, Args: spec.Args,
+			Kind: kindOf(w), Command: spec.Command, Args: spec.Args, HealthCommand: spec.HealthCommand,
 			Schedule: spec.Schedule, TimeZone: spec.TimeZone, MaxDurationSeconds: spec.MaxDurationSeconds,
 			// Cron arrêté : reste suspendu à chaque déploiement (mise à jour,
 			// variables, retour arrière).
@@ -849,12 +871,17 @@ type route struct {
 // configurée (vps.vps_ip) ; sinon aucune URL publique (avant : hôte
 // « web-xxxxxx..sslip.io » invalide, refusé par Kubernetes).
 // routeFor : adresse publique d'un conteneur web ; aucune pour un worker ou
-// un cron (ni ingress, ni URL).
-func routeFor(kind, name string, projectID uuid.UUID, tls bool) route {
+// un cron (ni ingress, ni URL). noPublic : pas d'adresse sslip.io, mais la
+// classe d'ingress reste connue (domaines vérifiés, politique réseau).
+func routeFor(kind, name string, projectID uuid.UUID, tls, noPublic bool) route {
 	if kind != "" && kind != domain.KindWeb {
 		return route{}
 	}
-	return publicRoute(name, projectID, tls)
+	r := publicRoute(name, projectID, tls)
+	if noPublic {
+		r.Host, r.URL = "", ""
+	}
+	return r
 }
 
 // kindOf : sorte enregistrée (vide : conteneur antérieur, donc web).
@@ -871,7 +898,7 @@ func kindOf(w *domain.Workload) string {
 func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *domain.UpdateWorkloadRequest) error {
 	kind := kindOf(w)
 	if kind != domain.KindWeb {
-		req.TargetPort, req.TLSEnabled = 0, nil
+		req.TargetPort, req.TLSEnabled, req.NoPublicURL = 0, nil, nil
 	}
 	if req.StartupTimeoutSeconds != nil {
 		if !domain.ValidStartupTimeout(*req.StartupTimeoutSeconds) {
@@ -884,6 +911,12 @@ func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *d
 			return domain.ErrInvalidCommand
 		}
 		spec.Command = *req.Command
+	}
+	if req.HealthCommand != nil && kind == domain.KindWorker {
+		if !domain.ValidCommand(*req.HealthCommand) {
+			return domain.ErrInvalidCommand
+		}
+		spec.HealthCommand = *req.HealthCommand
 	}
 	if req.Args != nil {
 		if !domain.ValidCommand(*req.Args) {

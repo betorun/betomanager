@@ -463,3 +463,46 @@ func TestImageVersion(t *testing.T) {
 		}
 	}
 }
+
+type fakeAttachments struct{ saved []domain.Attachment }
+
+func (f *fakeAttachments) SaveAttachment(_ context.Context, a *domain.Attachment) error {
+	f.saved = append(f.saved, *a)
+	return nil
+}
+func (f *fakeAttachments) ListAttachments(_ context.Context, id uuid.UUID) ([]domain.Attachment, error) {
+	out := []domain.Attachment{}
+	for _, a := range f.saved {
+		if a.DatabaseID == id {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+type namedWorkloads struct{ fakeWorkloads }
+
+func (namedWorkloads) NameOf(context.Context, uuid.UUID) (string, error) { return "bomba-api", nil }
+
+// Un branchement est tracé et la carte de la base le montre.
+func TestAttachRecordsAttachment(t *testing.T) {
+	ctx, p := context.Background(), uuid.New()
+	fc := &fakeClusters{}
+	s, _ := svc(fc)
+	store := &fakeAttachments{}
+	s.Attachments = store
+	s.Workloads = &namedWorkloads{fakeWorkloads{project: p, set: map[string]string{}}}
+	v, _ := s.Create(ctx, p, domain.CreateDatabaseRequest{Name: "main"}, "u")
+	id := uuid.MustParse(v.ID)
+	fc.state = ClusterState{Exists: true, ReadyInstance: true}
+	if _, err := s.Attach(ctx, p, id, uuid.New(), "BOMBA_DATABASE_URL"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, p, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Attachments) != 1 || got.Attachments[0].WorkloadName != "bomba-api" || got.Attachments[0].Variable != "BOMBA_DATABASE_URL" {
+		t.Fatalf("branchements : %+v", got.Attachments)
+	}
+}

@@ -151,7 +151,7 @@ var sentinelErrors = []sentinelMapping{
 	{iam.ErrEtagRequired, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{iam.ErrLastOwner, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{iam.ErrEscalation, http.StatusForbidden, "PERMISSION_DENIED", true},
-	{iam.ErrUnknownMember, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
+	{iam.ErrUnknownMember, http.StatusBadRequest, "UNKNOWN_MEMBER", true},
 	{iam.ErrInvalidPrincipal, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{iam.ErrInvalidBinding, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{iam.ErrUnsupportedCondition, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},

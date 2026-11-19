@@ -63,13 +63,19 @@ Colonne `workloads.kind` (migration 000028), **immuable** après la création. R
 
 Les conteneurs d'un même projet se joignent directement ([network-policy.yaml](../../internal/infrastructure/helm/charts/standard-app/templates/network-policy.yaml), `networkPolicy.projectNetwork`) : une règle d'entrée et une règle de sortie (la sortie Internet exclut les adresses privées) vers les pods du même espace portant `app.kubernetes.io/part-of: kubemanager` et le même `km-project-id`, tous ports. Un autre projet est dans un autre espace : jamais visé. Sans identifiant de projet, aucune règle (un label vide viserait tout).
 
-Adresse interne d'un conteneur web : `http://<nom>.<espace>.svc` (Service, port 80), renvoyée par `LiveStatus.internal_url` et affichée par la CLI et la console. Worker et cron n'en ont pas. Un conteneur existant reçoit les règles à son prochain déploiement.
+Adresse interne d'un conteneur web : `http://<nom>` (Service, port 80 ; les conteneurs d'un projet partagent son espace, le nom court suffit, la forme longue `http://<nom>.<espace>.svc` marche aussi), renvoyée par `LiveStatus.internal_url` et affichée par la CLI et la console. Worker et cron n'en ont pas. Un conteneur existant reçoit les règles à son prochain déploiement.
 
 ## Retours du test Bomba (19/11)
 
 - **Déploiement en délai dépassé** : un conteneur `FAILED` / `HELM_ERROR` dont les pods finissent par démarrer (application lente) repasse `RUNNING` par la passe de récupération, à condition que le Deployment porte la version voulue (image et révision des variables) ; sinon l'échec reste.
 - **Délai de démarrage** : `startup_timeout_seconds` (création, mise à jour, GitHub, console, `betorun.yaml` `startup_timeout`), 10 à 600 s, défaut 150 s ; règle le seuil de la sonde de démarrage (essais de 5 s).
 - **Événements** : date prise dans `FirstTimestamp`, sinon `EventTime`, sinon la création de l'objet (les événements récents du planificateur laissaient « 1 janv. 1 »).
+- **Échec démenti à la lecture** : `GET /:id/status` lève aussi un `FAILED` / `HELM_ERROR` quand la version voulue tourne entièrement (`recoverOnRead`, même écriture conditionnelle que la passe du worker) : « Échec » ne reste plus affiché à côté de « Prêts 1/1 ».
+- **Dupliquer** : `POST /:id/duplicate` `{name}` (permissions `workloads.workloads.create`, `workloads.workloads.update`, `workloads.variables.update` sur la source). Même image et même spec ; variables et secrets recopiés côté serveur ([service/duplicate.go](../../internal/modules/workloads/service/duplicate.go)). Ni domaines ni données du disque. Console : menu du conteneur, « Dupliquer ».
+- **Suivre l'image d'un autre conteneur** : `image_from` (spec, création et `PATCH` ; `betorun.yaml` `image_from`). Chaque nouvelle image de la source (build, `PATCH image`) est déployée sur les conteneurs qui la suivent (un niveau, suiveurs arrêtés ou occupés passés et journalisés). Un `betorun.yaml` avec seulement `image_from` reprend l'image actuelle de la source : le worker de l'API n'a plus de build propre.
+- **Sonde d'un worker** : `health_command` (worker seulement ; `betorun.yaml` `health_command`, console « Commande de santé »). Sondes `exec` de démarrage et de vivacité (pas de readiness : aucun trafic) ; code 0 = sain.
+- **Adresse publique automatique facultative** : `no_public_url` (création, `PATCH`, console, `betorun.yaml` `public_url: false`) : pas d'hôte sslip.io ; les domaines vérifiés restent routés (même classe d'ingress).
+- **Quota** : la place réservée compte tous les conteneurs sauf `DELETED` (un déploiement en délai dépassé garde ses pods).
 
 ## Domaines personnalisés
 
@@ -79,6 +85,7 @@ Les TXT sont lus par des résolveurs publics (`kubernetes.domain_dns_server`, d�
 - **Enregistrements** : chaque enregistrement porte `name` (complet) et `host` (relatif à la zone, `@` au sommet ; zone = domaine enregistré, liste des suffixes publics). Sous-domaine : CNAME si la cible (`kubernetes.ingress_target`) est un nom, A si c'est une IP. Domaine nu : A vers les adresses IPv4 de la cible, plus un ALIAS proposé `alternative` (le fournisseur suit alors un changement d'adresse). Recommandé : une cible par nom, pour qu'un changement d'IP ne demande rien aux clients en sous-domaine.
 - **Fournisseur DNS** : reconnu par les serveurs NS de la zone (`dns_provider` : cloudflare, ovh, godaddy, namecheap, gandi, google, route53, ionos, hostinger, lws…) ; la console et la CLI affichent le guide correspondant.
 - Chart : un Ingress et un certificat par route (`customDomains` = `{host, path}`) ; une route `/` garde le nom d'Ingress d'avant les chemins.
+- **Diagnostic** : la réponse de « Vérifier » porte `check` (résolveurs interrogés, nom lu, valeurs TXT trouvées — 5 au plus —, preuve trouvée, cause d'un échec : NXDOMAIN, délai). Chaque réponse porte `https` (faux : plateforme sans certificat, la console le signale).
 
 ## Table DB
 

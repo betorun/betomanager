@@ -89,3 +89,20 @@ func TestBuildHelmValues_StartupTimeout(t *testing.T) {
 	assert.Equal(t, 60, probe(buildHelmValues(InstallWorkloadInput{ReleaseName: "auth", StartupTimeoutSeconds: 300})))
 	assert.Equal(t, 21, probe(buildHelmValues(InstallWorkloadInput{ReleaseName: "auth", StartupTimeoutSeconds: 101})))
 }
+
+// Worker avec commande de santé : sondes « exec » (pas de port), sans readiness.
+func TestBuildHelmValues_WorkerHealthCommand(t *testing.T) {
+	cmd := []string{"/app/bomba", "healthcheck"}
+	v := buildHelmValues(InstallWorkloadInput{ReleaseName: "worker", Process: ProcessSpec{Kind: "worker", HealthCommand: cmd}})
+	probes := v["probes"].(map[string]any)
+	live := probes["liveness"].(map[string]any)
+	assert.Equal(t, true, live["enabled"])
+	assert.Equal(t, map[string]any{"command": cmd}, live["exec"])
+	_, http := live["httpGet"]
+	assert.False(t, http)
+	assert.Equal(t, false, probes["readiness"].(map[string]any)["enabled"])
+
+	// Sans commande : aucune sonde pour un worker.
+	v = buildHelmValues(InstallWorkloadInput{ReleaseName: "worker", Process: ProcessSpec{Kind: "worker"}})
+	assert.Equal(t, false, v["probes"].(map[string]any)["liveness"].(map[string]any)["enabled"])
+}

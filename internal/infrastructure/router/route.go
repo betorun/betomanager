@@ -239,6 +239,8 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("/:id/start", http.MethodPost, "Démarrer un conteneur (retour au nombre de répliques configuré)", on(iam.WorkloadsStart), tonic.Handler(r.StartWorkload, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "start_workload", Write: true, Risk: tools.RiskLow, Undo: "stop_workload",
 			Hint: "For a cron container: resumes its scheduled runs."})
+	WorkloadGroup.AddRoute("/:id/duplicate", http.MethodPost, "Dupliquer un conteneur : même image et réglages, variables et secrets copiés côté serveur (ni domaines ni données du disque)",
+		g.PermAll(workload, iam.WorkloadsCreate, iam.WorkloadsUpdate, iam.WorkloadVariablesUpdate), tonic.Handler(r.DuplicateWorkload, http.StatusAccepted))
 	WorkloadGroup.AddRoute("/:id/restart", http.MethodPost, "Redémarrer un conteneur (remplacement progressif des répliques)", on(iam.WorkloadsRestart), tonic.Handler(r.RestartWorkload, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "restart_workload", Write: true, Risk: tools.RiskLow,
 			Hint: "For a cron container: runs it now, outside its schedule (its logs then show this run)."})

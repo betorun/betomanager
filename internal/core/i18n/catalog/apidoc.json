@@ -16,8 +16,8 @@
   "en": "3 to 63 characters: lowercase letters, digits and hyphens (e.g. payments-team)"
  },
  {
-  "fr": "3-64 caractères : lettres, chiffres, '_' ou '.' (ex: ciDeployer)",
-  "en": "3 to 64 characters: letters, digits, '_' or '.' (e.g. ciDeployer)"
+  "fr": "3-64 caractères : lettres, chiffres, '-', '_' ou '.' (ex: ciDeployer)",
+  "en": "3 to 64 characters: letters, digits, '-', '_' or '.' (e.g. ciDeployer)"
  },
  {
   "fr": "6-30 caractères : minuscules, chiffres, tirets (ex: ci-deployer)",
@@ -1250,5 +1250,45 @@
  {
   "fr": "Nouveau délai de démarrage toléré, en secondes (600 au plus)",
   "en": "New tolerated startup time, in seconds (at most 600)"
+ },
+ {
+  "fr": "Sans adresse publique automatique (sslip.io)",
+  "en": "No automatic public address (sslip.io)"
+ },
+ {
+  "fr": "Sans adresse publique automatique (sslip.io) : seulement les domaines vérifiés et l'adresse interne",
+  "en": "No automatic public address (sslip.io): only verified domains and the internal address"
+ },
+ {
+  "fr": "permissions IAM `%s`",
+  "en": "IAM permissions `%s`"
+ },
+ {
+  "fr": "Dupliquer un conteneur : même image et réglages, variables et secrets copiés côté serveur (ni domaines ni données du disque)",
+  "en": "Duplicate a container: same image and settings, variables and secrets copied server-side (neither domains nor disk data)"
+ },
+ {
+  "fr": "ID du conteneur à copier",
+  "en": "ID of the container to copy"
+ },
+ {
+  "fr": "Nom de la copie",
+  "en": "Name of the copy"
+ },
+ {
+  "fr": "Worker : commande de santé (liste vide : aucune)",
+  "en": "Worker: health command (empty list: none)"
+ },
+ {
+  "fr": "Nom d'un conteneur du projet : chaque nouvelle image de celui-ci est déployée ici aussi",
+  "en": "Name of a container in the project: each of its new images is deployed here too"
+ },
+ {
+  "fr": "Conteneur dont suivre les nouvelles images (vide : ne plus suivre)",
+  "en": "Container whose new images to follow (empty: stop following)"
+ },
+ {
+  "fr": "Worker : commande de santé lancée dans le conteneur (code 0 = sain), ex. [\"cat\",\"/tmp/healthy\"]",
+  "en": "Worker: health command run in the container (exit code 0 = healthy), e.g. [\"cat\",\"/tmp/healthy\"]"
  }
 ]

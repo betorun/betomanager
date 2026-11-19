@@ -220,8 +220,8 @@
   "en": "member not found in this group"
  },
  {
-  "fr": "role_id doit faire 3 à 64 caractères : lettres, chiffres, « _ » ou « . »",
-  "en": "role_id must be 3-64 chars: letters, digits, '_' or '.'"
+  "fr": "role_id doit faire 3 à 64 caractères : lettres, chiffres, « - », « _ » ou « . »",
+  "en": "role_id must be 3-64 chars: letters, digits, '-', '_' or '.'"
  },
  {
   "fr": "le rôle a été modifié entre-temps : rechargez-le et réessayez",

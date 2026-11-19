@@ -19,6 +19,10 @@ Une base = un Cluster CloudNativePG `db-<nom>` dans l'espace du projet, une inst
 - **État** : relevé à la lecture (`GET …/imports`, `GET …/imports/:importID`) : `RUNNING`, puis `SUCCEEDED` ou `FAILED` avec la fin du journal de pg_restore. Terminé, le dump est effacé. Un seul import à la fois par base. Prérequis : stockage d'objets, `builds.secret` et `builds.public_api_url` ; sinon `503`.
 - **Sans --clean**, un objet déjà présent fait échouer l'import (rien n'est modifié au-delà de ce qui précède l'erreur : pg_restore n'utilise pas de transaction unique).
 
+## Branchements et dernier import
+
+Migration 000031 `database_attachments` (base, conteneur, variable) : chaque `POST /attach` réussi est tracé (au mieux : une trace manquante ne fait pas échouer le branchement). La vue d'une base porte `attachments` (conteneurs encore présents) et `last_import`. La console les montre sur la carte, et l'avertissement « Remplacer les objets existants » nomme les conteneurs branchés. La place réservée du projet (vue d'ensemble) compte les disques des bases.
+
 ## Fichiers clés
 
 - [service.go](../../internal/modules/databases/service.go) — création, état, attachement, restauration.

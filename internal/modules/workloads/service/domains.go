@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net"
 	"slices"
 	"strings"
@@ -40,6 +41,17 @@ type DomainSettings struct {
 	Target string
 	// TLS : certificat pour chaque domaine (faux seulement en développement).
 	TLS bool
+	// ResolverName : résolveurs interrogés, montrés dans le diagnostic.
+	ResolverName string
+}
+
+// ResolverName : libellé des résolveurs d'une configuration (même règle que NewResolver).
+func ResolverName(servers string) string {
+	servers = strings.TrimSpace(servers)
+	if servers == "" {
+		return DefaultDomainDNSServers
+	}
+	return servers
 }
 
 // DefaultDomainDNSServers : résolveurs publics des vérifications de domaine.
@@ -113,7 +125,7 @@ func (s *WorkloadService) records(ctx context.Context, d *domain.WorkloadDomain)
 func (s *WorkloadService) domainView(ctx context.Context, d *domain.WorkloadDomain, pointing bool, providers map[string]string) domain.DomainResponse {
 	zone := domain.Zone(d.Hostname)
 	return domain.DomainResponse{WorkloadDomain: *d, Records: s.records(ctx, d), Pointing: pointing,
-		Zone: zone, Apex: zone == d.Hostname, DNSProvider: s.dnsProvider(ctx, zone, providers)}
+		Zone: zone, Apex: zone == d.Hostname, DNSProvider: s.dnsProvider(ctx, zone, providers), HTTPS: s.DomainCfg.TLS}
 }
 
 // dnsProvider : fournisseur DNS de la zone (guide de la console) ; providers
@@ -237,8 +249,9 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 	}
 	lookup, cancel := context.WithTimeout(ctx, domainLookupTimeout)
 	defer cancel()
-	txt := s.challengeTXT(lookup, d.Hostname)
+	txt, lookupErr := s.challengeTXT(lookup, d.Hostname)
 	pointing := s.pointsToPlatform(lookup, d.Hostname)
+	check := s.domainCheck(d, txt, lookupErr)
 
 	if !slices.Contains(txt, d.Token) {
 		// Preuve disparue sur un domaine déjà vérifié : il reste routé tant
@@ -248,10 +261,12 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 			return nil, err
 		}
 		view := s.domainView(ctx, d, pointing, nil)
+		view.Check = check
 		return &view, nil
 	}
 	if d.Verified {
 		view := s.domainView(ctx, d, pointing, nil)
+		view.Check = check
 		return &view, nil
 	}
 	if w.Status == utils.WorkloadStopped {
@@ -309,7 +324,44 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 		return nil, err
 	}
 	view := s.domainView(ctx, updated, pointing, nil)
+	view.Check = check
 	return &view, nil
+}
+
+// domainCheck : diagnostic de la lecture de la preuve.
+func (s *WorkloadService) domainCheck(d *domain.WorkloadDomain, txt []string, lookupErr error) *domain.DomainCheck {
+	c := &domain.DomainCheck{Resolver: s.DomainCfg.ResolverName, Name: domain.ChallengePrefix + d.Hostname,
+		TXTFound: []string{}, ProofFound: slices.Contains(txt, d.Token)}
+	if c.Resolver == "" {
+		c.Resolver = DefaultDomainDNSServers
+	}
+	for _, v := range txt {
+		if len(c.TXTFound) == domain.MaxCheckValues {
+			break
+		}
+		if len(v) > 255 {
+			v = v[:255]
+		}
+		c.TXTFound = append(c.TXTFound, v)
+	}
+	if lookupErr != nil {
+		c.Error = lookupError(lookupErr)
+	}
+	return c
+}
+
+// lookupError : cause lisible d'une lecture DNS en échec.
+func lookupError(err error) string {
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		switch {
+		case dnsErr.IsNotFound:
+			return "no TXT record under this name (NXDOMAIN or empty answer)"
+		case dnsErr.IsTimeout:
+			return "DNS lookup timed out"
+		}
+	}
+	return "DNS lookup failed"
 }
 
 // releaseFrom : retire la route de l'ancien conteneur. Au mieux : le nouveau
@@ -399,20 +451,20 @@ func (s *WorkloadService) inputFor(ctx context.Context, w *domain.Workload, spec
 	return in, nil
 }
 
-func (s *WorkloadService) challengeTXT(ctx context.Context, host string) []string {
+func (s *WorkloadService) challengeTXT(ctx context.Context, host string) ([]string, error) {
 	records, err := s.DomainCfg.Resolver.LookupTXT(ctx, domain.ChallengePrefix+host)
 	if err != nil {
-		// Absent ou résolveur en défaut : la console dit « preuve introuvable »,
-		// le journal dit pourquoi.
+		// Absent ou résolveur en défaut : la console montre le diagnostic,
+		// le journal garde l'erreur complète.
 		if s.Logger != nil {
 			s.Logger.Infow("domain proof lookup failed", "name", domain.ChallengePrefix+host, "error", err)
 		}
-		return nil
+		return nil, err
 	}
 	for i := range records {
 		records[i] = strings.TrimSpace(records[i])
 	}
-	return records
+	return records, nil
 }
 
 // pointsToPlatform : toutes les adresses du domaine sont celles de la cible.
