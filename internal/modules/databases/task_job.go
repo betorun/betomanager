@@ -34,6 +34,8 @@ type Shell interface {
 	// Reset : vide la base. Snapshot non nil : la copie (pg_dump) est d'abord
 	// envoyée à l'API ; si l'envoi échoue, rien n'est vidé.
 	Reset(ctx context.Context, ns string, t TaskTarget, snapshot *SnapshotUpload) error
+	// Dump : copie (pg_dump) envoyée à l'API, sans rien vider.
+	Dump(ctx context.Context, ns string, t TaskTarget, upload *SnapshotUpload) error
 }
 
 // TaskTarget : la base visée (Cluster CNPG et son image Postgres).
@@ -200,6 +202,18 @@ func (c *CNPG) Reset(ctx context.Context, ns string, t TaskTarget, snap *Snapsho
 	mc := &job.Spec.Template.Spec.Containers[0]
 	mc.Env = append(append([]corev1.EnvVar{}, mc.Env...), corev1.EnvVar{Name: "RESET_SQL", Value: resetSQL})
 	_, err := c.runTask(ctx, ns, job, allow, resetTimeout)
+	return err
+}
+
+func (c *CNPG) Dump(ctx context.Context, ns string, t TaskTarget, up *SnapshotUpload) error {
+	if up == nil {
+		return errors.New("database dump: no upload target")
+	}
+	id := newTaskID()
+	dump := corev1.Container{Name: "dump", Image: t.Image, Command: waitThen("pg_dump", "-Fc", "--no-owner", "--no-acl", "-f", taskSnapshotFile)}
+	main := corev1.Container{Name: "main", Image: up.FetchImage, Command: []string{"curl", "-fsS", "--retry", "3", "-X", "PUT",
+		"-H", "Content-Type: application/octet-stream", "-T", taskSnapshotFile}, Args: []string{up.URL}}
+	_, err := c.runTask(ctx, ns, taskJob(ns, taskJobName("dump", id), id, t, []corev1.Container{dump}, main, resetTimeout), up.EgressAllow, resetTimeout)
 	return err
 }
 

@@ -115,6 +115,8 @@ func (a *App) RunServer(ctx context.Context) error {
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// Données des organisations suspendues trop longtemps (ADR 0012).
+	a.startSuspensionPurge(ctx)
 	<-ctx.Done()
 
 	a.Logger.Infow("server shutdown signal received")

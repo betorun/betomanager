@@ -130,5 +130,9 @@
  {
   "fr": "Permission refusée : databases.databases.reset sur cette base",
   "en": "permission denied: databases.databases.reset on this database"
+ },
+ {
+  "fr": "La copie finale de la base ne peut pas être stockée",
+  "en": "the final copy of the database cannot be stored"
  }
 ]

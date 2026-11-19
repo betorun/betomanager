@@ -134,5 +134,9 @@
  {
   "fr": "Solde insuffisant : rechargez d'abord",
   "en": "insufficient balance: top up first"
+ },
+ {
+  "fr": "Certaines ressources de l'organisation n'ont pas été supprimées",
+  "en": "some resources of the organization were not deleted"
  }
 ]

@@ -98,9 +98,26 @@ première recharge réussie, une fois par numéro Mobile Money : le paiement
 prouve que le numéro appartient au client, sans vérification par SMS. Les prix
 sont TTC ; la facture extrait la TVA du montant payé en argent (les crédits
 offerts ne sont pas une recette). Un reçu de recharge ne porte pas de TVA. La
-suspension n'arrête que les conteneurs : la page « compte suspendu » des sites
-attend la décision sur l'hébergement des sites, et la suppression des données
-après 30 jours reste une décision de l'équipe.
+suspension arrête les conteneurs et remplace les sites par une page neutre.
+
+**Sites d'une organisation suspendue** (tranché le 2026-11-19) : les sites
+restent servis par `static-edge`, hors du cluster (un site doit rester en
+ligne même quand le cluster des clients est en difficulté). L'edge lit une vue
+`edge_suspended_projects` (identifiants de projet seulement : son rôle en
+lecture seule ne voit aucun solde) et sert une page « Site temporairement
+indisponible » (503, `Retry-After`), sans la raison ni le nom de l'hébergeur :
+un visiteur n'a pas à connaître la situation de paiement du propriétaire.
+
+**Suppression des données** (tranché le 2026-11-19, automatique) : après
+`purge_days` jours de suspension (30 par défaut, dans la grille ; 0 : jamais),
+conteneurs et disques, bases et sites sont supprimés. Avant : e-mails aux
+propriétaires à J+7, une semaine et deux jours avant la date ; jamais de
+suppression moins de deux jours après le dernier avertissement envoyé. Chaque
+base est copiée (pg_dump) avant sa suppression, copie gardée encore
+`purge_days` jours et restaurable par l'équipe ; sans copie, la base n'est pas
+supprimée. L'organisation, ses projets, le grand livre et les factures
+restent : une recharge la réactive, vide. Une reprise avant la date remet le
+compte à rebours à zéro.
 
 **Postpayé** (phase 5) : réservé aux entreprises que l'équipe active. Même
 débit horaire ; la dette est tolérée jusqu'au plafond de crédit (200 000 FCFA
@@ -120,9 +137,10 @@ grille, pas dans le code.
 13. **Solde bas, grâce et suspension** : alertes à 7 jours, 2 jours et zéro de
     consommation restante (e-mail, console, temps réel). Grâce de 3 jours de
     solde négatif, plafonnée à 3 jours de consommation. Puis suspension douce :
-    conteneurs arrêtés, sites remplacés par une page « compte suspendu ».
-    Données conservées 30 jours ; pour les bases, avertissements à J+7, J+21 et
-    J+28, puis suppression, avec une dernière copie gardée encore 30 jours.
+    conteneurs arrêtés, sites remplacés par une page neutre « temporairement
+    indisponible ». Données conservées 30 jours (réglable) ; avertissements à
+    J+7, J-7 et J-2, puis suppression, avec une dernière copie de chaque base
+    gardée encore 30 jours.
     Reprise automatique après recharge (décision 3).
 14. **Factures** : numérotation séquentielle sans trou, mentions légales, TVA,
     PDF archivé non modifiable ; un reçu par recharge.
@@ -137,7 +155,7 @@ grille, pas dans le code.
 | 1 | Plusieurs projets par organisation, compte de facturation par organisation | en cours (hors de ce module) |
 | 2 | Mesure, valorisation, coût estimé dans la console, rien n'est débité | **implémentée** |
 | 3 | Wallet, grand livre, recharge XYKPay, débits, alertes, crédit d'essai ; administration (organisations, crédits, ajustements, activation, recettes) | **implémentée** |
-| 4 | Grâce et suspension, reprise, factures et reçus PDF (TVA), budgets par projet, crédit d'essai par numéro | **implémentée** |
+| 4 | Grâce et suspension, reprise, factures et reçus PDF (TVA), budgets par projet, crédit d'essai par numéro ; page neutre des sites suspendus, suppression des données après la suspension | **implémentée** |
 | 5 | Plans, postpayé et revente de domaines en marque blanche (**implémentés**, achats réels derrière un interrupteur) ; cartes (Stripe, plus tard) | en partie |
 
 La phase 2 tourne quelques semaines sur de vrais clients (Bomba) : elle révèle

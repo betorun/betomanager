@@ -58,8 +58,13 @@ type Service struct {
 	// Postpayé : réglages, créances, relances (nil : prépayé seulement).
 	Postpaid  repository.Postpaid
 	Reminders InvoiceReminder
-	Now       func() time.Time
-	Logger    *zap.SugaredLogger
+	// Suppression des données après une longue suspension. Purger nil :
+	// rien n'est supprimé (avertissements compris).
+	Purges      repository.Purges
+	Purger      DataPurger
+	PurgeAlerts PurgeAlerter
+	Now         func() time.Time
+	Logger      *zap.SugaredLogger
 }
 
 func (s *Service) now() time.Time {

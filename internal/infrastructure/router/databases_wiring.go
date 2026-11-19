@@ -43,6 +43,7 @@ func (a *App) newDatabasesController() *databases.Controller {
 			s.Clusters = cnpg
 			s.Shell = cnpg
 			s.Snapshots = repo
+			s.Archives = repo
 			s.Imports = a.databaseImports(cnpg)
 		}
 	}

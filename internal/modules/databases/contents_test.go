@@ -74,6 +74,28 @@ func (f *fakeShell) Reset(ctx context.Context, _ string, _ TaskTarget, snap *Sna
 	return nil
 }
 
+// Dump : la copie seule (rien n'est vidé).
+func (f *fakeShell) Dump(ctx context.Context, _ string, _ TaskTarget, up *SnapshotUpload) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.dumpErr != nil {
+		return f.dumpErr
+	}
+	u, err := url.Parse(up.URL)
+	if err != nil {
+		return err
+	}
+	parts := strings.Split(u.Path, "/")
+	id := uuid.MustParse(parts[len(parts)-2])
+	exp, _ := strconv.ParseInt(u.Query().Get("expires"), 10, 64)
+	data := append([]byte("PGDMP"), bytes.Repeat([]byte{byte(f.tables)}, 10)...)
+	if err := f.svc.ReceiveSnapshot(ctx, id, exp, u.Query().Get("sig"), bytes.NewReader(data), int64(len(data))); err != nil {
+		return err
+	}
+	f.dumps++
+	return nil
+}
+
 type memSnapshots struct {
 	mu   sync.Mutex
 	rows map[uuid.UUID]domain.Snapshot

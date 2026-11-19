@@ -152,3 +152,16 @@ func TestCachedResolver_CachesIncludingMisses(t *testing.T) {
 	_, _ = c.Resolve(context.Background(), "x.example.com")
 	assert.Equal(t, 2, next.calls, "entrée expirée → nouvelle résolution")
 }
+
+func TestServe_SuspendedSiteShowsNeutralPage(t *testing.T) {
+	s := newTestServer(false, map[string]string{pfx + "index.html": "home"})
+	s.Resolver = mapResolver{"shop.example.com": {ID: "s1", DeploymentID: "d1", Suspended: true}}
+
+	rec := get(s.Handler(), "shop.example.com", "/")
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, unavailableRetryAfter, rec.Header().Get("Retry-After"))
+	assert.Contains(t, rec.Body.String(), "temporairement indisponible")
+	assert.NotContains(t, rec.Body.String(), "home")
+	assert.NotContains(t, strings.ToLower(rec.Body.String()), "betorun")
+	assert.NotContains(t, strings.ToLower(rec.Body.String()), "factur")
+}

@@ -77,6 +77,16 @@ func (s *Service) Wallet(ctx context.Context, org uuid.UUID) (*domain.Wallet, er
 		until := domain.GraceUntil(*acc.GraceStartedAt, c.GraceDays)
 		w.GraceUntil = &until
 	}
+	if acc.Charging && acc.SuspendedAt != nil {
+		if at := domain.PurgeAt(*acc.SuspendedAt, c.PurgeDays); !at.IsZero() {
+			w.PurgeAt = &at
+		}
+		if s.Purges != nil {
+			if _, purged, err := s.Purges.PurgeState(ctx, org); err == nil {
+				w.DataPurgedAt = purged
+			}
+		}
+	}
 	for _, g := range grants {
 		w.Credits = append(w.Credits, domain.CreditView{Amount: g.Amount.Units(), Remaining: g.Remaining.Units(), ExpiresAt: g.ExpiresAt, Reason: g.Reason})
 	}

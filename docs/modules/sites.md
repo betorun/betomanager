@@ -81,6 +81,8 @@ Le préfixe est construit des deux côtés : `domain.ObjectPrefix` (API) et `edg
 
 `/` → `index.html` ; `/docs` → 301 vers `/docs/` si `docs/index.html` existe ; `/about` → `about.html` ; sinon `index.html` si `spa_fallback`, sinon le `404.html` du site, sinon une 404 bilingue. `Range`, `ETag` et `If-None-Match` sont gérés.
 
+Organisation suspendue (facturation, vue `edge_suspended_projects`) : page neutre bilingue « Site temporairement indisponible », 503 avec `Retry-After`, sans la raison ni le nom de l'hébergeur. Voir [billing.md](billing.md).
+
 ## Dev local
 
 `make dev-up` lance `seaweedfs` (S3, port 8333), `static-edge` et `caddy` (port 8088). Une fois un site déployé : <http://SOUS-DOMAINE.sites.localhost:8088> (les navigateurs résolvent `*.localhost`).
@@ -90,7 +92,7 @@ Le préfixe est construit des deux côtés : `domain.ObjectPrefix` (API) et `edg
 - Rôle Postgres en lecture seule pour l'edge :
   ```sql
   CREATE ROLE edge_reader LOGIN PASSWORD '…';
-  GRANT SELECT ON sites, site_domains TO edge_reader;
+  GRANT SELECT ON sites, site_domains, edge_suspended_projects TO edge_reader;
   ```
 - Identifiants S3 en lecture seule sur le bucket.
 - Caddy compilé avec le module DNS du fournisseur pour le wildcard.

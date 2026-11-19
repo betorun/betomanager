@@ -17,6 +17,18 @@ const notFoundPage = `<!doctype html><html lang="fr"><head><meta charset="utf-8"
 	`<body style="font-family:system-ui,sans-serif;margin:4rem auto;max-width:32rem;color:#221A1D">` +
 	`<h1>404</h1><p>Page introuvable. / Page not found.</p></body></html>`
 
+// unavailablePage : site d'une organisation suspendue. Neutre : le visiteur
+// n'apprend ni la raison ni l'hébergeur.
+const unavailablePage = `<!doctype html><html lang="fr"><head><meta charset="utf-8">` +
+	`<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">` +
+	`<title>Site temporairement indisponible</title></head>` +
+	`<body style="font-family:system-ui,sans-serif;margin:4rem auto;max-width:32rem;padding:0 1rem;color:#221A1D">` +
+	`<h1>Site temporairement indisponible</h1><p>Ce site sera de retour bientôt. Merci de réessayer plus tard.</p>` +
+	`<p lang="en">This site is temporarily unavailable. Please try again later.</p></body></html>`
+
+// unavailableRetryAfter : une heure, en secondes (en-tête Retry-After).
+const unavailableRetryAfter = "3600"
+
 // Server sert les fichiers des sites (port public, derrière Caddy) et expose
 // le contrôle "ask" du TLS à la demande (port interne).
 type Server struct {
@@ -78,6 +90,10 @@ func (s *Server) serveSite(w http.ResponseWriter, r *http.Request) {
 	}
 	if site == nil {
 		writeNotFound(w)
+		return
+	}
+	if site.Suspended {
+		writeUnavailable(w)
 		return
 	}
 
@@ -174,6 +190,14 @@ func writeNotFound(w http.ResponseWriter) {
 	w.Header().Set(httpheader.CacheControl, httpheader.NoStore)
 	w.WriteHeader(http.StatusNotFound)
 	_, _ = w.Write([]byte(notFoundPage))
+}
+
+func writeUnavailable(w http.ResponseWriter) {
+	w.Header().Set(httpheader.ContentType, httpheader.MIMETextHTMLUTF8)
+	w.Header().Set(httpheader.CacheControl, httpheader.NoStore)
+	w.Header().Set(httpheader.RetryAfter, unavailableRetryAfter)
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = w.Write([]byte(unavailablePage))
 }
 
 // normalizeHost : minuscules, sans port ni point final.
