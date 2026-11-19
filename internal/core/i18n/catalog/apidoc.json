@@ -1338,5 +1338,45 @@
  {
   "fr": "Nom de la base, retapé pour confirmer",
   "en": "Name of the database, typed again to confirm"
+ },
+ {
+  "fr": "Offre gratuite par organisation et par mois",
+  "en": "Free tier per organization and per month"
+ },
+ {
+  "fr": "Grille de prix d'une monnaie : tailles de conteneur, bases, disque, builds, offre gratuite",
+  "en": "Price catalog of a currency: container sizes, databases, disk, builds, free tier"
+ },
+ {
+  "fr": "Monnaie (XAF ou XOF ; défaut XAF)",
+  "en": "Currency (XAF or XOF; default XAF)"
+ },
+ {
+  "fr": "Coût estimé d'un mois (défaut : le mois en cours), par projet et par ressource, offre gratuite déduite",
+  "en": "Estimated cost of a month (default: the current month), per project and per resource, free tier deducted"
+ },
+ {
+  "fr": "Identifiant de l'organisation",
+  "en": "Organization ID"
+ },
+ {
+  "fr": "Mois au format AAAA-MM (défaut : le mois en cours)",
+  "en": "Month as YYYY-MM (default: the current month)"
+ },
+ {
+  "fr": "Coût estimé de l'organisation, mois par mois, selon la grille de prix. Pendant la phase de mesure, rien n'est débité.",
+  "en": "Estimated cost of the organization, month by month, from the price catalog. During the measurement phase, nothing is charged."
+ },
+ {
+  "fr": "Facturation",
+  "en": "Billing"
+ },
+ {
+  "fr": "Grille de prix",
+  "en": "Price catalog"
+ },
+ {
+  "fr": "Prix en vigueur des conteneurs (par taille), des bases, du disque et des builds, et offre gratuite. Fixés par l'équipe de la plateforme.",
+  "en": "Current prices of containers (per size), databases, disk and builds, and the free tier. Set by the platform team."
  }
 ]

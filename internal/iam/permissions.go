@@ -124,6 +124,10 @@ const (
 	// PlatformProjectsSetLimits : changer les plafonds de ressources d'un
 	// projet (jamais fixés par le client).
 	PlatformProjectsSetLimits Permission = "platform.projects.setLimits"
+	// PlatformBillingCatalogsGet / Update : grilles de prix de la facturation
+	// (jamais fixées dans le code).
+	PlatformBillingCatalogsGet    Permission = "platform.billingCatalogs.get"
+	PlatformBillingCatalogsUpdate Permission = "platform.billingCatalogs.update"
 	// PlatformClustersReport : le watcher d'un cluster rend compte de son
 	// cluster (enrôlement, configuration, événements des pods).
 	PlatformClustersReport Permission = "platform.clusters.report"
@@ -226,13 +230,15 @@ var catalog = map[Permission]PermissionInfo{
 	BillingPaymentsCreate: {Title: "Effectuer un paiement", CustomRoles: true, Sensitive: true},
 	AuditLogsRead:         {Title: "Lire le journal d'audit", CustomRoles: true},
 
-	PlatformClustersList:      {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
-	PlatformClusterKeysList:   {Title: "Lister les clés de cluster", PlatformOnly: true},
-	PlatformClusterKeysCreate: {Title: "Créer une clé de cluster", PlatformOnly: true, Sensitive: true},
-	PlatformClusterKeysRotate: {Title: "Faire tourner une clé de cluster", PlatformOnly: true, Sensitive: true},
-	PlatformClusterKeysRevoke: {Title: "Révoquer une clé de cluster", PlatformOnly: true, Sensitive: true},
-	PlatformClustersReport:    {Title: "Rendre compte de son cluster (watcher)", PlatformOnly: true},
-	PlatformProjectsSetLimits: {Title: "Changer les limites de ressources d'un projet", PlatformOnly: true, Sensitive: true},
+	PlatformClustersList:          {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
+	PlatformClusterKeysList:       {Title: "Lister les clés de cluster", PlatformOnly: true},
+	PlatformClusterKeysCreate:     {Title: "Créer une clé de cluster", PlatformOnly: true, Sensitive: true},
+	PlatformClusterKeysRotate:     {Title: "Faire tourner une clé de cluster", PlatformOnly: true, Sensitive: true},
+	PlatformClusterKeysRevoke:     {Title: "Révoquer une clé de cluster", PlatformOnly: true, Sensitive: true},
+	PlatformClustersReport:        {Title: "Rendre compte de son cluster (watcher)", PlatformOnly: true},
+	PlatformProjectsSetLimits:     {Title: "Changer les limites de ressources d'un projet", PlatformOnly: true, Sensitive: true},
+	PlatformBillingCatalogsGet:    {Title: "Voir les grilles de prix", PlatformOnly: true},
+	PlatformBillingCatalogsUpdate: {Title: "Modifier les grilles de prix", PlatformOnly: true, Sensitive: true},
 }
 
 // Known : la permission figure au catalogue.

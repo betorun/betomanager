@@ -182,6 +182,7 @@ func (a *App) initDomainLayers() error {
 		Builds:     buildController,
 		GitHub:     a.newGitHubController(a.GitHub),
 		Registries: registriesController,
+		Billing:    a.newBillingController(),
 		RBAC:       rbacController,
 		APIKey:     apiKeyController,
 		Project:    projectController,

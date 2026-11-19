@@ -446,5 +446,13 @@
  {
   "fr": "Vider une base de données (copie de sécurité gardée 24 h)",
   "en": "Empty a database (safety copy kept 24 h)"
+ },
+ {
+  "fr": "Voir les grilles de prix",
+  "en": "View price catalogs"
+ },
+ {
+  "fr": "Modifier les grilles de prix",
+  "en": "Edit price catalogs"
  }
 ]
