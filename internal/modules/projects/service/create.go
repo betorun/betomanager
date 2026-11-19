@@ -26,7 +26,8 @@ type IProjectService interface {
 	GetMetrics(ctx context.Context, projectID string) (*typesproject.NamespaceMetrics, error)
 	// ListProjects : projets accessibles, donnés par l'IAM (organisations et
 	// projets où l'appelant détient resourcemanager.projects.get).
-	ListProjects(ctx context.Context, orgIDs, projectIDs []uuid.UUID) (*typesproject.ListProjectsResponse, error)
+	// excluded : projets retirés malgré leur organisation (politique de refus).
+	ListProjects(ctx context.Context, orgIDs, projectIDs, excluded []uuid.UUID) (*typesproject.ListProjectsResponse, error)
 	// SetLimits : plafonds du projet (staff de la plateforme uniquement).
 	SetLimits(ctx context.Context, projectID string, in typesproject.ProjectLimits) (*typesproject.ProjectLimitsResponse, error)
 }

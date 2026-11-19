@@ -108,6 +108,9 @@ const (
 	GroupsCreate             Permission = "iam.groups.create"
 	GroupsUpdate             Permission = "iam.groups.update" // métadonnées et membres
 	GroupsDelete             Permission = "iam.groups.delete"
+	// Politiques de refus (iam.md §14).
+	DenyPoliciesList   Permission = "iam.denyPolicies.list"
+	DenyPoliciesUpdate Permission = "iam.denyPolicies.update"
 
 	// billing / logging
 	BillingAccountsGet    Permission = "billing.accounts.get"
@@ -228,6 +231,8 @@ var catalog = map[Permission]PermissionInfo{
 	GroupsCreate:             {Title: "Créer un groupe", CustomRoles: true},
 	GroupsUpdate:             {Title: "Modifier un groupe et ses membres", CustomRoles: true, Sensitive: true},
 	GroupsDelete:             {Title: "Supprimer un groupe", CustomRoles: true, Sensitive: true},
+	DenyPoliciesList:         {Title: "Voir les politiques de refus", CustomRoles: true},
+	DenyPoliciesUpdate:       {Title: "Créer, modifier et supprimer les politiques de refus", CustomRoles: true, Sensitive: true},
 
 	BillingAccountsGet:    {Title: "Voir la facturation", CustomRoles: true},
 	BillingAccountsUpdate: {Title: "Modifier la facturation", CustomRoles: true, Sensitive: true},

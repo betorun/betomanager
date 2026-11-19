@@ -336,12 +336,19 @@ func (m *MiddlewareManager) RequireFor(permFor func(iam.ResourceName) (iam.Permi
 					zap.String("permission", perm.String()),
 					zap.String("resource", resource.String()))
 			}
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			body := gin.H{
 				"code":       "PERMISSION_DENIED",
 				"error":      "permission denied",
 				"message":    "permission denied",
 				"permission": perm.String(),
-			})
+			}
+			// Politique de refus : dire laquelle (l'appelant peut la lire avec
+			// iam.denyPolicies.list, sinon il sait qui interroger).
+			if d := decision.DenyPolicy; d != nil {
+				body["deny_policy"] = gin.H{"id": d.ID, "name": d.Name, "resource": d.Resource}
+				c.Set(ctxDenyPolicy, d.ID.String())
+			}
+			c.AbortWithStatusJSON(http.StatusForbidden, body)
 			return
 		}
 		// Autorisé : restent les bornes d'une délégation, puis la double
@@ -359,6 +366,7 @@ func (m *MiddlewareManager) RequireFor(permFor func(iam.ResourceName) (iam.Permi
 const (
 	ctxIAMPermission = "iamPermission"
 	ctxIAMDecision   = "iamDecision"
+	ctxDenyPolicy    = "iamDenyPolicy"
 )
 
 // AuditMiddleware : journal d'audit (iam.md §11). À monter après
@@ -402,6 +410,12 @@ func (m *MiddlewareManager) AuditMiddleware(w audit.Writer) gin.HandlerFunc {
 		}
 		if pid, err := uuid.Parse(c.GetString("projectID")); err == nil {
 			e.ProjectID = &pid
+		}
+		if dp := c.GetString(ctxDenyPolicy); dp != "" {
+			if e.Metadata == nil {
+				e.Metadata = map[string]any{}
+			}
+			e.Metadata["deny_policy"] = dp
 		}
 		if actor := c.GetString(ctxActor); actor != "" {
 			// « Awa via Copilot » : le principal reste la personne.

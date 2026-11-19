@@ -47,6 +47,8 @@ type Decision struct {
 	Role     string
 	Resource ResourceName
 	Reason   string
+	// DenyPolicy : politique de refus qui a bloqué (nil : aucune).
+	DenyPolicy *DenyRef
 }
 
 // Engine : point de décision unique.
@@ -63,13 +65,17 @@ type Engine struct {
 	mu       sync.Mutex
 	bindings map[Principal]cachedBindings
 	orgs     map[uuid.UUID]cachedOrg
+	denies   map[ResourceName]cachedDenies
 }
 
 type cachedBindings struct {
 	byResource map[ResourceName][]Binding
 	// custom : rôles personnalisés référencés par ces bindings.
-	custom  map[string]Role
-	expires time.Time
+	custom map[string]Role
+	// principals : le principal, ses groupes et les principals spéciaux
+	// (politiques de refus).
+	principals []Principal
+	expires    time.Time
 }
 
 type cachedOrg struct {
@@ -96,6 +102,7 @@ func NewEngine(store Store, cacheTTL time.Duration) *Engine {
 		now:      time.Now,
 		bindings: map[Principal]cachedBindings{},
 		orgs:     map[uuid.UUID]cachedOrg{},
+		denies:   map[ResourceName]cachedDenies{},
 	}
 }
 
@@ -161,15 +168,28 @@ func (e *Engine) check(ctx context.Context, p Principal, perms []Permission, r R
 		return nil, err
 	}
 
+	denies, deniesCached, err := e.denyPolicies(ctx, ancestry, false)
+	if err != nil {
+		return nil, err
+	}
+
 	now := e.now()
 	out := make([]Decision, len(perms))
 	denied := false
 	for i, perm := range perms {
 		out[i] = decide(cached, ancestry, perm, now)
+	}
+	applyDenies(out, perms, denies, cached.principals, now)
+	for i := range out {
 		denied = denied || !out[i].Allowed
 	}
-	if denied && fromCache {
+	// Règle de fraîcheur : un refus n'est jamais prononcé sur le cache, ni
+	// celui des bindings, ni celui des politiques de refus.
+	if denied && (fromCache || deniesCached) {
 		if cached, _, err = e.principalBindings(ctx, p, true); err != nil {
+			return nil, err
+		}
+		if denies, _, err = e.denyPolicies(ctx, ancestry, true); err != nil {
 			return nil, err
 		}
 		for i, perm := range perms {
@@ -177,6 +197,7 @@ func (e *Engine) check(ctx context.Context, p Principal, perms []Permission, r R
 				out[i] = decide(cached, ancestry, perm, now)
 			}
 		}
+		applyDenies(out, perms, denies, cached.principals, now)
 	}
 	return out, nil
 }
@@ -248,7 +269,7 @@ func (e *Engine) principalBindings(ctx context.Context, p Principal, force bool)
 	if err != nil {
 		return cachedBindings{}, false, fmt.Errorf("iam: load bindings: %w", err)
 	}
-	c := cachedBindings{byResource: make(map[ResourceName][]Binding, len(list)), expires: now.Add(e.cacheTTL)}
+	c := cachedBindings{byResource: make(map[ResourceName][]Binding, len(list)), principals: principals, expires: now.Add(e.cacheTTL)}
 	var customNames []string
 	for _, b := range list {
 		c.byResource[b.Resource] = append(c.byResource[b.Resource], b)
@@ -299,6 +320,10 @@ func (e *Engine) Invalidate(p Principal) {
 	if p == AllUsers || p == AllAuthenticatedUsers || strings.HasPrefix(string(p), KindGroup+":") {
 		e.bindings = map[Principal]cachedBindings{}
 	}
+	// AllUsers : aussi une politique de refus modifiée (notifyDenyChanged).
+	if p == AllUsers {
+		e.denies = map[ResourceName]cachedDenies{}
+	}
 	e.mu.Unlock()
 }
 
@@ -321,6 +346,9 @@ func (e *Engine) InvalidateProject(projectID uuid.UUID) {
 type Holdings struct {
 	Organizations []uuid.UUID
 	Projects      []uuid.UUID
+	// Excluded : projets à retirer de la liste malgré leur organisation
+	// (politique de refus posée sur le projet).
+	Excluded []uuid.UUID
 }
 
 // Holdings relit les bindings sans cache : une liste qui omet un projet est
@@ -353,5 +381,73 @@ func (e *Engine) Holdings(ctx context.Context, p Principal, perm Permission) (Ho
 			h.Projects = append(h.Projects, id)
 		}
 	}
-	return h, nil
+	return e.holdingsDenies(ctx, h, cached.principals, perm, now)
+}
+
+// OrgDenyStore : politiques de refus des organisations et de tous leurs
+// projets (listes filtrées ; optionnel pour un Store).
+type OrgDenyStore interface {
+	DenyPoliciesInOrganizations(ctx context.Context, orgs []uuid.UUID) ([]DenyPolicy, error)
+}
+
+// holdingsDenies : une liste filtrée suit les politiques de refus comme
+// Check. Organisation refusée : retirée (avec ses projets). Projet refusé
+// (par lui-même ou par son organisation) : retiré, ou exclu s'il venait de
+// son organisation. Relu sans cache (une liste qui omet est un refus).
+func (e *Engine) holdingsDenies(ctx context.Context, h Holdings, principals []Principal, perm Permission, now time.Time) (Holdings, error) {
+	ds, ok := e.store.(OrgDenyStore)
+	if !ok || (len(h.Organizations) == 0 && len(h.Projects) == 0) {
+		return h, nil
+	}
+	projectOrg := map[uuid.UUID]uuid.UUID{}
+	orgs := map[uuid.UUID]bool{}
+	for _, o := range h.Organizations {
+		orgs[o] = true
+	}
+	for _, p := range h.Projects {
+		o, err := e.projectOrganization(ctx, p)
+		if err != nil {
+			if errors.Is(err, ErrResourceNotFound) {
+				continue // projet supprimé : la requête de liste l'ignorera
+			}
+			return h, err
+		}
+		projectOrg[p] = o
+		orgs[o] = true
+	}
+	ids := make([]uuid.UUID, 0, len(orgs))
+	for o := range orgs {
+		ids = append(ids, o)
+	}
+	policies, err := ds.DenyPoliciesInOrganizations(ctx, ids)
+	if err != nil {
+		return h, fmt.Errorf("iam: load deny policies: %w", err)
+	}
+	if len(policies) == 0 {
+		return h, nil
+	}
+	on := map[ResourceName][]DenyPolicy{}
+	for _, d := range policies {
+		on[d.Resource] = append(on[d.Resource], d)
+	}
+	deniedOn := func(r ResourceName) bool { return firstDeny(on[r], principals, perm, now) != nil }
+
+	out := Holdings{}
+	for _, o := range h.Organizations {
+		if !deniedOn(OrganizationName(o)) {
+			out.Organizations = append(out.Organizations, o)
+		}
+	}
+	for _, p := range h.Projects {
+		if o, ok := projectOrg[p]; ok && (deniedOn(OrganizationName(o)) || deniedOn(ProjectName(p))) {
+			continue
+		}
+		out.Projects = append(out.Projects, p)
+	}
+	for r := range on {
+		if id, ok := r.Project(); ok && r == ProjectName(id) && deniedOn(r) {
+			out.Excluded = append(out.Excluded, id)
+		}
+	}
+	return out, nil
 }

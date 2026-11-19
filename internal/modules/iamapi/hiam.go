@@ -30,13 +30,15 @@ type Controller struct {
 	CustomRoles     *iam.CustomRoleService
 	Groups          *iam.GroupService
 	OrgPolicies     *iam.OrgPolicyService
+	DenyPolicies    *iam.DenyPolicyService
 	MFA             MFASettings
 }
 
 func NewController(policies *iam.PolicyService, engine *iam.Engine, sa *iam.ServiceAccountService, agents *iam.ClusterAgents, tokens *sts.Service) *Controller {
 	return &Controller{DB: policies.DB, Policies: policies, Engine: engine, ServiceAccounts: sa, ClusterAgents: agents, STS: tokens,
 		CustomRoles: &iam.CustomRoleService{DB: policies.DB, Engine: engine},
-		Groups:      &iam.GroupService{DB: policies.DB, Engine: engine}}
+		Groups:       &iam.GroupService{DB: policies.DB, Engine: engine},
+		DenyPolicies: iam.NewDenyPolicyService(policies.DB, engine)}
 }
 
 type GetPolicyRequest struct {

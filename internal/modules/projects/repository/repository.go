@@ -27,7 +27,8 @@ type ProjectRepository interface {
 	UpdateProjectLimits(ctx context.Context, id, cpu, memory, storage string) error
 	// ListProjects : projets de ids, ou des organisations orgIDs, les plus
 	// récents d'abord, au plus limit (+1 pour savoir s'il en reste).
-	ListProjects(ctx context.Context, orgIDs, ids []uuid.UUID, limit int) ([]dauth.Project, error)
+	// excluded : retirés même si leur organisation est listée.
+	ListProjects(ctx context.Context, orgIDs, ids, excluded []uuid.UUID, limit int) ([]dauth.Project, error)
 }
 
 // ErrNameTaken : un projet porte déjà ce nom (le nom sert d'espace Kubernetes).
@@ -120,7 +121,7 @@ func (r *pgProjectRepo) UpdateProjectLimits(ctx context.Context, id, cpu, memory
 	return nil
 }
 
-func (r *pgProjectRepo) ListProjects(ctx context.Context, orgIDs, ids []uuid.UUID, limit int) ([]dauth.Project, error) {
+func (r *pgProjectRepo) ListProjects(ctx context.Context, orgIDs, ids, excluded []uuid.UUID, limit int) ([]dauth.Project, error) {
 	if len(orgIDs) == 0 && len(ids) == 0 {
 		return nil, nil
 	}
@@ -132,6 +133,9 @@ func (r *pgProjectRepo) ListProjects(ctx context.Context, orgIDs, ids []uuid.UUI
 		q = q.Where("organization_id IN ?", orgIDs)
 	default:
 		q = q.Where("id IN ?", ids)
+	}
+	if len(excluded) > 0 {
+		q = q.Where("id NOT IN ?", excluded)
 	}
 	var out []dauth.Project
 	err := q.Order("created_at DESC, id").Limit(limit).Find(&out).Error

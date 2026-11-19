@@ -165,6 +165,9 @@ func DeleteResourcePolicy(ctx context.Context, db *gorm.DB, r ResourceName) erro
 		Delete(&policyRow{}).Error; err != nil {
 		return err
 	}
+	if err := db.WithContext(ctx).Where("resource_name = ?", string(r)).Delete(&denyPolicyRow{}).Error; err != nil {
+		return err
+	}
 	notifyChanged(AllUsers) // principals non connus ici : invalidation globale
 	return nil
 }

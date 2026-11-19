@@ -1606,5 +1606,81 @@
  {
   "fr": "Acheter un nom de domaine payé par le solde, le renouveler chaque année et le brancher sur un conteneur : les DNS sont configurés automatiquement.",
   "en": "Buy a domain name paid from the balance, renew it every year and connect it to a container: DNS is configured automatically."
+ },
+ {
+  "fr": "À qui : user:<id ou e-mail>, serviceAccount:<id>, group:<id>, allUsers",
+  "en": "Who: user:<id or email>, serviceAccount:<id>, group:<id>, allUsers"
+ },
+ {
+  "fr": "Créer une politique de refus (confirmation récente du second facteur requise)",
+  "en": "Create a deny policy (recent second-factor confirmation required)"
+ },
+ {
+  "fr": "Créer une politique de refus sur le projet (confirmation récente du second facteur requise)",
+  "en": "Create a deny policy on the project (recent second-factor confirmation required)"
+ },
+ {
+  "fr": "Détails d'une politique de refus",
+  "en": "Deny policy details"
+ },
+ {
+  "fr": "Détails d'une politique de refus du projet",
+  "en": "Details of a project deny policy"
+ },
+ {
+  "fr": "Etag lu par GET (modification concurrente refusée)",
+  "en": "Etag read by GET (concurrent changes are refused)"
+ },
+ {
+  "fr": "Jamais refusés par cette politique (même format)",
+  "en": "Never denied by this policy (same format)"
+ },
+ {
+  "fr": "Nom affiché (100 caractères au plus)",
+  "en": "Display name (at most 100 characters)"
+ },
+ {
+  "fr": "Permissions refusées : exactes, ou motifs service.* et service.ressource.* ; * pour toutes",
+  "en": "Denied permissions: exact, or service.* and service.resource.* patterns; * for all"
+ },
+ {
+  "fr": "Politiques de refus",
+  "en": "Deny policies"
+ },
+ {
+  "fr": "Politiques de refus de l'organisation",
+  "en": "Deny policies of the organization"
+ },
+ {
+  "fr": "Politiques de refus du projet et celles héritées de l'organisation",
+  "en": "Deny policies of the project and those inherited from the organization"
+ },
+ {
+  "fr": "Politiques de refus d'un projet",
+  "en": "Deny policies of a project"
+ },
+ {
+  "fr": "Pourquoi cette politique existe",
+  "en": "Why this policy exists"
+ },
+ {
+  "fr": "Refuser des permissions à des personnes ou des groupes, quels que soient leurs rôles.",
+  "en": "Deny permissions to people or groups, whatever their roles."
+ },
+ {
+  "fr": "Remplacer une politique de refus du projet (etag)",
+  "en": "Replace a project deny policy (etag)"
+ },
+ {
+  "fr": "Remplacer une politique de refus (etag)",
+  "en": "Replace a deny policy (etag)"
+ },
+ {
+  "fr": "Supprimer une politique de refus",
+  "en": "Delete a deny policy"
+ },
+ {
+  "fr": "Supprimer une politique de refus du projet",
+  "en": "Delete a project deny policy"
  }
 ]

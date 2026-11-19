@@ -168,7 +168,19 @@ Une **policy** est attachée à une ressource (organisation, projet, ou ressourc
 - **Héritage** : les droits effectifs sur R sont l'union des bindings de R et de tous ses ancêtres. Un `roles/editor` sur l'organisation vaut sur tous ses projets.
 - **Concurrence** : `setIamPolicy` exige l'`etag` lu par `getIamPolicy` (read-modify-write). Deux admins qui modifient en même temps : le second reçoit 409 au lieu d'écraser le premier.
 - **Conditions** : champ réservé dès la v1 dans le schéma. En phase B, on n'accepte que des expressions d'expiration (`request.time < …`). Le langage complet (CEL) pourra venir plus tard sans changer le format.
-- **Policies de refus** (deny, phase C) : bloquent une permission quel que soit l'héritage (ex. « personne ne supprime un projet de prod sans passer par le groupe SRE »). Évaluées avant les allow.
+- **Policies de refus** (deny, phase C, **fait**, migration 000042) : bloquent une permission quel que soit l'héritage (ex. « personne ne supprime un projet de prod sans passer par le groupe SRE »). Voir §6.4.
+
+### 6.4 Politiques de refus (fait)
+
+- **Où** : sur une organisation ou un projet (`/organizations/:id/denyPolicies`, `/projects/:id/denyPolicies`) ; valables pour la ressource et toutes ses descendantes. 50 au plus par ressource.
+- **Contenu** : nom, description, **permissions refusées** (exactes, ou motifs `service.*`, `service.ressource.*`, `*` ; jamais une permission `platform.*`), **à qui** (`user:<id ou e-mail>`, `serviceAccount:<id>`, `group:<id>` de l'organisation, `allUsers`), **exceptions** (même format), condition d'expiration facultative (même format que les bindings).
+- **Évaluation** (`Engine.check`) : les rôles décident d'abord ; une autorisation venue d'une ressource client est ensuite retirée si une politique de la chaîne (projet, organisation) la refuse au principal, à un de ses groupes, ou à `allUsers`/`allAuthenticatedUsers`, et qu'aucune exception ne le couvre. **Un refus l'emporte toujours.** Une autorisation accordée sur `platform` (staff) n'est pas concernée : l'organisation règle les droits de ses membres, pas ceux de l'exploitant (§10).
+- **Réponse** : 403 `PERMISSION_DENIED` avec `deny_policy: {id, name, resource}` ; l'id de la politique va dans le journal d'audit (`metadata.deny_policy`). `testIamPermissions` en tient compte : la console grise les actions refusées.
+- **Cache** : politiques par ressource, même TTL que les bindings ; une écriture diffuse une invalidation globale (Redis, comme les bindings) ; un refus n'est jamais prononcé sur le cache (règle de fraîcheur).
+- **Échec fermé** : condition illisible ⇒ politique active ; ligne illisible ⇒ tout refusé à tous, **sauf** `iam.denyPolicies.*` (pour pouvoir la corriger).
+- **Garde-fou** : une écriture est refusée (409 `FAILED_PRECONDITION`) si plus aucun propriétaire de l'organisation (`roles/owner` direct ou par un groupe) ne garderait `iam.denyPolicies.update`, sur l'organisation ou sur un de ses projets portant une politique. Toutes les politiques de l'organisation et de ses projets sont jugées ensemble, sous verrou de l'organisation. Supprimer une politique ne peut verrouiller personne.
+- **Droits** : `iam.denyPolicies.list` (lecteurs et au-delà : savoir pourquoi une action est refusée) ; `iam.denyPolicies.update` (propriétaire, `roles/iam.securityAdmin`), **sensible** (step-up). Écritures avec `etag` (409 `ABORTED` si périmé). Supprimer un projet supprime ses politiques.
+- **Listes filtrées** (« mes projets », `Holdings`) : mêmes refus que `Check`, relus sans cache. Organisation refusée : retirée avec ses projets ; projet refusé (par lui-même ou son organisation) : retiré, ou exclu de la liste de son organisation (`Holdings.Excluded`).
 
 ### 6.3 Correspondance avec l'existant
 
@@ -355,7 +367,7 @@ iam_bindings       (id, resource_name, role, principal, condition JSONB, created
 iam_custom_roles   (name PK, parent_resource, title, permissions TEXT[], stage, deleted_at)
 iam_groups         (id, organization_id, email, display_name)          -- phase B
 iam_group_members  (group_id, principal)                               -- phase B
-iam_deny_policies  (…)                                                 -- phase C
+iam_deny_policies  (id, resource_name, display_name, denied_permissions, denied_principals, exception_principals, condition, etag…)  -- phase C, migration 000042
 
 service_accounts       (id, project_id, account_id, display_name, disabled, created_at)
 service_account_keys   (id, service_account_id, public_key_pem, algorithm, valid_after, valid_before, disabled)
@@ -391,7 +403,7 @@ Le nom `{resource}` est le nom canonique (§3.1), ce qui rend les endpoints de p
 |---|---|---|
 | **A — fondations** (avant la facturation et le multi-projets) | Organisations (perso auto), noms de ressources, catalogue de permissions, rôles prédéfinis dans le code, `iam_bindings` + `iam.Check` + cache, déclaration obligatoire par route, API get/set/testIamPermissions, SA + clés API v2 restreintes, journal d'audit (administration), staff sans contournement | Tout le reste s'appuie dessus ; c'est ce qui coûterait cher à changer plus tard |
 | **B — machines et équipes** | STS, fédération OIDC GitHub/GitLab, clés de SA asymétriques, identité des workloads, flux device pour la CLI, groupes, rôles personnalisés, conditions d'expiration, MFA imposable, step-up | Débloque la CI sans secret et les équipes |
-| **C — entreprise** | Policies de refus, politiques d'organisation étendues, SSO par organisation, dossiers, accès staff transparent côté client, journal d'accès aux données | Clients régulés, gouvernements, banques |
+| **C — entreprise** | Policies de refus (**fait**), politiques d'organisation étendues, SSO par organisation, dossiers, accès staff transparent côté client, journal d'accès aux données | Clients régulés, gouvernements, banques |
 
 Migration de l'existant pendant la phase A : création d'une organisation personnelle par utilisateur, rattachement de ses projets, conversion de `project_members` en bindings (§6.3), passage des routes sur `iam.Require`, clés utilisateur rattachées à un SA legacy (§8.4). `project_members` reste en lecture jusqu'à la bascule complète, puis est supprimée.
 

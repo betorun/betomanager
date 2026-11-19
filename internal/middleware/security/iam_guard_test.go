@@ -23,6 +23,8 @@ type fakeAuthorizer struct {
 	allowed map[string]bool
 	err     error
 	last    iam.ResourceName
+	// deny : refus prononcé par une politique de refus.
+	deny *iam.DenyRef
 }
 
 func key(p iam.Principal, perm iam.Permission, r iam.ResourceName) string {
@@ -34,7 +36,11 @@ func (f *fakeAuthorizer) Check(_ context.Context, p iam.Principal, perm iam.Perm
 	if f.err != nil {
 		return iam.Decision{}, f.err
 	}
-	return iam.Decision{Allowed: f.allowed[key(p, perm, r)]}, nil
+	ok := f.allowed[key(p, perm, r)]
+	if f.deny != nil {
+		return iam.Decision{DenyPolicy: f.deny}, nil
+	}
+	return iam.Decision{Allowed: ok}, nil
 }
 
 type guardCase struct {
@@ -159,4 +165,13 @@ func TestRequire_Unauthenticated(t *testing.T) {
 func TestRequire_UnknownPermissionPanicsAtStartup(t *testing.T) {
 	m, _ := newTestManager(t, &fakeAuthRepo{})
 	require.Panics(t, func() { m.Require("nope.nope.nope", PlatformResource) })
+}
+
+func TestRequire_DenyPolicyNamedInResponse(t *testing.T) {
+	gc := newGuardCase()
+	gc.authz.deny = &iam.DenyRef{ID: uuid.New(), Name: "Gel des déploiements", Resource: iam.ProjectName(gc.project)}
+	rec := gc.run(t, ProjectParam("id"), gc.user.String(), "/x/"+gc.project.String(), "")
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"deny_policy":{`)
+	assert.Contains(t, rec.Body.String(), "Gel des déploiements")
 }

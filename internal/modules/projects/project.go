@@ -53,7 +53,7 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) (*typeiam.ListProjectsResp
 	if err != nil {
 		return nil, err
 	}
-	return h.ProjectService.ListProjects(c.Request.Context(), held.Organizations, held.Projects)
+	return h.ProjectService.ListProjects(c.Request.Context(), held.Organizations, held.Projects, held.Excluded)
 }
 
 func (h *ProjectHandler) CreateProject(c *gin.Context, in *typeiam.CreateProjectRequest) (*typeiam.ProjectResponse, error) {

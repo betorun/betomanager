@@ -34,7 +34,7 @@ func (f *fakeRepo) UpdateProjectStatus(context.Context, string, string) error { 
 func (f *fakeRepo) UpdateProjectLimits(context.Context, string, string, string, string) error {
 	return nil
 }
-func (f *fakeRepo) ListProjects(context.Context, []uuid.UUID, []uuid.UUID, int) ([]dauth.Project, error) {
+func (f *fakeRepo) ListProjects(context.Context, []uuid.UUID, []uuid.UUID, []uuid.UUID, int) ([]dauth.Project, error) {
 	return nil, nil
 }
 
