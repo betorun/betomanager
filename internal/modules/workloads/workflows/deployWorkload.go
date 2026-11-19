@@ -30,7 +30,10 @@ type DeployWorkloadInput struct {
 	EnvRevision int64
 
 	// CustomDomains : noms vérifiés à router vers ce conteneur.
-	CustomDomains   []string
+	CustomDomains []string
+	// CustomRoutes : noms et chemins vérifiés (remplace CustomDomains, gardé
+	// pour les workflows lancés avant l'ajout des chemins).
+	CustomRoutes    []activities.DomainRoute
 	CustomDomainTLS bool
 
 	// Routage public, calculé par le service (enregistré avec le workload) :
@@ -169,6 +172,7 @@ func DeployWorkloadWorkflow(ctx workflow.Context, input DeployWorkloadInput) err
 		IngressNamespace:     input.IngressNamespace,
 		EnvRevision:          input.EnvRevision,
 		CustomDomains:        input.CustomDomains,
+		CustomRoutes:         input.CustomRoutes,
 		CustomDomainTLS:      input.CustomDomainTLS,
 		PersistenceEnabled:   input.PersistenceEnabled,
 		StorageSize:          input.StorageSize,

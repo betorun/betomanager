@@ -17,6 +17,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/core/configs"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/realtime"
 	"github.com/thekrauss/kubemanager/internal/middleware"
+	"github.com/thekrauss/kubemanager/internal/middleware/security"
 )
 
 // TTLs Centrifugo (pattern Centrifugo : tokens courts + refresh côté SDK).
@@ -126,8 +127,13 @@ func (ctrl *Controller) GetSubscriptionToken(c *gin.Context, in *SubscribeReques
 		return nil, err
 	}
 
-	// Authz : le user doit être membre du projet.
-	if err := ctrl.requireProjectMembership(c.Request.Context(), userID, projectID); err != nil {
+	// Authz : le principal IAM (identifiant interne, pas celui de l'annuaire
+	// porté par « userID ») doit pouvoir lire le projet.
+	principal, ok := security.PrincipalFromContext(c)
+	if !ok {
+		return nil, betoerrors.New(betoerrors.CodeForbidden, "not a member of this project")
+	}
+	if err := ctrl.requireProjectMembership(c.Request.Context(), principal, projectID); err != nil {
 		return nil, err
 	}
 
@@ -170,12 +176,8 @@ func parseProjectIDFromChannel(channel string) (uuid.UUID, error) {
 // requireProjectMembership : s'abonner aux événements d'un projet exige
 // resourcemanager.projects.get dessus. Réponse uniforme "not a member" : ne
 // révèle pas si le projet existe.
-func (ctrl *Controller) requireProjectMembership(ctx context.Context, userIDStr string, projectID uuid.UUID) error {
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return betoerrors.New(betoerrors.CodeUnauthorized, "invalid user id")
-	}
-	decision, err := ctrl.authz.Check(ctx, iam.UserPrincipal(userID), iam.ProjectsGet, iam.ProjectName(projectID))
+func (ctrl *Controller) requireProjectMembership(ctx context.Context, principal iam.Principal, projectID uuid.UUID) error {
+	decision, err := ctrl.authz.Check(ctx, principal, iam.ProjectsGet, iam.ProjectName(projectID))
 	if errors.Is(err, iam.ErrResourceNotFound) || (err == nil && !decision.Allowed) {
 		return betoerrors.New(betoerrors.CodeForbidden, "not a member of this project")
 	}

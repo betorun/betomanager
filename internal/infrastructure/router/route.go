@@ -222,7 +222,9 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("/:id/domains", http.MethodGet, "Domaines personnalisés et enregistrements DNS à créer", on(iam.WorkloadDomainsList), tonic.Handler(r.ListDomains, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "list_workload_domains"})
 	WorkloadGroup.AddRoute("/:id/domains", http.MethodPost, "Ajouter un domaine (rien n'est routé avant la preuve de propriété)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.AddDomain, http.StatusCreated)).
-		ForCopilot(CopilotTool{Name: "add_workload_domain", Write: true, Risk: tools.RiskLow})
+		ForCopilot(CopilotTool{Name: "add_workload_domain", Write: true, Risk: tools.RiskLow,
+			Hint: "Web containers only. path (default /) lets several containers of a project share one domain, e.g. /auth to an auth server and / to the site; a domain already proven in the project needs no new TXT record. " +
+				"Give the person the records to create with their 'host' field (name relative to the zone, @ for the bare domain), and the dns_provider-specific tip (Cloudflare: proxy off, DNS only). For a bare domain, an ALIAS record (if offered) replaces the A records."})
 	WorkloadGroup.AddRoute("/:id/domains/:domainID/verify", http.MethodPost, "Vérifier la preuve de propriété et router le domaine (enregistrement TXT)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.VerifyDomain, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "verify_workload_domain", Write: true, Risk: tools.RiskLow})
 	WorkloadGroup.AddRoute("/:id/domains/:domainID", http.MethodDelete, "Retirer un domaine et sa route", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.RemoveDomain, http.StatusNoContent))

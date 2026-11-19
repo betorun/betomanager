@@ -26,3 +26,19 @@ func TestSplitCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitRoute(t *testing.T) {
+	cases := map[string][2]string{
+		"www.exemple.sn":              {"www.exemple.sn", "/"},
+		"www.exemple.sn.":             {"www.exemple.sn", "/"},
+		"backoffice.exemple.sn/auth":  {"backoffice.exemple.sn", "/auth"},
+		"backoffice.exemple.sn/auth/": {"backoffice.exemple.sn", "/auth"},
+		"exemple.sn/":                 {"exemple.sn", "/"},
+	}
+	for in, want := range cases {
+		h, p := splitRoute(in)
+		if h != want[0] || p != want[1] {
+			t.Errorf("%q → %q %q", in, h, p)
+		}
+	}
+}

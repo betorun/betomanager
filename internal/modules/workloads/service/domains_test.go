@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
+	"github.com/thekrauss/kubemanager/internal/modules/workloads/activities"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/workflows"
@@ -18,6 +20,18 @@ import (
 type fakeDNS struct {
 	txt   map[string][]string
 	hosts map[string][]string
+	ns    map[string][]string
+}
+
+func (f fakeDNS) LookupNS(_ context.Context, name string) ([]*net.NS, error) {
+	out := []*net.NS{}
+	for _, h := range f.ns[name] {
+		out = append(out, &net.NS{Host: h})
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no such host")
+	}
+	return out, nil
 }
 
 func (f fakeDNS) LookupTXT(_ context.Context, name string) ([]string, error) {
@@ -37,6 +51,8 @@ type fakeDomains struct {
 	repository.DomainStore
 	rows     map[uuid.UUID]*domain.WorkloadDomain
 	siteHost string
+	// projects : projet de chaque conteneur (absent : un autre projet).
+	projects map[uuid.UUID]uuid.UUID
 }
 
 func (f *fakeDomains) Create(_ context.Context, d *domain.WorkloadDomain) error {
@@ -63,23 +79,42 @@ func (f *fakeDomains) Delete(_ context.Context, _, id uuid.UUID) error {
 	delete(f.rows, id)
 	return nil
 }
-func (f *fakeDomains) VerifiedHosts(_ context.Context, w uuid.UUID) ([]string, error) {
-	out := []string{}
+func (f *fakeDomains) VerifiedRoutes(_ context.Context, w uuid.UUID) ([]domain.Route, error) {
+	out := []domain.Route{}
 	for _, d := range f.rows {
 		if d.WorkloadID == w && d.Verified {
-			out = append(out, d.Hostname)
+			out = append(out, domain.Route{Host: d.Hostname, Path: pathOr(d.Path)})
 		}
 	}
 	return out, nil
 }
-func (f *fakeDomains) VerifiedOwner(_ context.Context, host string, except uuid.UUID) (*domain.WorkloadDomain, error) {
+func (f *fakeDomains) HostClaims(_ context.Context, host string, except uuid.UUID) ([]domain.HostClaim, error) {
+	out := []domain.HostClaim{}
 	for _, d := range f.rows {
 		if d.Hostname == host && d.Verified && d.ID != except {
-			return d, nil
+			c := *d
+			c.Path = pathOr(c.Path)
+			out = append(out, domain.HostClaim{WorkloadDomain: c, ProjectID: f.projects[d.WorkloadID]})
 		}
 	}
-	return nil, nil
+	return out, nil
 }
+func (f *fakeDomains) ProjectHostToken(_ context.Context, project uuid.UUID, host string) (string, error) {
+	for _, d := range f.rows {
+		if d.Hostname == host && d.Verified && f.projects[d.WorkloadID] == project {
+			return d.Token, nil
+		}
+	}
+	return "", nil
+}
+
+func pathOr(p string) string {
+	if p == "" {
+		return "/"
+	}
+	return p
+}
+
 func (f *fakeDomains) SiteHostnameTaken(_ context.Context, host string) (bool, error) {
 	return host == f.siteHost, nil
 }
@@ -98,8 +133,8 @@ func domainService(t *testing.T) (*WorkloadService, *fakeDomains, *fakeDNS, *fak
 	configs.AppConfig.Vps.AdressIp = domainTarget
 	id := uuid.New()
 	repo := &fakeRepo{w: domain.Workload{ID: id, ProjectID: uuid.New(), Name: "web", Namespace: "km-x", Image: "nginx:1", Status: "RUNNING", TargetPort: 8080}}
-	dns := &fakeDNS{txt: map[string][]string{}, hosts: map[string][]string{}}
-	store := &fakeDomains{rows: map[uuid.UUID]*domain.WorkloadDomain{}}
+	dns := &fakeDNS{txt: map[string][]string{}, hosts: map[string][]string{}, ns: map[string][]string{}}
+	store := &fakeDomains{rows: map[uuid.UUID]*domain.WorkloadDomain{}, projects: map[uuid.UUID]uuid.UUID{id: repo.w.ProjectID}}
 	dist := &fakeDistributor{}
 	return &WorkloadService{Repo: repo, Distributor: dist, Variables: &fakeVariables{}, Domains: store,
 		DomainCfg: &DomainSettings{Resolver: dns, Target: domainTarget, TLS: true}}, store, dns, dist, id
@@ -109,13 +144,16 @@ func domainService(t *testing.T) (*WorkloadService, *fakeDomains, *fakeDNS, *fak
 // client captait n'importe quel domaine qui nous vise déjà.
 func TestVerifyDomain_PointingIsNotProof(t *testing.T) {
 	s, store, dns, dist, id := domainService(t)
-	d, err := s.AddDomain(context.Background(), id, "WWW.Exemple.SN.")
+	d, err := s.AddDomain(context.Background(), id, "WWW.Exemple.SN.", "")
 	require.NoError(t, err)
 	assert.Equal(t, "www.exemple.sn", d.Hostname)
 	assert.Empty(t, dist.started, "ajouter ne route rien")
 	require.Len(t, d.Records, 2)
-	assert.Equal(t, domain.DNSRecord{Type: "TXT", Name: "_betorun-challenge.www.exemple.sn", Value: store.rows[d.ID].Token}, d.Records[0])
-	assert.Equal(t, domain.DNSRecord{Type: "A", Name: "www.exemple.sn", Value: domainTarget}, d.Records[1])
+	assert.Equal(t, domain.DNSRecord{Type: "TXT", Name: "_betorun-challenge.www.exemple.sn", Host: "_betorun-challenge.www", Value: store.rows[d.ID].Token}, d.Records[0])
+	assert.Equal(t, domain.DNSRecord{Type: "A", Name: "www.exemple.sn", Host: "www", Value: domainTarget}, d.Records[1])
+	assert.Equal(t, "exemple.sn", d.Zone)
+	assert.False(t, d.Apex)
+	assert.Equal(t, "/", d.Path)
 
 	dns.hosts["www.exemple.sn"] = []string{domainTarget}
 	v, err := s.VerifyDomain(context.Background(), id, d.ID)
@@ -136,7 +174,7 @@ func TestVerifyDomain_PointingIsNotProof(t *testing.T) {
 	assert.True(t, v.Verified)
 	require.Len(t, dist.started, 1, "preuve faite : nouveau déploiement")
 	in := dist.args[0].(workflows.DeployWorkloadInput)
-	assert.Equal(t, []string{"www.exemple.sn"}, in.CustomDomains)
+	assert.Equal(t, []activities.DomainRoute{{Host: "www.exemple.sn", Path: "/"}}, in.CustomRoutes)
 	assert.True(t, in.CustomDomainTLS)
 }
 
@@ -144,7 +182,7 @@ func TestAddDomain_Invalid(t *testing.T) {
 	s, _, _, _, id := domainService(t)
 	configs.AppConfig.Sites.BaseDomain = "betorun.app"
 	for _, bad := range []string{"", "localhost", "10.0.0.1", "*.exemple.sn", "exemple.sn/x", "a b.sn", "x.betorun.app", "-a.sn"} {
-		_, err := s.AddDomain(context.Background(), id, bad)
+		_, err := s.AddDomain(context.Background(), id, bad, "")
 		assert.Error(t, err, bad)
 	}
 }
@@ -155,7 +193,7 @@ func TestAddDomain_Limit(t *testing.T) {
 		u := uuid.New()
 		store.rows[u] = &domain.WorkloadDomain{ID: u, WorkloadID: id, Hostname: u.String() + ".sn"}
 	}
-	_, err := s.AddDomain(context.Background(), id, "www.exemple.sn")
+	_, err := s.AddDomain(context.Background(), id, "www.exemple.sn", "")
 	assert.ErrorIs(t, err, domain.ErrDomainLimit)
 }
 
@@ -165,7 +203,7 @@ func TestVerifyDomain_Conflicts(t *testing.T) {
 
 	// Preuve de l'ancien détenteur toujours présente : refus.
 	s, store, dns, dist, id := domainService(t)
-	d, err := s.AddDomain(ctx, id, host)
+	d, err := s.AddDomain(ctx, id, host, "")
 	require.NoError(t, err)
 	other := &domain.WorkloadDomain{ID: uuid.New(), WorkloadID: uuid.New(), Hostname: host, Token: "betorun-verify=ancien", Verified: true}
 	store.rows[other.ID] = other
@@ -185,7 +223,7 @@ func TestVerifyDomain_Conflicts(t *testing.T) {
 	// Nom pris par un site statique.
 	s, store, dns, _, id = domainService(t)
 	store.siteHost = host
-	d, err = s.AddDomain(ctx, id, host)
+	d, err = s.AddDomain(ctx, id, host, "")
 	require.NoError(t, err)
 	dns.txt[challenge] = []string{store.rows[d.ID].Token}
 	_, err = s.VerifyDomain(ctx, id, d.ID)
@@ -220,4 +258,84 @@ func TestRemoveDomain(t *testing.T) {
 	require.NoError(t, s.RemoveDomain(context.Background(), id, u))
 	assert.Len(t, dist.started, 1, "route à retirer")
 	assert.Empty(t, store.rows)
+}
+
+func TestDomainRecords_ApexAndTargets(t *testing.T) {
+	ctx := context.Background()
+
+	// Cible IP : A, y compris au sommet (« @ »).
+	s, _, _, _, id := domainService(t)
+	d, err := s.AddDomain(ctx, id, "exemple.sn", "")
+	require.NoError(t, err)
+	assert.True(t, d.Apex)
+	assert.Equal(t, domain.DNSRecord{Type: "A", Name: "exemple.sn", Host: "@", Value: domainTarget}, d.Records[1])
+
+	// Cible nom : CNAME pour un sous-domaine, A (adresses de la cible) + ALIAS
+	// en alternative au sommet.
+	s, _, dns, _, id := domainService(t)
+	s.DomainCfg.Target = "edge.betorun.app"
+	dns.hosts["edge.betorun.app"] = []string{"203.0.113.10", "203.0.113.11", "2001:db8::1"}
+	sub, err := s.AddDomain(ctx, id, "app.exemple.co.uk", "")
+	require.NoError(t, err)
+	assert.Equal(t, "exemple.co.uk", sub.Zone)
+	assert.Equal(t, domain.DNSRecord{Type: "CNAME", Name: "app.exemple.co.uk", Host: "app", Value: "edge.betorun.app"}, sub.Records[1])
+	apex, err := s.AddDomain(ctx, id, "exemple.sn", "")
+	require.NoError(t, err)
+	require.Len(t, apex.Records, 4, "TXT, deux A (IPv4 seulement), ALIAS")
+	assert.Equal(t, "A", apex.Records[1].Type)
+	assert.Equal(t, "203.0.113.11", apex.Records[2].Value)
+	assert.Equal(t, domain.DNSRecord{Type: "ALIAS", Name: "exemple.sn", Host: "@", Value: "edge.betorun.app", Alternative: true}, apex.Records[3])
+}
+
+func TestDomain_DNSProviderDetected(t *testing.T) {
+	s, _, dns, _, id := domainService(t)
+	dns.ns["exemple.sn"] = []string{"ada.ns.cloudflare.com.", "bob.ns.cloudflare.com."}
+	d, err := s.AddDomain(context.Background(), id, "www.exemple.sn", "")
+	require.NoError(t, err)
+	assert.Equal(t, "cloudflare", d.DNSProvider)
+	list, err := s.ListDomains(context.Background(), id)
+	require.NoError(t, err)
+	assert.Equal(t, "cloudflare", list[0].DNSProvider)
+}
+
+// Keycloak sur /auth, le site sur / : même nom, deux conteneurs du projet. La
+// preuve du nom est reprise, la route « / » de l'autre conteneur reste.
+func TestDomain_PathSharesProofInProject(t *testing.T) {
+	ctx := context.Background()
+	const host, challenge = "backoffice.exemple.sn", "_betorun-challenge.backoffice.exemple.sn"
+	s, store, dns, dist, id := domainService(t)
+	project := store.projects[id]
+	site := uuid.New()
+	store.projects[site] = project
+	root := &domain.WorkloadDomain{ID: uuid.New(), WorkloadID: site, Hostname: host, Path: "/", Token: "betorun-verify=site", Verified: true}
+	store.rows[root.ID] = root
+	dns.txt[challenge] = []string{root.Token}
+
+	d, err := s.AddDomain(ctx, id, host, "/auth/")
+	require.NoError(t, err)
+	assert.Equal(t, "/auth", d.Path)
+	assert.True(t, d.SharedProof)
+	assert.Equal(t, root.Token, store.rows[d.ID].Token, "même preuve : rien à créer chez le registraire")
+
+	v, err := s.VerifyDomain(ctx, id, d.ID)
+	require.NoError(t, err)
+	assert.True(t, v.Verified)
+	assert.True(t, root.Verified, "le site garde « / »")
+	in := dist.args[0].(workflows.DeployWorkloadInput)
+	assert.Equal(t, []activities.DomainRoute{{Host: host, Path: "/auth"}}, in.CustomRoutes)
+
+	// Même chemin : la route passe d'un conteneur du projet à l'autre.
+	again, err := s.AddDomain(ctx, id, host, "/")
+	require.NoError(t, err)
+	_, err = s.VerifyDomain(ctx, id, again.ID)
+	require.NoError(t, err)
+	assert.False(t, root.Verified, "« / » déplacé vers ce conteneur")
+}
+
+func TestAddDomain_InvalidPath(t *testing.T) {
+	s, _, _, _, id := domainService(t)
+	for _, bad := range []string{"auth", "/a/../b", "/a b", "/a?x=1", "/" + string(make([]byte, 120))} {
+		_, err := s.AddDomain(context.Background(), id, "www.exemple.sn", bad)
+		assert.ErrorIs(t, err, domain.ErrInvalidPath, bad)
+	}
 }

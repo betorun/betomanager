@@ -99,3 +99,28 @@ func TestChart_CronEnvChecksumOnPodTemplate(t *testing.T) {
 		t.Fatalf("cron : annotation checksum/env absente\n%s", y)
 	}
 }
+
+// Domaine à chemin : Ingress propre à la route ; la route « / » garde le nom
+// d'avant les chemins (pas de nouveau certificat à la mise à jour).
+func TestChart_CustomDomainPaths(t *testing.T) {
+	in := baseInput("web")
+	in.CustomRoutes = []DomainRoute{{Host: "backoffice.exemple.sn", Path: "/"}, {Host: "backoffice.exemple.sn", Path: "/auth"}}
+	in.CustomDomainTLS = true
+	y := renderKind(t, in)
+	if strings.Count(y, "# standard-app/templates/custom-domains.yaml") != 1 || strings.Count(y, "host: \"backoffice.exemple.sn\"") != 2 {
+		t.Fatalf("deux routes attendues\n%s", y)
+	}
+	if !strings.Contains(y, `path: "/auth"`) || !strings.Contains(y, `path: "/"`) {
+		t.Fatalf("chemins absents\n%s", y)
+	}
+	legacy := baseInput("web")
+	legacy.CustomDomains = []string{"backoffice.exemple.sn"}
+	old := renderKind(t, legacy)
+	nameOf := func(doc string) string {
+		i := strings.Index(doc, "name: job-d-")
+		return doc[i : i+len("name: job-d-")+10]
+	}
+	if nameOf(old) != nameOf(y) {
+		t.Fatalf("la route « / » a changé de nom : %s ≠ %s", nameOf(old), nameOf(y))
+	}
+}
