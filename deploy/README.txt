@@ -34,6 +34,14 @@ JAMAIS TESTÉ EN VRAI, à surveiller au premier déploiement :
   - le job deploy de la CI (jamais déclenché) ;
   - la restauration d'une sauvegarde (à répéter avant d'en avoir besoin).
 
+Ajouté depuis le 2026-11-03, vérifié sur un cluster k3s 1.36.5 distant (compte
+betorun-platform de rbac.yaml) mais avec l'API sur un poste de développement :
+bases gérées (CloudNativePG 1.30.1, plugin Barman Cloud v0.15.1), import d'un dump,
+contenu, remise à zéro et restauration de sa copie, builds depuis GitHub, double
+authentification (acr=gold). JAMAIS TESTÉ avec l'API derrière Caddy : les Jobs des
+bases téléchargent et envoient par https://api.<domaine> ; webhook GitHub réel ;
+sauvegardes continues des bases vers un S3 externe.
+
 
 1. PRÉREQUIS
 ------------
@@ -48,7 +56,11 @@ Machine de construction de la console : Docker. Pas le serveur 1 : next build
   - un compte SMTP (hôte, port, utilisateur, mot de passe, adresse d'expédition) ;
   - les emails du staff (PLATFORM_ADMINS) ;
   - un dépôt d'images (Docker Hub) ; la CI publie thekrauss/kubemanager et
-    thekrauss/static-edge sous le tag du commit.
+    thekrauss/static-edge sous le tag du commit (section 10) ;
+  - une application GitHub de PRODUCTION, distincte de celle du développement
+    (section 5 bis) ;
+  - facultatif : un bucket S3 d'un autre fournisseur pour les sauvegardes
+    continues des bases des clients (DATABASES_BACKUP_* dans .env.prod).
 
 
 2. DNS
@@ -129,6 +141,19 @@ Compte de la plateforme, à droits réduits (rbac.yaml explique ses limites) :
 
     sudo kubectl apply -f rbac.yaml
 
+Bases gérées : CloudNativePG et son plugin de sauvegarde (le plugin demande
+cert-manager, installé juste avant). Versions validées sur le cluster de test :
+
+    sudo kubectl apply --server-side -f \
+      https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.30.1/cnpg-1.30.1.yaml
+    sudo kubectl -n cnpg-system rollout status deploy/cnpg-controller-manager
+    sudo kubectl apply -f \
+      https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.15.1/manifest.yaml
+    sudo kubectl -n cnpg-system rollout status deploy/barman-cloud
+
+Sans eux, la création d'une base échoue (ressource Cluster inconnue) ; le reste
+de la plateforme fonctionne.
+
 registries.yaml n'est pas nécessaire : le registre a un certificat public et les
 pods reçoivent leurs identifiants par des imagePullSecrets.
 
@@ -169,9 +194,9 @@ Kubeconfig, depuis le poste qui a accès aux deux serveurs :
     # sur le serveur 1 : l'image tourne sous l'UID 10001
     sudo chown 10001 /opt/betorun/secrets/kubeconfig && sudo chmod 600 /opt/betorun/secrets/kubeconfig
 
-Images. L'API et static-edge viennent de la CI (ou d'un docker build local). Pour
-la console, sur une autre machine, depuis kweb ; les valeurs sont figées dans le
-JavaScript, donc une image par domaine :
+Images. Toutes viennent de la CI (section 10). À défaut, pour la console, sur une
+autre machine, depuis kweb ; les valeurs sont figées dans le JavaScript, donc une
+image par domaine :
 
     docker build \
       --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.<domaine>/kmanager/v1 \
@@ -182,6 +207,35 @@ JavaScript, donc une image par domaine :
 Toutes les commandes suivantes passent par deploy/compose.sh, qui charge les
 fichiers d'environnement. Si le dossier n'est pas /opt/betorun/secrets, exporter
 BETORUN_SECRETS_DIR.
+
+
+5 BIS. APPLICATION GITHUB
+-------------------------
+
+Facultative : sans elle, les builds depuis un dépôt GitHub sont désactivés, le
+reste fonctionne. Créer une application NEUVE (jamais celle du développement),
+GitHub, Settings, Developer settings, GitHub Apps, New GitHub App :
+
+  Homepage URL               https://app.<domaine>
+  Callback URL               https://app.<domaine>/integrations/github/callback
+  Request user authorization (OAuth) during installation : cochée
+  Setup URL                  (vide : la Callback URL sert)
+  Webhook URL                https://api.<domaine>/kmanager/v1/integrations/github/webhook
+  Webhook secret             openssl rand -hex 32 (à garder pour .env.prod)
+  Permissions du dépôt       Contents : Read-only ; Metadata : Read-only
+  Événements                 Push (installation et installation_repositories
+                             arrivent sans case à cocher)
+  Where can be installed     Any account
+
+Puis générer un client secret et une clé privée. Sur le serveur 1 :
+
+    install -m 600 -o 10001 <clé>.pem /opt/betorun/secrets/github/app.pem
+    rm <clé>.pem
+
+et dans .env.prod : GITHUB_APP_ID, GITHUB_APP_SLUG (nom dans l'URL de l'app),
+GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET, GITHUB_APP_WEBHOOK_SECRET, et
+GITHUB_APP_PRIVATE_KEY_FILE=/etc/betorun/github/app.pem. Une configuration à moitié
+remplie empêche l'API de démarrer.
 
 
 6. ORDRE DE DÉMARRAGE
@@ -197,7 +251,9 @@ b) Bootstrap de Keycloak (realm, clients). Rejouable. Il écrit les secrets des
     deploy/compose.sh --profile bootstrap up keycloak-bootstrap
 
    Keycloak n'envoie aucun email en production (KEYCLOAK_SMTP_ENABLED=false) : c'est
-   le backend qui s'en charge. Ne jamais lancer scripts/keycloak/bootstrap_platform.sh
+   le backend qui s'en charge. Il crée aussi le flux betorun-browser de la double
+   authentification (KEYCLOAK_MFA_ENABLED=true dans le compose) : le step-up des
+   actions sensibles demande acr=gold, sans ce flux il échouerait toujours. Ne jamais lancer scripts/keycloak/bootstrap_platform.sh
    avec ses valeurs par défaut : localhost, MailHog, admin/admin.
 
 c) Tout le reste. compose respecte les dépendances : schéma Temporal, Temporal,
@@ -267,7 +323,8 @@ publie les clés des jetons Kubernetes. Sans lui, CLUSTER_ID reste vide et l'ide
 des workloads est désactivée. JAMAIS TESTÉ entre deux serveurs : seul le rendu du
 chart a été vérifié (helm template, le 2026-11-02).
 
-Image : aucune CI ne la publie. Depuis le dépôt watcher, sur une autre machine :
+Image : la CI du dépôt watcher publie thekrauss/watcher:<sha> à chaque push sur
+main. À défaut, depuis le dépôt watcher, sur une autre machine :
 
     docker build -t thekrauss/watcher:<sha> .
     docker push thekrauss/watcher:<sha>
@@ -426,9 +483,28 @@ de service demande un ALTER ROLE.
 10. MISES À JOUR
 ----------------
 
-Automatique : mettre la variable de dépôt GitHub DEPLOY_ENABLED à true et les secrets
-VPS_HOST, VPS_USER, VPS_SSH_KEY, DOCKER_USERNAME, DOCKER_PASSWORD. Tant que
-DEPLOY_ENABLED n'est pas à true, la CI publie les images mais ne déploie rien.
+Automatique, à configurer dans chaque dépôt (Settings, Secrets and variables,
+Actions) :
+
+  Dépôt        Secrets                                        Variables
+  betomanager  DOCKER_USERNAME, DOCKER_PASSWORD,              DEPLOY_ENABLED
+               VPS_HOST, VPS_USER, VPS_SSH_KEY
+  kweb         les mêmes                                      DEPLOY_ENABLED,
+                                                              API_BASE_URL,
+                                                              SITES_BASE_DOMAIN
+  watcher      DOCKER_USERNAME, DOCKER_PASSWORD               (aucune)
+
+DOCKER_PASSWORD : un jeton d'accès Docker Hub (Read & Write), jamais le mot de
+passe du compte. VPS_SSH_KEY : une clé dédiée au déploiement, sans phrase de
+passe, dont la clé publique est seule dans authorized_keys de VPS_USER sur le
+serveur 1. Pour kweb : API_BASE_URL=https://api.<domaine>/kmanager/v1 et
+SITES_BASE_DOMAIN=sites.<domaine>, figés dans l'image de la console.
+
+Chaque push sur main publie les images sous le tag du commit (thekrauss/kubemanager,
+thekrauss/static-edge, thekrauss/kweb, thekrauss/watcher). Tant que DEPLOY_ENABLED
+n'est pas à true, la CI publie les images mais ne déploie rien. Chaque dépôt ne
+remplace que ses lignes dans images.env (CONSOLE_IMAGE pour kweb). Le watcher ne se
+déploie pas automatiquement : section 7 bis, avec le tag publié.
 Le dépôt doit être cloné dans /opt/betorun/kubemanager et l'utilisateur VPS_USER
 doit pouvoir écrire /opt/betorun/secrets/images.env et lire .env.prod.
 

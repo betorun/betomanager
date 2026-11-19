@@ -80,11 +80,12 @@ jobs:
             cd /opt/betorun/kubemanager
             git fetch --quiet origin
             git checkout --quiet ${{ github.sha }}
-            cat > /opt/betorun/secrets/images.env <<IMAGES
-            KUBEMANAGER_IMAGE=thekrauss/kubemanager:${{ github.sha }}
-            STATIC_EDGE_IMAGE=thekrauss/static-edge:${{ github.sha }}
-            IMAGES
-            sed -i 's/^ *//' /opt/betorun/secrets/images.env
+            # Seules nos lignes : CONSOLE_IMAGE appartient au dépôt kweb.
+            f=/opt/betorun/secrets/images.env
+            touch "$f"
+            sed -i '/^KUBEMANAGER_IMAGE=/d;/^STATIC_EDGE_IMAGE=/d' "$f"
+            echo "KUBEMANAGER_IMAGE=thekrauss/kubemanager:${{ github.sha }}" >> "$f"
+            echo "STATIC_EDGE_IMAGE=thekrauss/static-edge:${{ github.sha }}" >> "$f"
             deploy/compose.sh pull api worker static-edge
             deploy/compose.sh up -d --no-deps api
             deploy/compose.sh up -d --no-deps worker static-edge

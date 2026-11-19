@@ -28,7 +28,7 @@ case "$out/" in "$repo"/*) fail "le dossier doit être hors du dépôt : $out" ;
 
 umask 077
 chmod 700 "$out"
-mkdir -p "$out/registry" "$out/seaweedfs"
+mkdir -p "$out/registry" "$out/seaweedfs" "$out/github"
 
 operator_uid="${SUDO_UID:-$(id -u)}"
 tmp="$(mktemp "$out/.env.prod.XXXXXX")"
@@ -81,10 +81,12 @@ chmod 600 "$out/.env.prod"
 
 if [ "$(id -u)" -eq 0 ]; then
   chown "$APP_UID" "$out/registry/token.key"
+  # Dossier monté dans l'API et le worker : la clé de l'application GitHub.
+  chown "$APP_UID" "$out/github"
   chown -R "$operator_uid" "$out/.env.prod"
   chown "$operator_uid" "$out"
 else
-  echo "À faire en root : chown $APP_UID $out/registry/token.key" >&2
+  echo "À faire en root : chown $APP_UID $out/registry/token.key $out/github" >&2
 fi
 
 echo "Secrets écrits dans $out (valeurs non affichées)."
