@@ -106,5 +106,29 @@
  {
   "fr": "Ce n'est pas un dump au format personnalisé de pg_dump : créez-le avec pg_dump -Fc (les dumps SQL bruts ne sont pas acceptés)",
   "en": "not a pg_dump custom-format file: create it with pg_dump -Fc (plain SQL dumps are not accepted)"
+ },
+ {
+  "fr": "La confirmation ne correspond pas au nom de la base",
+  "en": "the confirmation does not match the database name"
+ },
+ {
+  "fr": "Aucune copie de sécurité à restaurer : elle est gardée 24 h après la remise à zéro de la base",
+  "en": "no safety copy to restore: it is kept 24 hours after the database was emptied"
+ },
+ {
+  "fr": "La lecture et la remise à zéro des bases ne sont pas disponibles sur cette plateforme",
+  "en": "reading and emptying databases is not available on this platform"
+ },
+ {
+  "fr": "La table des matières du dump est illisible",
+  "en": "the dump's table of contents could not be read"
+ },
+ {
+  "fr": "La tâche sur la base n'a pas fini à temps",
+  "en": "the database task did not finish in time"
+ },
+ {
+  "fr": "Permission refusée : databases.databases.reset sur cette base",
+  "en": "permission denied: databases.databases.reset on this database"
  }
 ]

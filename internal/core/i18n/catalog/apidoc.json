@@ -1294,5 +1294,49 @@
  {
   "fr": "Supprimer l'image d'un build (refusé si un conteneur l'utilise ; le journal du build reste)",
   "en": "Delete a build's image (refused while a container uses it; the build log stays)"
+ },
+ {
+  "fr": "Comparer un dump à la base avant de l'importer (schémas et tables ; seul le début du fichier est lu)",
+  "en": "Compare a dump with the database before importing it (schemas and tables; only the start of the file is read)"
+ },
+ {
+  "fr": "Comparer un dump à la base avant de l'importer",
+  "en": "Compare a dump with the database before importing it"
+ },
+ {
+  "fr": "Contenu d'une base : taille, et tables par schéma (lu dans la base)",
+  "en": "Contents of a database: size, and tables per schema (read from the database)"
+ },
+ {
+  "fr": "Contenu d'une base : taille, et tables par schéma",
+  "en": "Contents of a database: size, and tables per schema"
+ },
+ {
+  "fr": "Vider la base (copie de sécurité gardée 24 h ; la base et ses branchements restent)",
+  "en": "Empty the database (safety copy kept 24 h; the database and its attachments remain)"
+ },
+ {
+  "fr": "Vider la base",
+  "en": "Empty the database"
+ },
+ {
+  "fr": "Restaurer la copie prise avant la remise à zéro (suivie comme un import)",
+  "en": "Restore the copy taken before the database was emptied (tracked as an import)"
+ },
+ {
+  "fr": "Restaurer la copie prise avant la remise à zéro",
+  "en": "Restore the copy taken before the database was emptied"
+ },
+ {
+  "fr": "Début du dump pg_dump -Fc (16 Mio suffisent)",
+  "en": "Start of the pg_dump -Fc dump (16 MiB is enough)"
+ },
+ {
+  "fr": "true : vider d'abord la base (copie de sécurité gardée 24 h)",
+  "en": "true: empty the database first (safety copy kept 24 h)"
+ },
+ {
+  "fr": "Nom de la base, retapé pour confirmer",
+  "en": "Name of the database, typed again to confirm"
  }
 ]

@@ -41,6 +41,8 @@ func (a *App) newDatabasesController() *databases.Controller {
 				a.Logger.Warnw("databases: no backup storage configured (databases.backup.*): new databases will have NO backups")
 			}
 			s.Clusters = cnpg
+			s.Shell = cnpg
+			s.Snapshots = repo
 			s.Imports = a.databaseImports(cnpg)
 		}
 	}
@@ -149,7 +151,22 @@ func addDatabaseRoutes(app *App) {
 			Multipart: []FormField{
 				{Name: databasesDomain.DumpFormField, Description: "Dump au format personnalisé de pg_dump (-Fc)", File: true, Required: true},
 				{Name: "clean", Description: "true : supprimer d'abord les objets existants du dump"},
+				{Name: "reset", Description: "true : vider d'abord la base (copie de sécurité gardée 24 h)"},
 			}})
+	// Inspection : le début d'un dump comparé à la base (rien n'est écrit).
+	dbs.AddRoute("/:databaseID/import/inspect", http.MethodPost, "Comparer un dump à la base avant de l'importer (schémas et tables ; seul le début du fichier est lu)",
+		g.Perm(iam.DatabasesGet, db), wrapRawHandler(r.Inspect)).
+		Documented(RawDoc{Input: databasesDomain.ImportUploadPath{}, Status: http.StatusOK, Produces: MIMEJSON, Output: databasesDomain.InspectResult{},
+			Multipart: []FormField{
+				{Name: databasesDomain.DumpFormField, Description: "Début du dump pg_dump -Fc (16 Mio suffisent)", File: true, Required: true},
+			}})
+	dbs.AddRoute("/:databaseID/contents", http.MethodGet, "Contenu d'une base : taille, et tables par schéma (lu dans la base)",
+		g.Perm(iam.DatabasesGet, db), tonic.Handler(r.Contents, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "get_database_contents"})
+	dbs.AddRoute("/:databaseID/reset", http.MethodPost, "Vider la base (copie de sécurité gardée 24 h ; la base et ses branchements restent)",
+		g.Perm(iam.DatabasesReset, db), tonic.Handler(r.Reset, http.StatusOK))
+	dbs.AddRoute("/:databaseID/reset/undo", http.MethodPost, "Restaurer la copie prise avant la remise à zéro (suivie comme un import)",
+		g.Perm(iam.DatabasesReset, db), tonic.Handler(r.UndoReset, http.StatusAccepted))
 	dbs.AddRoute("/:databaseID/imports", http.MethodGet, "Imports récents d'une base", g.Perm(iam.DatabasesGet, db),
 		tonic.Handler(r.ListImports, http.StatusOK))
 	dbs.AddRoute("/:databaseID/imports/:importID", http.MethodGet, "État d'un import (journal de pg_restore en cas d'échec)", g.Perm(iam.DatabasesGet, db),
@@ -158,4 +175,7 @@ func addDatabaseRoutes(app *App) {
 	// Interne, sans session : le Job d'import lit le dump par une URL signée.
 	internal := RootGroup.NewGroup("/databases/imports", "Dump d'un import pour son Job").Internal()
 	internal.AddRoute("/:importID/dump", http.MethodGet, "Dump d'un import (URL signée)", Public(), wrapRawHandler(r.Dump))
+	// Interne, sans session : le Job de remise à zéro envoie la copie de sécurité.
+	snaps := RootGroup.NewGroup("/databases/snapshots", "Copie de sécurité d'une base, envoyée par son Job").Internal()
+	snaps.AddRoute("/:taskID/upload", http.MethodPut, "Copie de sécurité avant remise à zéro (URL signée)", Public(), wrapRawHandler(r.UploadSnapshot))
 }

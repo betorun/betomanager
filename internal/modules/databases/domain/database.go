@@ -109,6 +109,9 @@ type DatabaseView struct {
 	Attachments []Attachment `json:"attachments"`
 	// LastImport : dernier import de dump, s'il y en a eu un.
 	LastImport *DatabaseImport `json:"last_import,omitempty"`
+	// ResetSnapshot : copie prise avant la dernière remise à zéro, encore
+	// restaurable (absente sinon).
+	ResetSnapshot *Snapshot `json:"reset_snapshot,omitempty"`
 }
 
 // Attachment : un branchement de la base sur un conteneur.

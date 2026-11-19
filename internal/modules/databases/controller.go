@@ -54,8 +54,17 @@ func apiError(err error) error {
 		return betoerrors.New(betoerrors.CodeNotFound, err.Error())
 	case errors.Is(err, domain.ErrImportRunning):
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
-	case errors.Is(err, domain.ErrImportsDisabled):
+	case errors.Is(err, domain.ErrImportsDisabled), errors.Is(err, domain.ErrShellDisabled):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
+	case errors.Is(err, domain.ErrConfirmMismatch), errors.Is(err, domain.ErrDumpUnreadable):
+		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
+	case errors.Is(err, domain.ErrNoSnapshot):
+		return betoerrors.New(betoerrors.CodeNotFound, err.Error())
+	case errors.Is(err, ErrTaskTimeout):
+		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
+	case errors.As(err, new(*TaskError)):
+		// Journal de psql ou pg_dump : la base est celle du projet.
+		return betoerrors.New(betoerrors.CodeUnprocessable, err.Error())
 	case errors.Is(err, domain.ErrUnavailable):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	case strings.HasPrefix(err.Error(), "at most "), strings.HasPrefix(err.Error(), "project is not ready"):
@@ -207,7 +216,16 @@ func (h *Controller) Import(c *gin.Context, in *domain.ImportUploadPath) {
 		creator = string(principal)
 	}
 	clean := strings.EqualFold(c.PostForm("clean"), "true")
-	imp, err := h.Service.Import(c.Request.Context(), p, d, f, fh.Size, clean, creator)
+	reset := strings.EqualFold(c.PostForm("reset"), "true")
+	// « Vider d'abord » : il faut AUSSI le droit de vider la base.
+	if reset {
+		if err := h.allowed(c, iam.DatabasesReset, iam.ProjectName(p).Child("databases", d),
+			"permission denied: databases.databases.reset on this database"); err != nil {
+			h.writeError(c, err)
+			return
+		}
+	}
+	imp, err := h.Service.Import(c.Request.Context(), p, d, f, fh.Size, clean, reset, creator)
 	if err != nil {
 		h.writeError(c, apiError(err))
 		return
@@ -261,4 +279,112 @@ func (h *Controller) writeError(c *gin.Context, err error) {
 		h.Service.Logger.Errorw("database import failed", "error", err)
 	}
 	c.Data(status, "application/json; charset=utf-8", body)
+}
+
+//  Contenu et remise à zéro
+
+// Contents : taille et tables par schéma, lues dans la base.
+func (h *Controller) Contents(c *gin.Context, in *domain.DatabasePath) (*domain.Contents, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := h.Service.Contents(c.Request.Context(), p, d)
+	return out, apiError(err)
+}
+
+// Inspect : début d'un dump (multipart : dump), comparé à la base. Rien
+// n'est écrit ; seuls les premiers Mio sont lus.
+func (h *Controller) Inspect(c *gin.Context, in *domain.ImportUploadPath) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, domain.InspectHeadBytes+multipartOverhead)
+	fh, err := c.FormFile(domain.DumpFormField)
+	if err != nil {
+		h.writeError(c, betoerrors.New(betoerrors.CodeInvalidInput, `missing "dump" file (pg_dump -Fc)`))
+		return
+	}
+	if c.Request.MultipartForm != nil {
+		defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
+	}
+	f, err := fh.Open()
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	defer f.Close()
+	out, err := h.Service.Inspect(c.Request.Context(), p, d, f)
+	if err != nil {
+		h.writeError(c, apiError(err))
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// Reset : copie de sécurité (24 h), puis la base est vidée.
+func (h *Controller) Reset(c *gin.Context, in *domain.ResetRequest) (*domain.ResetResponse, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	actor := ""
+	if principal, ok := security.PrincipalFromContext(c); ok {
+		actor = string(principal)
+	}
+	out, err := h.Service.Reset(c.Request.Context(), p, d, in.ConfirmName, actor)
+	return out, apiError(err)
+}
+
+// UndoReset : la copie de sécurité est réimportée (suivi comme un import).
+func (h *Controller) UndoReset(c *gin.Context, in *domain.DatabasePath) (*domain.DatabaseImport, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	actor := ""
+	if principal, ok := security.PrincipalFromContext(c); ok {
+		actor = string(principal)
+	}
+	out, err := h.Service.UndoReset(c.Request.Context(), p, d, actor)
+	return out, apiError(err)
+}
+
+// UploadSnapshot : copie de sécurité envoyée par le Job de remise à zéro
+// (URL signée, sans session ; PUT du fichier brut).
+func (h *Controller) UploadSnapshot(c *gin.Context, in *domain.SnapshotUploadPath) {
+	id, err := uuid.Parse(in.TaskID)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	err = h.Service.ReceiveSnapshot(c.Request.Context(), id, in.Expires, in.Sig, c.Request.Body, c.Request.ContentLength)
+	switch {
+	case err == nil:
+		c.Status(http.StatusNoContent)
+	case errors.Is(err, domain.ErrNoSnapshot):
+		c.Status(http.StatusNotFound)
+	case errors.Is(err, domain.ErrDumpTooLarge):
+		c.Status(http.StatusRequestEntityTooLarge)
+	default:
+		h.writeError(c, err)
+	}
+}
+
+// allowed : second contrôle IAM, sur une ressource donnée.
+func (h *Controller) allowed(c *gin.Context, perm iam.Permission, res iam.ResourceName, denied string) error {
+	principal, ok := security.PrincipalFromContext(c)
+	if !ok || h.IAM == nil {
+		return betoerrors.New(betoerrors.CodeForbidden, "permission denied")
+	}
+	dec, err := h.IAM.Check(c.Request.Context(), principal, perm, res)
+	if err != nil && !errors.Is(err, iam.ErrResourceNotFound) {
+		return err
+	}
+	if err != nil || !dec.Allowed {
+		return betoerrors.New(betoerrors.CodeForbidden, denied)
+	}
+	return nil
 }
