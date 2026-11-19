@@ -100,7 +100,7 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "svc"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "svc", "Dockerfile"), []byte("FROM x"), 0o644))
 	file := filepath.Join(dir, "betorun.yaml")
-	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\nreplicas: 2\ncpu: 300m\ntls: true\nenv:\n  A: b\n"), 0o644))
+	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\nhealth_path: /healthz\nreplicas: 2\ncpu: 300m\ntls: true\nenv:\n  A: b\n"), 0o644))
 
 	_, err := run(t, "deploy", "-f", file, "--no-wait")
 	require.NoError(t, err)
@@ -110,6 +110,8 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	assert.EqualValues(t, 2, created["replicas"])
 	assert.Equal(t, "300m", created["cpu_limit"])
 	assert.Equal(t, true, created["tls_enabled"])
+	assert.Equal(t, "/healthz", created["health_path"])
+	assert.Equal(t, "/healthz", created["readiness_path"])
 	assert.Nil(t, updated)
 
 	existing = []map[string]any{{"ID": wid.String(), "Name": "api"}}

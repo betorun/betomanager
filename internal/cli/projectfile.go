@@ -47,13 +47,16 @@ type projectFile struct {
 	// Kind : web (défaut), worker ou cron. Command / Args remplacent
 	// l'ENTRYPOINT / le CMD de l'image ; Schedule, TimeZone et MaxDuration
 	// (ex. 30m) ne valent que pour un cron.
-	Kind        string            `yaml:"kind,omitempty"`
-	Command     []string          `yaml:"command,omitempty"`
-	Args        []string          `yaml:"args,omitempty"`
-	Schedule    string            `yaml:"schedule,omitempty"`
-	TimeZone    string            `yaml:"timezone,omitempty"`
-	MaxDuration string            `yaml:"max_duration,omitempty"`
-	Env         map[string]string `yaml:"env,omitempty"`
+	Kind        string   `yaml:"kind,omitempty"`
+	Command     []string `yaml:"command,omitempty"`
+	Args        []string `yaml:"args,omitempty"`
+	Schedule    string   `yaml:"schedule,omitempty"`
+	TimeZone    string   `yaml:"timezone,omitempty"`
+	MaxDuration string   `yaml:"max_duration,omitempty"`
+	// HealthPath : chemin des sondes HTTP d'un conteneur web (défaut /), ex.
+	// /healthz. Pris en compte à la création.
+	HealthPath string            `yaml:"health_path,omitempty"`
+	Env        map[string]string `yaml:"env,omitempty"`
 	// Secrets : noms ; chaque valeur est lue dans l'environnement au déploiement.
 	Secrets []string `yaml:"secrets,omitempty"`
 }
@@ -199,7 +202,8 @@ func newDeploy() *cobra.Command {
 			req := api.CreateWorkloadRequest{ProjectID: project, Name: pf.Name, Image: image, EnvVars: pf.Env, SecretData: secrets, Replicas: firstPositive(pf.Replicas, 1),
 				TargetPort: firstPositive(pf.Port, defaultTargetPort), CPULimit: firstNonEmpty(pf.CPU, defaultCPULimit),
 				MemoryLimit: firstNonEmpty(pf.Memory, defaultMemoryLimit), ServiceAccount: pf.ServiceAccount,
-				Kind: pf.Kind, Command: pf.Command, Args: pf.Args, Schedule: pf.Schedule, TimeZone: pf.TimeZone}
+				Kind: pf.Kind, Command: pf.Command, Args: pf.Args, Schedule: pf.Schedule, TimeZone: pf.TimeZone,
+				HealthPath: pf.HealthPath, ReadinessPath: pf.HealthPath}
 			if req.MaxDurationSeconds, err = pf.maxDurationSeconds(); err != nil {
 				return err
 			}
