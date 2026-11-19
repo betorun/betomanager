@@ -190,3 +190,11 @@ func newWorkloadsRun() *cobra.Command {
 		},
 	}
 }
+
+// internalURL : adresse dans le réseau privé du projet (conteneur web).
+func internalURL(w *api.Workload) string {
+	if (w.Kind != "" && w.Kind != kindWeb) || w.Namespace == "" {
+		return ""
+	}
+	return "http://" + w.Name + "." + w.Namespace + ".svc"
+}

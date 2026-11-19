@@ -71,7 +71,10 @@ const (
 	DatabasesDelete Permission = "databases.databases.delete"
 	// DatabasesConnect : brancher une base sur un conteneur (il reçoit l'URI
 	// de connexion, mot de passe compris).
-	DatabasesConnect      Permission = "databases.databases.connect"
+	DatabasesConnect Permission = "databases.databases.connect"
+	// DatabasesImport : charger un dump dans une base (ses données peuvent
+	// être remplacées).
+	DatabasesImport       Permission = "databases.databases.import"
 	SiteDeploymentsList   Permission = "sites.deployments.list"
 	SiteDeploymentsCreate Permission = "sites.deployments.create"
 	SiteDeploymentsActive Permission = "sites.deployments.activate"
@@ -180,6 +183,7 @@ var catalog = map[Permission]PermissionInfo{
 	DatabasesCreate:       {Title: "Créer une base de données", CustomRoles: true},
 	DatabasesDelete:       {Title: "Supprimer une base de données (ses données sont perdues)", CustomRoles: true, Sensitive: true},
 	DatabasesConnect:      {Title: "Brancher une base de données sur un conteneur", CustomRoles: true},
+	DatabasesImport:       {Title: "Importer un dump dans une base de données (ses données peuvent être remplacées)", CustomRoles: true, Sensitive: true},
 	SitesUpdate:           {Title: "Modifier un site", CustomRoles: true},
 	SitesDelete:           {Title: "Supprimer un site", CustomRoles: true},
 	SiteDeploymentsList:   {Title: "Voir les déploiements d'un site", CustomRoles: true},

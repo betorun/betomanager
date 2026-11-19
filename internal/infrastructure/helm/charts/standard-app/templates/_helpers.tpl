@@ -28,6 +28,15 @@ km-workload-id: {{ .Values.commonLabels.workloadID | quote }}
 {{- end -}}
 
 {{/*
+Pods du même projet (réseau privé) : labels posés par betorun, jamais par le
+client (il n'a pas accès au cluster).
+*/}}
+{{- define "standard-app.projectSelector" -}}
+app.kubernetes.io/part-of: kubemanager
+km-project-id: {{ .Values.commonLabels.projectID | quote }}
+{{- end -}}
+
+{{/*
 Selector labels — sous-ensemble stable utilisé dans .spec.selector
 (ne doit PAS changer après création du Deployment).
 */}}

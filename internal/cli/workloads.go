@@ -366,6 +366,7 @@ func newWorkloadsStatus() *cobra.Command {
 				[2]string{i18n.T("wl.col.replicas"), fmt.Sprint(w.Replicas)},
 				[2]string{i18n.T("wl.col.kind"), kindLabel(w.Kind)},
 				[2]string{i18n.T("wl.col.url"), url},
+				[2]string{i18n.T("wl.col.internal"), internalURL(w)},
 				[2]string{i18n.T("wl.col.identity"), identity},
 			)
 			if spec := workloadSpec(w); spec.Schedule != "" {

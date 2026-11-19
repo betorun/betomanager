@@ -61,6 +61,11 @@ type DatabasesConfig struct {
 	// S3 JOIGNABLE DEPUIS LE CLUSTER (les pods des bases y écrivent).
 	// Désactivées tant que Endpoint ou Bucket est vide.
 	Backup DatabaseBackupConfig `mapstructure:"backup"`
+	// ImportFetchImage : image avec curl qui télécharge un dump à importer
+	// (défaut curlimages/curl, version figée).
+	ImportFetchImage string `mapstructure:"import_fetch_image"`
+	// ImportMaxBytes : taille maximale d'un dump (défaut 2 Gio).
+	ImportMaxBytes int64 `mapstructure:"import_max_bytes"`
 }
 
 // DatabaseBackupConfig : destination des sauvegardes des bases.

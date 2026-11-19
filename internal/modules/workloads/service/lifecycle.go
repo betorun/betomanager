@@ -278,6 +278,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 		Status:      w.Status,
 		Phase:       w.CurrentPhase,
 		ExternalURL: w.ExternalURL,
+		InternalURL: InternalURL(w),
 		Image:       w.Image,
 		Replicas:    int32(w.Replicas),
 		UpdatedAt:   w.UpdatedAt,

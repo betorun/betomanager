@@ -1214,5 +1214,33 @@
  {
   "fr": "Chemin servi par ce conteneur (défaut /), ex. /auth : le reste du domaine peut aller à un autre conteneur du projet",
   "en": "Path served by this container (default /), e.g. /auth: the rest of the domain can go to another container of the project"
+ },
+ {
+  "fr": "Importer un dump pg_dump -Fc dans la base (restauré par un Job du projet)",
+  "en": "Import a pg_dump -Fc dump into the database (restored by a job of the project)"
+ },
+ {
+  "fr": "Importer un dump pg_dump -Fc dans la base",
+  "en": "Import a pg_dump -Fc dump into the database"
+ },
+ {
+  "fr": "true : supprimer d'abord les objets existants du dump",
+  "en": "true: drop the dump's existing objects first"
+ },
+ {
+  "fr": "Dump au format personnalisé de pg_dump (-Fc)",
+  "en": "Dump in pg_dump custom format (-Fc)"
+ },
+ {
+  "fr": "Imports récents d'une base",
+  "en": "Recent imports of a database"
+ },
+ {
+  "fr": "État d'un import (journal de pg_restore en cas d'échec)",
+  "en": "State of an import (pg_restore log on failure)"
+ },
+ {
+  "fr": "État d'un import",
+  "en": "State of an import"
  }
 ]

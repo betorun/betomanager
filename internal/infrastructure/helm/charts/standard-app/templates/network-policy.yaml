@@ -35,6 +35,15 @@ spec:
         - protocol: {{ .Values.service.protocol | default "TCP" }}
           port: {{ .Values.service.targetPort | default 8080 }}
     {{- end }}
+    {{- if and .Values.networkPolicy.projectNetwork .Values.commonLabels.projectID }}
+    # 3. Réseau privé du projet : les autres conteneurs du MÊME projet (même
+    # espace de noms, pods posés par betorun avec le même km-project-id), sur
+    # tous les ports. Un autre projet est dans un autre espace : jamais visé.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "standard-app.projectSelector" . | nindent 14 }}
+    {{- end }}
 
   {{- if .Values.networkPolicy.egress.enabled }}
   # ── EGRESS ───────────────────────────────────────────────────────────
@@ -55,6 +64,15 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    {{- end }}
+
+    {{- if and .Values.networkPolicy.projectNetwork .Values.commonLabels.projectID }}
+    # Réseau privé du projet (pendant de la règle d'entrée 3) : la règle
+    # Internet exclut les adresses privées, il faut donc l'ouvrir ici.
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "standard-app.projectSelector" . | nindent 14 }}
     {{- end }}
 
     {{- if .Values.networkPolicy.egress.projectDatabases }}

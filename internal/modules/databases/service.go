@@ -46,7 +46,9 @@ type Service struct {
 	Projects  Projects
 	Clusters  Clusters
 	Workloads Workloads
-	Logger    *zap.SugaredLogger
+	// Imports : import de dumps (nil : indisponible).
+	Imports *ImportConfig
+	Logger  *zap.SugaredLogger
 }
 
 func (s *Service) available() error {
