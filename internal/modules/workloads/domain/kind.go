@@ -38,6 +38,7 @@ var (
 	ErrNotCron          = errors.New("this action is only available for a cron container")
 	ErrInvalidTimeZone  = errors.New("invalid time zone: use an IANA name such as Africa/Dakar")
 	ErrMaxDuration      = errors.New("max_duration_seconds: at most 86400 (24 hours)")
+	ErrStartupTimeout   = errors.New("startup_timeout_seconds: between 10 and 600 seconds")
 )
 
 // NormalizeKind : sorte connue ; vide = web (conteneurs antérieurs, appels internes).
@@ -112,6 +113,9 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 	if !ValidCommand(in.Command) || !ValidCommand(in.Args) {
 		return ErrInvalidCommand
 	}
+	if !ValidStartupTimeout(in.StartupTimeoutSeconds) {
+		return ErrStartupTimeout
+	}
 	switch kind {
 	case KindWeb:
 		if in.TargetPort == 0 {
@@ -146,4 +150,12 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 		return ErrNotCron
 	}
 	return nil
+}
+
+// MaxStartupTimeoutSeconds : délai de démarrage toléré au plus.
+const MaxStartupTimeoutSeconds = 600
+
+// ValidStartupTimeout : 0 (défaut) ou entre 10 s et 10 min.
+func ValidStartupTimeout(s int) bool {
+	return s == 0 || (s >= 10 && s <= MaxStartupTimeoutSeconds)
 }

@@ -516,7 +516,9 @@ type KubernetesConfig struct {
 	// IngressTarget : nom ou adresse vers laquelle les domaines personnalisés
 	// doivent pointer (défaut : vps_ip).
 	IngressTarget string `mapstructure:"ingress_target"`
-	// DomainDNSServer : résolveur (hôte:port) des vérifications de domaine.
+	// DomainDNSServer : résolveurs (hôte:port, séparés par des virgules) des
+	// vérifications de domaine ; vide : 1.1.1.1 puis 8.8.8.8 ; « system » :
+	// celui de la machine (cache négatif possible).
 	DomainDNSServer string `mapstructure:"domain_dns_server"`
 	// CustomDomainInsecure : pas de certificat pour les domaines (développement).
 	CustomDomainInsecure bool `mapstructure:"custom_domain_insecure"`

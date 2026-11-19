@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -157,6 +158,9 @@ func (r *Recoverer) SweepCrons(ctx context.Context) (int, error) {
 // actif prêt depuis au moins StableFor sans redémarrage.
 func (r *Recoverer) healthy(ctx context.Context, w *domain.Workload) (bool, error) {
 	if isCron(w) {
+		if w.CurrentPhase == utils.PhaseHelmError {
+			return false, nil // le CronJob n'a peut-être jamais été posé : un redéploiement tranche
+		}
 		// Cron : guéri quand sa dernière exécution (planifiée ou manuelle) a réussi.
 		outcome, _, err := latestRun(ctx, r.K8s, w)
 		return outcome == RunSucceeded, err
@@ -167,6 +171,12 @@ func (r *Recoverer) healthy(ctx context.Context, w *domain.Workload) (bool, erro
 	}
 	if err != nil {
 		return false, err
+	}
+	// Déploiement en échec : ne le lever que si le Deployment porte la version
+	// voulue (image et révision des variables). Un échec avant l'application
+	// laisse l'ancienne version, saine, qui ne prouve rien.
+	if w.CurrentPhase == utils.PhaseHelmError && !deploymentIsCurrent(dep, w) {
+		return false, nil
 	}
 	desired := desiredReplicas(dep)
 	if desired == 0 || dep.Status.ObservedGeneration < dep.Generation ||
@@ -193,6 +203,19 @@ func (r *Recoverer) healthy(ctx context.Context, w *domain.Workload) (bool, erro
 		stable++
 	}
 	return stable >= desired, nil
+}
+
+// deploymentIsCurrent : le Deployment porte l'image du conteneur et la
+// révision courante de ses variables.
+func deploymentIsCurrent(dep *appsv1.Deployment, w *domain.Workload) bool {
+	tpl := dep.Spec.Template
+	if len(tpl.Spec.Containers) == 0 || w.Image == "" || tpl.Spec.Containers[0].Image != w.Image {
+		return false
+	}
+	if w.EnvRevision > 0 && tpl.Annotations[utils.AnnotationEnvChecksum] != strconv.FormatInt(w.EnvRevision, 10) {
+		return false
+	}
+	return true
 }
 
 func desiredReplicas(dep *appsv1.Deployment) int32 {

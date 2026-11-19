@@ -79,3 +79,13 @@ func TestBuildHelmValues_EnvOnlyThroughSecret(t *testing.T) {
 	assert.Equal(t, "3", a["envChecksum"])
 	assert.NotEqual(t, a["envChecksum"], buildHelmValues(InstallWorkloadInput{ReleaseName: "api", EnvRevision: 4})["envChecksum"])
 }
+
+func TestBuildHelmValues_StartupTimeout(t *testing.T) {
+	probe := func(v map[string]any) any {
+		return v["probes"].(map[string]any)["startup"].(map[string]any)["failureThreshold"]
+	}
+	assert.Equal(t, startupProbeFailureThreshold, probe(buildHelmValues(InstallWorkloadInput{ReleaseName: "api"})))
+	// Keycloak : 81 s mesurées, 300 s tolérées → 60 essais de 5 s.
+	assert.Equal(t, 60, probe(buildHelmValues(InstallWorkloadInput{ReleaseName: "auth", StartupTimeoutSeconds: 300})))
+	assert.Equal(t, 21, probe(buildHelmValues(InstallWorkloadInput{ReleaseName: "auth", StartupTimeoutSeconds: 101})))
+}

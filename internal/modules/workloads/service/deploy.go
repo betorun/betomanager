@@ -805,7 +805,8 @@ func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWork
 		CPULimit: defaultIfEmpty(spec.CPULimit, w.CPULimit), MemoryLimit: defaultIfEmpty(spec.MemoryLimit, w.MemoryLimit),
 		RunAsUser: spec.RunAsUser, RunAsGroup: spec.RunAsGroup, ReadOnlyRootFS: spec.ReadOnlyRootFS,
 		PDBEnabled: spec.PDBEnabled, TLSEnabled: spec.TLSEnabled, HealthPath: spec.HealthPath, ReadinessPath: spec.ReadinessPath,
-		ExternalHost: route.Host, IngressClass: route.IngressClass, IngressNamespace: route.IngressNamespace,
+		StartupTimeoutSeconds: spec.StartupTimeoutSeconds,
+		ExternalHost:          route.Host, IngressClass: route.IngressClass, IngressNamespace: route.IngressNamespace,
 		Identity:      s.currentIdentity(w),
 		PlatformImage: s.Registry != nil && registry.IsPlatformImage(s.Registry.Host, w.Image),
 	}
@@ -871,6 +872,12 @@ func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *d
 	kind := kindOf(w)
 	if kind != domain.KindWeb {
 		req.TargetPort, req.TLSEnabled = 0, nil
+	}
+	if req.StartupTimeoutSeconds != nil {
+		if !domain.ValidStartupTimeout(*req.StartupTimeoutSeconds) {
+			return domain.ErrStartupTimeout
+		}
+		spec.StartupTimeoutSeconds = *req.StartupTimeoutSeconds
 	}
 	if req.Command != nil {
 		if !domain.ValidCommand(*req.Command) {

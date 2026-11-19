@@ -151,6 +151,7 @@ var messages = map[string][2]string{
 	"wl.kind.schedule_needed":    {"un cron a besoin d'un horaire : --schedule \"0 2 * * *\" (ou @daily)", "a cron container needs a schedule: --schedule \"0 2 * * *\" (or @daily)"},
 	"wl.command.unterminated":    {"--command : guillemet ou \\ non fermé", "--command: unterminated quote or \\"},
 	"pf.max_duration.invalid":    {"max_duration invalide %q : attendu une durée comme 30m ou 2h", "invalid max_duration %q: expected a duration such as 30m or 2h"},
+	"pf.startup_timeout.invalid": {"startup_timeout invalide %q : une durée entre 10s et 10m, par exemple 5m", "invalid startup_timeout %q: a duration between 10s and 10m, e.g. 5m"},
 	"wl.delete.short":            {"Supprimer un conteneur", "Delete a container"},
 	"wl.delete.confirm":          {"Supprimer %s et ses données ? Retapez son nom pour confirmer :", "Delete %s and its data? Type its name to confirm:"},
 	"wl.delete.aborted":          {"suppression annulée", "deletion cancelled"},

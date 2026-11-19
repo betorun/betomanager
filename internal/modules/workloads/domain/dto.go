@@ -60,6 +60,9 @@ type CreateWorkloadRequest struct {
 	// Probes paths (par défaut "/" sur targetPort).
 	HealthPath    string `json:"health_path" default:"/"`
 	ReadinessPath string `json:"readiness_path" default:"/"`
+	// StartupTimeoutSeconds : délai de démarrage toléré avant de relancer le
+	// conteneur (web) ; 0 = 150 s, 600 au plus.
+	StartupTimeoutSeconds int `json:"startup_timeout_seconds,omitempty" description:"Délai de démarrage toléré, en secondes (défaut 150, 600 au plus), pour une application lente à démarrer"`
 
 	// ServiceAccount : compte de service du projet sous lequel le workload
 	// s'exécute ("serviceAccount:<uuid>" ou uuid). Ses pods obtiennent des
@@ -94,8 +97,10 @@ type WorkloadStatusResponse struct {
 }
 
 type UpdateWorkloadRequest struct {
-	Image       string `json:"image"`
-	StorageSize string `json:"storage_size" description:"Nouvelle taille du disque (ex: 5Gi)"`
+	Image string `json:"image"`
+	// StartupTimeoutSeconds : nouveau délai de démarrage (absent : inchangé).
+	StartupTimeoutSeconds *int   `json:"startup_timeout_seconds" description:"Nouveau délai de démarrage toléré, en secondes (600 au plus)"`
+	StorageSize           string `json:"storage_size" description:"Nouvelle taille du disque (ex: 5Gi)"`
 	// EnvVars : remplace les variables non secrètes (absent : inchangées).
 	EnvVars map[string]string `json:"env_vars"`
 	// SecretData : secrets créés ou modifiés ; les autres sont conservés.

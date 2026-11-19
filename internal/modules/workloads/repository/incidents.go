@@ -24,8 +24,10 @@ var IncidentStatuses = []string{
 // IncidentStore : conteneurs en incident signalé par le cluster, et leur retour
 // à RUNNING.
 type IncidentStore interface {
-	// ListIncidents : statut d'incident et phase POD_* (un FAILED écrit par un
-	// déploiement n'en fait pas partie : seul un nouveau déploiement le lève).
+	// ListIncidents : statut d'incident et phase POD_*, plus les déploiements
+	// tombés en délai dépassé (FAILED, HELM_ERROR) : leurs pods peuvent finir
+	// par démarrer (application lente) ; la passe vérifie alors que le
+	// Deployment porte bien la version voulue avant de lever l'incident.
 	ListIncidents(ctx context.Context, limit int) ([]domain.Workload, error)
 	// Recover : RUNNING si le statut et la phase n'ont pas changé depuis la
 	// lecture (un déploiement lancé entre-temps garde la main). false : rien
@@ -51,7 +53,8 @@ func NewIncidentStore(db *gorm.DB) IncidentStore {
 func (s *incidentStore) ListIncidents(ctx context.Context, limit int) ([]domain.Workload, error) {
 	var rows []domain.Workload
 	err := s.db.WithContext(ctx).
-		Where("status IN ? AND starts_with(current_phase, ?)", IncidentStatuses, utils.PhasePodEventPrefix).
+		Where("(status IN ? AND starts_with(current_phase, ?)) OR (status = ? AND current_phase = ?)",
+			IncidentStatuses, utils.PhasePodEventPrefix, utils.WorkloadFailed, utils.PhaseHelmError).
 		Order("updated_at").Limit(limit).Find(&rows).Error
 	return rows, err
 }

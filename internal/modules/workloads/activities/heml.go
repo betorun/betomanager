@@ -135,6 +135,8 @@ type InstallWorkloadInput struct {
 	// Probes
 	HealthPath    string
 	ReadinessPath string
+	// StartupTimeoutSeconds : délai de démarrage toléré (0 : 150 s).
+	StartupTimeoutSeconds int
 }
 
 func helmLog(format string, v ...interface{}) {
@@ -396,7 +398,7 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 				"enabled":          web,
 				"httpGet":          map[string]any{"path": healthPath, "port": containerPortName},
 				"periodSeconds":    startupProbePeriodSeconds,
-				"failureThreshold": startupProbeFailureThreshold,
+				"failureThreshold": startupFailureThreshold(input.StartupTimeoutSeconds),
 			},
 			"readiness": map[string]any{
 				"enabled":             web,
@@ -613,4 +615,13 @@ func identityValues(id *WorkloadIdentity) map[string]any {
 	}
 	return map[string]any{"enabled": true, "serviceAccount": id.ServiceAccount, "audience": id.Audience,
 		"tokenURI": id.TokenURI}
+}
+
+// startupFailureThreshold : échecs tolérés de la sonde de démarrage pour un
+// délai donné (0 : le défaut, 150 s).
+func startupFailureThreshold(timeoutSeconds int) int {
+	if timeoutSeconds <= 0 {
+		return startupProbeFailureThreshold
+	}
+	return (timeoutSeconds + startupProbePeriodSeconds - 1) / startupProbePeriodSeconds
 }

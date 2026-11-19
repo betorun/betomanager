@@ -173,31 +173,32 @@ type LinkSource struct {
 type CreateWorkloadRequest struct {
 	ProjectID string `path:"id" binding:"required" json:"-"`
 	LinkSource
-	Name               string            `json:"name" binding:"required,min=3,max=30" description:"Nom du conteneur"`
-	Replicas           int               `json:"replicas"`
-	CPURequest         string            `json:"cpu_request"`
-	MemoryRequest      string            `json:"memory_request"`
-	CPULimit           string            `json:"cpu_limit"`
-	MemoryLimit        string            `json:"memory_limit"`
-	TargetPort         int               `json:"target_port"`
-	ServiceType        string            `json:"service_type"`
-	MountPath          string            `json:"mount_path"`
-	PersistenceEnabled bool              `json:"persistence_enabled"`
-	StorageSize        string            `json:"storage_size"`
-	StorageClass       string            `json:"storage_class"`
-	EnvVars            map[string]string `json:"env_vars"`
-	SecretData         map[string]string `json:"secret_data"`
-	PDBEnabled         bool              `json:"pdb_enabled"`
-	TLSEnabled         bool              `json:"tls_enabled"`
-	HealthPath         string            `json:"health_path"`
-	ReadinessPath      string            `json:"readiness_path"`
-	ServiceAccount     string            `json:"service_account,omitempty"`
-	Kind               string            `json:"kind" description:"Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)"`
-	Command            []string          `json:"command,omitempty" description:"Commande de démarrage (remplace l'ENTRYPOINT de l'image)"`
-	Args               []string          `json:"args,omitempty" description:"Arguments de la commande (remplacent le CMD de l'image)"`
-	Schedule           string            `json:"schedule,omitempty" description:"Horaire d'un cron (5 champs, ex. 0 2 * * *, ou @daily)"`
-	TimeZone           string            `json:"time_zone,omitempty" description:"Fuseau de l'horaire (ex. Africa/Dakar ; défaut UTC)"`
-	MaxDurationSeconds int               `json:"max_duration_seconds,omitempty" description:"Durée maximale d'une exécution, en secondes (défaut 3600)"`
+	Name                  string            `json:"name" binding:"required,min=3,max=30" description:"Nom du conteneur"`
+	Replicas              int               `json:"replicas"`
+	CPURequest            string            `json:"cpu_request"`
+	MemoryRequest         string            `json:"memory_request"`
+	CPULimit              string            `json:"cpu_limit"`
+	MemoryLimit           string            `json:"memory_limit"`
+	TargetPort            int               `json:"target_port"`
+	ServiceType           string            `json:"service_type"`
+	MountPath             string            `json:"mount_path"`
+	PersistenceEnabled    bool              `json:"persistence_enabled"`
+	StorageSize           string            `json:"storage_size"`
+	StorageClass          string            `json:"storage_class"`
+	EnvVars               map[string]string `json:"env_vars"`
+	SecretData            map[string]string `json:"secret_data"`
+	PDBEnabled            bool              `json:"pdb_enabled"`
+	TLSEnabled            bool              `json:"tls_enabled"`
+	HealthPath            string            `json:"health_path"`
+	ReadinessPath         string            `json:"readiness_path"`
+	ServiceAccount        string            `json:"service_account,omitempty"`
+	Kind                  string            `json:"kind" description:"Sorte : web (défaut, service HTTP), worker (processus continu sans port) ou cron (tâche planifiée)"`
+	Command               []string          `json:"command,omitempty" description:"Commande de démarrage (remplace l'ENTRYPOINT de l'image)"`
+	Args                  []string          `json:"args,omitempty" description:"Arguments de la commande (remplacent le CMD de l'image)"`
+	Schedule              string            `json:"schedule,omitempty" description:"Horaire d'un cron (5 champs, ex. 0 2 * * *, ou @daily)"`
+	TimeZone              string            `json:"time_zone,omitempty" description:"Fuseau de l'horaire (ex. Africa/Dakar ; défaut UTC)"`
+	MaxDurationSeconds    int               `json:"max_duration_seconds,omitempty" description:"Durée maximale d'une exécution, en secondes (défaut 3600)"`
+	StartupTimeoutSeconds int               `json:"startup_timeout_seconds,omitempty" description:"Délai de démarrage toléré, en secondes (défaut 150, 600 au plus), pour une application lente à démarrer"`
 }
 
 // CreateWorkloadResponse : conteneur créé, première construction lancée.

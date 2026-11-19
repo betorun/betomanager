@@ -99,13 +99,18 @@ func (f *fakeDomains) HostClaims(_ context.Context, host string, except uuid.UUI
 	}
 	return out, nil
 }
-func (f *fakeDomains) ProjectHostToken(_ context.Context, project uuid.UUID, host string) (string, error) {
+func (f *fakeDomains) ProjectHostToken(_ context.Context, project uuid.UUID, host string) (string, bool, error) {
+	pending := ""
 	for _, d := range f.rows {
-		if d.Hostname == host && d.Verified && f.projects[d.WorkloadID] == project {
-			return d.Token, nil
+		if d.Hostname != host || f.projects[d.WorkloadID] != project {
+			continue
 		}
+		if d.Verified {
+			return d.Token, true, nil
+		}
+		pending = d.Token
 	}
-	return "", nil
+	return pending, false, nil
 }
 
 func pathOr(p string) string {
@@ -338,4 +343,20 @@ func TestAddDomain_InvalidPath(t *testing.T) {
 		_, err := s.AddDomain(context.Background(), id, "www.exemple.sn", bad)
 		assert.ErrorIs(t, err, domain.ErrInvalidPath, bad)
 	}
+}
+
+// Deux chemins du même nom ajoutés avant toute vérification : un seul TXT.
+func TestDomain_PendingProofShared(t *testing.T) {
+	ctx := context.Background()
+	const host = "backoffice.exemple.sn"
+	s, store, _, _, id := domainService(t)
+	site := uuid.New()
+	store.projects[site] = store.projects[id]
+	first := &domain.WorkloadDomain{ID: uuid.New(), WorkloadID: site, Hostname: host, Path: "/", Token: "betorun-verify=premier"}
+	store.rows[first.ID] = first
+
+	d, err := s.AddDomain(ctx, id, host, "/auth")
+	require.NoError(t, err)
+	assert.Equal(t, first.Token, store.rows[d.ID].Token, "même jeton que la demande en attente")
+	assert.False(t, d.SharedProof, "preuve pas encore en place : les enregistrements restent affichés")
 }

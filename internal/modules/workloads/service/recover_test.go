@@ -172,3 +172,38 @@ func TestRecover_DeploymentGone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }
+
+// Déploiement tombé en délai dépassé (application lente) : levé quand les pods
+// sont sains ET que le Deployment porte la version voulue.
+func TestRecover_DeployTimeoutRecoversWhenCurrent(t *testing.T) {
+	w := crashedWorkload()
+	w.Status, w.CurrentPhase, w.Image, w.EnvRevision = utils.WorkloadFailed, utils.PhaseHelmError, "reg/p/auth:b-2", 3
+	dep := readyDeployment(1)
+	dep.Spec.Template.Annotations = map[string]string{utils.AnnotationEnvChecksum: "3"}
+	dep.Spec.Template.Spec.Containers = []corev1.Container{{Name: "app", Image: "reg/p/auth:b-2"}}
+	store := &fakeIncidents{rows: []domain.Workload{w}}
+	r := newRecoverer(store, &recordingPublisher{}, dep, pod("web-1", 5*time.Minute))
+
+	n, err := r.Sweep(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+}
+
+func TestRecover_DeployFailureOnOldVersionStays(t *testing.T) {
+	for name, mutate := range map[string]func(*appsv1.Deployment){
+		"ancienne image":    func(d *appsv1.Deployment) { d.Spec.Template.Spec.Containers[0].Image = "reg/p/auth:b-1" },
+		"ancienne révision": func(d *appsv1.Deployment) { d.Spec.Template.Annotations[utils.AnnotationEnvChecksum] = "2" },
+	} {
+		w := crashedWorkload()
+		w.Status, w.CurrentPhase, w.Image, w.EnvRevision = utils.WorkloadFailed, utils.PhaseHelmError, "reg/p/auth:b-2", 3
+		dep := readyDeployment(1)
+		dep.Spec.Template.Annotations = map[string]string{utils.AnnotationEnvChecksum: "3"}
+		dep.Spec.Template.Spec.Containers = []corev1.Container{{Name: "app", Image: "reg/p/auth:b-2"}}
+		mutate(dep)
+		store := &fakeIncidents{rows: []domain.Workload{w}}
+		r := newRecoverer(store, &recordingPublisher{}, dep, pod("web-1", 5*time.Minute))
+		n, err := r.Sweep(context.Background())
+		require.NoError(t, err, name)
+		assert.Zero(t, n, name)
+	}
+}
