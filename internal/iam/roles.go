@@ -34,6 +34,8 @@ var (
 		DatabasesList, DatabasesGet,
 		ServiceAccountsList, ServiceAccountsGet, ServiceAccountKeysList, APIKeysList,
 		RolesList, GroupsList, GroupsGet,
+		// Savoir pourquoi une action est refusée.
+		DenyPoliciesList,
 	}
 
 	// developerPerms : parité exacte avec l'ancien rôle DEVELOPER (création et
@@ -67,6 +69,7 @@ var (
 		ProjectsCreate, ProjectsDelete, ProjectsSetIamPolicy,
 		RolesCreate, RolesUpdate, RolesDelete,
 		GroupsCreate, GroupsUpdate, GroupsDelete,
+		DenyPoliciesUpdate,
 		BillingAccountsGet, BillingAccountsUpdate, BillingPaymentsCreate,
 		AuditLogsRead,
 	})
@@ -123,6 +126,7 @@ var predefinedRoles = []Role{
 			RolesList, RolesCreate, RolesUpdate, RolesDelete,
 			GroupsList, GroupsGet, GroupsCreate, GroupsUpdate, GroupsDelete,
 			ServiceAccountsList, ServiceAccountsGet, ServiceAccountKeysList, APIKeysList, APIKeysDelete,
+			DenyPoliciesList, DenyPoliciesUpdate,
 			AuditLogsRead}},
 	{Name: "roles/iam.groupAdmin", Title: "Administrateur des groupes",
 		Description: "Crée les groupes de l'organisation et gère leurs membres (dans la limite de ses propres droits).",

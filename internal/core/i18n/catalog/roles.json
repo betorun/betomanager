@@ -462,5 +462,13 @@
  {
   "fr": "Offrir un crédit, corriger un solde, activer la facturation",
   "en": "Grant a credit, adjust a balance, activate billing"
+ },
+ {
+  "fr": "Voir les politiques de refus",
+  "en": "View deny policies"
+ },
+ {
+  "fr": "Créer, modifier et supprimer les politiques de refus",
+  "en": "Create, change and delete deny policies"
  }
 ]

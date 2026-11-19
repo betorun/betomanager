@@ -294,5 +294,41 @@
  {
   "fr": "sts: portée inconnue %q",
   "en": "sts: unknown scope %q"
+ },
+ {
+  "fr": "Politique de refus introuvable",
+  "en": "deny policy not found"
+ },
+ {
+  "fr": "Les politiques de refus se posent sur une organisation ou un projet",
+  "en": "deny policies live on an organization or a project"
+ },
+ {
+  "fr": "display_name est obligatoire (100 caractères au plus)",
+  "en": "display_name is required (at most 100 characters)"
+ },
+ {
+  "fr": "Une politique de refus refuse entre 1 et 100 permissions",
+  "en": "a deny policy denies between 1 and 100 permissions"
+ },
+ {
+  "fr": "Une politique de refus vise entre 1 et 100 principals, avec 100 exceptions au plus",
+  "en": "a deny policy targets between 1 and 100 principals, with at most 100 exceptions"
+ },
+ {
+  "fr": "50 politiques de refus au plus par ressource",
+  "en": "at most 50 deny policies per resource"
+ },
+ {
+  "fr": "La politique de refus a été modifiée entre-temps : rechargez-la et réessayez",
+  "en": "the deny policy was modified concurrently: reload it and retry"
+ },
+ {
+  "fr": "Cette politique empêcherait tous les propriétaires de l'organisation de gérer les politiques de refus",
+  "en": "this deny policy would prevent every owner of the organization from managing deny policies"
+ },
+ {
+  "fr": "Permission refusée invalide",
+  "en": "invalid denied permission"
  }
 ]

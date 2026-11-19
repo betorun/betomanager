@@ -19,7 +19,7 @@ func TestListProjectsTruncatesAndMaps(t *testing.T) {
 			OrganizationID: org, CreatedAt: time.Unix(int64(i), 0)})
 	}
 	s := &ProjectService{Repos: repo}
-	out, err := s.ListProjects(context.Background(), []uuid.UUID{org}, nil)
+	out, err := s.ListProjects(context.Background(), []uuid.UUID{org}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestListProjectsTruncatesAndMaps(t *testing.T) {
 	}
 
 	// Aucune organisation ni projet : liste vide, jamais null.
-	empty, err := (&ProjectService{Repos: &fakeProjectRepo{}}).ListProjects(context.Background(), nil, nil)
+	empty, err := (&ProjectService{Repos: &fakeProjectRepo{}}).ListProjects(context.Background(), nil, nil, nil)
 	if err != nil || empty.Projects == nil || len(empty.Projects) != 0 || empty.Truncated {
 		t.Fatalf("vide : %+v %v", empty, err)
 	}

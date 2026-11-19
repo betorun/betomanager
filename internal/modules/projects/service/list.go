@@ -8,8 +8,8 @@ import (
 	typesproject "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 )
 
-func (s *ProjectService) ListProjects(ctx context.Context, orgIDs, projectIDs []uuid.UUID) (*typesproject.ListProjectsResponse, error) {
-	rows, err := s.Repos.ListProjects(ctx, orgIDs, projectIDs, typesproject.MaxListedProjects+1)
+func (s *ProjectService) ListProjects(ctx context.Context, orgIDs, projectIDs, excluded []uuid.UUID) (*typesproject.ListProjectsResponse, error) {
+	rows, err := s.Repos.ListProjects(ctx, orgIDs, projectIDs, excluded, typesproject.MaxListedProjects+1)
 	if err != nil {
 		return nil, err
 	}

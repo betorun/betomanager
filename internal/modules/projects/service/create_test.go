@@ -74,7 +74,7 @@ func (f *fakeProjectRepo) UpdateProjectLimits(_ context.Context, id, cpu, memory
 	return nil
 }
 
-func (f *fakeProjectRepo) ListProjects(_ context.Context, orgIDs, ids []uuid.UUID, limit int) ([]authdomain.Project, error) {
+func (f *fakeProjectRepo) ListProjects(_ context.Context, orgIDs, ids, _ []uuid.UUID, limit int) ([]authdomain.Project, error) {
 	f.listed = append(f.listed, listCall{orgIDs, ids, limit})
 	if len(f.rows) > limit {
 		return f.rows[:limit], nil

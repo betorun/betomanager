@@ -425,14 +425,22 @@ func loadPolicy(ctx context.Context, db *gorm.DB, r ResourceName, forUpdate bool
 }
 
 func (s *PolicyService) describeMembers(ctx context.Context, p *Policy) ([]MemberInfo, error) {
+	var all []Principal
+	for _, b := range p.Bindings {
+		all = append(all, b.Members...)
+	}
+	return DescribeMembers(ctx, s.DB, all)
+}
+
+// DescribeMembers : nom et e-mail (ou identifiant de groupe) de principals,
+// pour l'affichage.
+func DescribeMembers(ctx context.Context, db *gorm.DB, principals []Principal) ([]MemberInfo, error) {
 	byKind := map[string][]uuid.UUID{}
 	seen := map[Principal]bool{}
-	for _, b := range p.Bindings {
-		for _, m := range b.Members {
-			if kind, id, err := m.Parse(); err == nil && id != uuid.Nil && !seen[m] {
-				seen[m] = true
-				byKind[kind] = append(byKind[kind], id)
-			}
+	for _, m := range principals {
+		if kind, id, err := m.Parse(); err == nil && id != uuid.Nil && !seen[m] {
+			seen[m] = true
+			byKind[kind] = append(byKind[kind], id)
 		}
 	}
 	queries := map[string]string{
@@ -446,7 +454,7 @@ func (s *PolicyService) describeMembers(ctx context.Context, p *Policy) ([]Membe
 		if !ok {
 			continue
 		}
-		rows, err := s.DB.WithContext(ctx).Raw(q, ids).Rows()
+		rows, err := db.WithContext(ctx).Raw(q, ids).Rows()
 		if err != nil {
 			return nil, err
 		}

@@ -464,6 +464,32 @@ func addIAMRoutes(app *App) {
 	orgs.AddRoute("/securityPolicy", http.MethodPut, "Modifier la politique de sécurité (confirmation récente du second facteur requise)",
 		g.Perm(iam.OrganizationsUpdate, security.OrganizationParam("id")), tonic.Handler(r.SetOrgSecurityPolicy, http.StatusOK))
 
+	// Politiques de refus (iam.md §14) : organisation, puis projet.
+	orgDeny := security.OrganizationParam("id")
+	orgs.AddRoute("/denyPolicies", http.MethodGet, "Politiques de refus de l'organisation",
+		g.Perm(iam.DenyPoliciesList, orgDeny), tonic.Handler(r.ListDenyPolicies, http.StatusOK))
+	orgs.AddRoute("/denyPolicies", http.MethodPost, "Créer une politique de refus (confirmation récente du second facteur requise)",
+		g.Perm(iam.DenyPoliciesUpdate, orgDeny), tonic.Handler(r.CreateDenyPolicy, http.StatusCreated))
+	orgs.AddRoute("/denyPolicies/:policyID", http.MethodGet, "Détails d'une politique de refus",
+		g.Perm(iam.DenyPoliciesList, orgDeny), tonic.Handler(r.GetDenyPolicy, http.StatusOK))
+	orgs.AddRoute("/denyPolicies/:policyID", http.MethodPut, "Remplacer une politique de refus (etag)",
+		g.Perm(iam.DenyPoliciesUpdate, orgDeny), tonic.Handler(r.UpdateDenyPolicy, http.StatusOK))
+	orgs.AddRoute("/denyPolicies/:policyID", http.MethodDelete, "Supprimer une politique de refus",
+		g.Perm(iam.DenyPoliciesUpdate, orgDeny), tonic.Handler(r.DeleteDenyPolicy, http.StatusNoContent))
+	projDeny := RootGroup.NewGroup("/projects/:id/denyPolicies", "Politiques de refus d'un projet").
+		Named("Politiques de refus", "Refuser des permissions à des personnes ou des groupes, quels que soient leurs rôles.")
+	proj := security.ProjectParam("id")
+	projDeny.AddRoute("", http.MethodGet, "Politiques de refus du projet et celles héritées de l'organisation",
+		g.Perm(iam.DenyPoliciesList, proj), tonic.Handler(r.ListDenyPolicies, http.StatusOK))
+	projDeny.AddRoute("", http.MethodPost, "Créer une politique de refus sur le projet (confirmation récente du second facteur requise)",
+		g.Perm(iam.DenyPoliciesUpdate, proj), tonic.Handler(r.CreateDenyPolicy, http.StatusCreated))
+	projDeny.AddRoute("/:policyID", http.MethodGet, "Détails d'une politique de refus du projet",
+		g.Perm(iam.DenyPoliciesList, proj), tonic.Handler(r.GetDenyPolicy, http.StatusOK))
+	projDeny.AddRoute("/:policyID", http.MethodPut, "Remplacer une politique de refus du projet (etag)",
+		g.Perm(iam.DenyPoliciesUpdate, proj), tonic.Handler(r.UpdateDenyPolicy, http.StatusOK))
+	projDeny.AddRoute("/:policyID", http.MethodDelete, "Supprimer une politique de refus du projet",
+		g.Perm(iam.DenyPoliciesUpdate, proj), tonic.Handler(r.DeleteDenyPolicy, http.StatusNoContent))
+
 	// Groupes d'une organisation (iam.md §4).
 	groups := RootGroup.NewGroup("/organizations/:id/groups", "Groupes : personnes et comptes de service, membres de policies").
 		Named("Groupes", "Groupes de personnes et de comptes de service, à qui attribuer des rôles en une fois.")
