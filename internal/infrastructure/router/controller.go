@@ -4,6 +4,7 @@ import (
 	controller "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authRepos "github.com/thekrauss/kubemanager/internal/modules/auth/repository"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
+	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	"github.com/thekrauss/kubemanager/internal/modules/builds"
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
@@ -62,6 +63,8 @@ type ControllerContainer struct {
 	Registries *registries.Controller
 	Copilot    *copilot.Controller
 	Databases  *databases.Controller
+	// Billing : facturation (coût estimé, grille de prix).
+	Billing *billing.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -79,4 +82,5 @@ func AddAllRoutes(a *App) {
 	addIAMRoutes(a)
 	addCopilotRoutes(a)
 	addDatabaseRoutes(a)
+	addBillingRoutes(a)
 }

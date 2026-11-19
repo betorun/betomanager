@@ -515,3 +515,28 @@ func addRegistriesRoutes(app *App) {
 	p.AddRoute("/:host", http.MethodDelete, "Retirer l'accès : il disparaît aussitôt du projet", manage, tonic.Handler(r.Delete, http.StatusNoContent))
 	p.AddRoute("/:host/test", http.MethodPost, "Vérifier l'accès auprès du registre (ok, refusé ou injoignable)", manage, tonic.Handler(r.Test, http.StatusOK))
 }
+
+// addBillingRoutes : facturation (ADR 0012). Phase 2 : estimation à blanc.
+func addBillingRoutes(app *App) {
+	r := app.Controllers.Billing
+	if r == nil {
+		return
+	}
+	g := newGuards(app)
+	org := RootGroup.NewGroup("/organizations/:id/billing", "Facturation").
+		Named("Facturation", "Coût estimé de l'organisation, mois par mois, selon la grille de prix. Pendant la phase de mesure, rien n'est débité.")
+	org.AddRoute("/estimate", http.MethodGet, "Coût estimé d'un mois (défaut : le mois en cours), par projet et par ressource, offre gratuite déduite",
+		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Estimate, http.StatusOK))
+	cat := RootGroup.NewGroup("/billing", "Grille de prix").
+		Named("Grille de prix", "Prix en vigueur des conteneurs (par taille), des bases, du disque et des builds, et offre gratuite. Fixés par l'équipe de la plateforme.")
+	cat.AddRoute("/catalog", http.MethodGet, "Grille de prix d'une monnaie : tailles de conteneur, bases, disque, builds, offre gratuite",
+		Authenticated(), tonic.Handler(r.Catalog, http.StatusOK))
+
+	// Grilles de prix : équipe de la plateforme seulement. Une modification
+	// crée une version ; elle s'applique dès le relevé suivant.
+	admin := RootGroup.NewGroup("/admin/billing/catalogs", "Admin — grilles de prix").Internal()
+	admin.AddRoute("", http.MethodGet, "Grilles de prix en vigueur, une par monnaie",
+		g.Perm(iam.PlatformBillingCatalogsGet, security.PlatformResource), tonic.Handler(r.Catalogs, http.StatusOK))
+	admin.AddRoute("/:currency", http.MethodPut, "Nouvelle version de la grille d'une monnaie (montants entiers, par mois ; une minute pour les builds)",
+		g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource), tonic.Handler(r.UpdateCatalog, http.StatusOK))
+}

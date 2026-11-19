@@ -1,0 +1,18 @@
+[
+ {
+  "fr": "Mois invalide : utilisez le format AAAA-MM",
+  "en": "invalid month: use YYYY-MM"
+ },
+ {
+  "fr": "Cette monnaie n'est pas proposée",
+  "en": "this currency is not offered"
+ },
+ {
+  "fr": "Identifiant d'organisation invalide",
+  "en": "invalid organization id"
+ },
+ {
+  "fr": "Grille de prix invalide",
+  "en": "invalid price catalog"
+ }
+]

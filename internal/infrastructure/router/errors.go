@@ -17,6 +17,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam"
 	idempotency "github.com/thekrauss/kubemanager/internal/infrastructure/idempotence"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
+	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
 	githubDomain "github.com/thekrauss/kubemanager/internal/modules/github/domain"
 	identityKC "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
@@ -207,6 +208,11 @@ var sentinelErrors = []sentinelMapping{
 	{projectsSvc.ErrInvalidProjectLimits, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{projectsSvc.ErrLimitsBelowUsage, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{projectsSvc.ErrLimitsUpdateInProgress, http.StatusConflict, betoerrors.CodeConflict, false},
+
+	{billingDomain.ErrInvalidMonth, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{billingDomain.ErrUnknownCurrency, http.StatusNotFound, "UNKNOWN_CURRENCY", false},
+	// La raison (taille, montant négatif…) aide l'équipe à corriger la grille.
+	{billingDomain.ErrInvalidCatalog, http.StatusBadRequest, "INVALID_CATALOG", true},
 }
 
 // classifyError : statut, code et message sûr à exposer.

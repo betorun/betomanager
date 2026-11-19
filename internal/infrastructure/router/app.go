@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
 	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
@@ -164,6 +165,11 @@ func (a *App) RunWorker(ctx context.Context) error {
 			recoverer.Alerts = n
 		}
 		go recoverer.Run(ctx, workloadsSvc.DefaultRecoverEvery)
+	}
+
+	// Facturation : relevé de l'usage réservé (ADR 0012, phase 2 à blanc).
+	if billing := a.billingService(); billing != nil {
+		go billing.Run(ctx, billingSvc.DefaultSampleEvery)
 	}
 
 	// Une panne du worker doit sortir en erreur : sinon le code 0 ne déclenche

@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
 	"net/http"
@@ -66,6 +67,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Builds:     &builds.Controller{},
 				GitHub:     &github.Controller{},
 				Registries: &registries.Controller{},
+				Billing:    &billing.Controller{},
 				Databases:  &databases.Controller{},
 			},
 		}
