@@ -19,6 +19,7 @@ const (
 	AccountXYKPay      = "platform:xykpay"      // argent reçu par XYKPay
 	AccountAdjustments = "platform:adjustments" // gestes de l'équipe
 	AccountVAT         = "platform:vat"         // TVA collectée (factures)
+	AccountDomains     = "platform:domains"     // ventes de noms de domaine
 )
 
 // CashAccount : argent payé par le client (peut devenir négatif pendant la grâce).
@@ -35,7 +36,12 @@ const (
 	TxCreditExpiry = "credit_expiry" // reste d'un crédit expiré
 	TxAdjustment   = "adjustment"    // geste de l'équipe (crédit ou débit d'argent)
 	TxVAT          = "vat"           // TVA d'une facture, sortie du revenu
+	TxDomain       = "domain"        // achat ou renouvellement d'un domaine
+	TxDomainRefund = "domain_refund" // remboursement d'un domaine non obtenu
 )
+
+// ErrInsufficientFunds : solde payé insuffisant pour un achat.
+var ErrInsufficientFunds = errors.New("insufficient balance: top up first")
 
 var (
 	ErrUnbalanced = errors.New("billing transaction is not balanced")

@@ -230,6 +230,9 @@ type CatalogView struct {
 	PostpaidTermsDays    int   `json:"postpaid_terms_days"`
 	PostpaidReminderDays int   `json:"postpaid_reminder_days"`
 	PostpaidSuspendDays  int   `json:"postpaid_suspend_days"`
+	DomainMarginBP       int   `json:"domain_margin_bp"`
+	DomainRoundTo        int64 `json:"domain_round_to"`
+	EURRateMilli         int64 `json:"eur_rate_milli"`
 }
 
 type SizeView struct {
@@ -252,7 +255,8 @@ func (c Catalog) View() CatalogView {
 		Free:     FreeView{Compute: c.Free.Compute.Units(), Database: c.Free.Database.Units(), BuildMinutes: c.Free.BuildMinutes},
 		TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(), TrialCredit: c.TrialCredit.Units(), TrialDays: c.TrialDays, GraceDays: c.GraceDays,
 		PostpaidCreditLimit: c.PostpaidCreditLimit.Units(), PostpaidTermsDays: c.PostpaidTermsDays,
-		PostpaidReminderDays: c.PostpaidReminderDays, PostpaidSuspendDays: c.PostpaidSuspendDays}
+		PostpaidReminderDays: c.PostpaidReminderDays, PostpaidSuspendDays: c.PostpaidSuspendDays,
+		DomainMarginBP: c.DomainMarginBP, DomainRoundTo: c.DomainRoundTo, EURRateMilli: int64(c.EURRate)}
 	for _, s := range c.Sizes {
 		v.Sizes = append(v.Sizes, SizeView{ID: s.ID, CPUMilli: s.CPUMilli, MemMi: s.MemMi, Monthly: s.Monthly.Units()})
 	}

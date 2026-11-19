@@ -43,7 +43,14 @@ type DomainSettings struct {
 	TLS bool
 	// ResolverName : résolveurs interrogés, montrés dans le diagnostic.
 	ResolverName string
+	// ManagedZone : la zone est un domaine vendu par la plateforme (ses DNS
+	// sont écrits par elle) ; son hébergeur DNS n'est jamais montré au client.
+	ManagedZone func(ctx context.Context, zone string) bool
 }
+
+// ManagedProvider : fournisseur DNS affiché pour un domaine vendu par la
+// plateforme (marque blanche : rien ne trahit le registraire).
+const ManagedProvider = "betorun"
 
 // ResolverName : libellé des résolveurs d'une configuration (même règle que NewResolver).
 func ResolverName(servers string) string {
@@ -133,6 +140,12 @@ func (s *WorkloadService) domainView(ctx context.Context, d *domain.WorkloadDoma
 func (s *WorkloadService) dnsProvider(ctx context.Context, zone string, providers map[string]string) string {
 	if p, ok := providers[zone]; ok {
 		return p
+	}
+	if s.DomainCfg.ManagedZone != nil && s.DomainCfg.ManagedZone(ctx, zone) {
+		if providers != nil {
+			providers[zone] = ManagedProvider
+		}
+		return ManagedProvider
 	}
 	lookup, cancel := context.WithTimeout(ctx, domainLookupTimeout)
 	defer cancel()

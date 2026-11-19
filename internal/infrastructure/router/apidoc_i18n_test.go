@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
 	"net/http"
 	"net/http/httptest"
@@ -62,13 +63,14 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Clusters: struct {
 					clustersCtrl.IClusterController
 				}{},
-				Site:       struct{ sites.ISiteController }{},
-				IAM:        &iamapi.Controller{},
-				Builds:     &builds.Controller{},
-				GitHub:     &github.Controller{},
-				Registries: &registries.Controller{},
-				Billing:    &billing.Controller{},
-				Databases:  &databases.Controller{},
+				Site:        struct{ sites.ISiteController }{},
+				IAM:         &iamapi.Controller{},
+				Builds:      &builds.Controller{},
+				GitHub:      &github.Controller{},
+				Registries:  &registries.Controller{},
+				Billing:     &billing.Controller{},
+				DomainSales: &domainsales.Controller{},
+				Databases:   &databases.Controller{},
 			},
 		}
 		docFizz = fizz.NewFromEngine(gin.New())
