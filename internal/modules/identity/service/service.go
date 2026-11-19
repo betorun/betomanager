@@ -147,6 +147,8 @@ type Deps struct {
 	// Connexion Google / GitHub (fournisseurs configurés uniquement).
 	SocialProviders map[string]social.Provider
 	Identities      *auth.Identities
+	// Devices : appareils connus (e-mail « nouvelle connexion ») ; nil : pas d'e-mail.
+	Devices *auth.Devices
 }
 
 type service struct {
@@ -170,6 +172,7 @@ type service struct {
 	logger              *zap.SugaredLogger
 	socialProviders     map[string]social.Provider
 	identities          *auth.Identities
+	devices             *auth.Devices
 }
 
 func NewService(deps Deps) Service {
@@ -194,6 +197,7 @@ func NewService(deps Deps) Service {
 		logger:              deps.Logger,
 		socialProviders:     deps.SocialProviders,
 		identities:          deps.Identities,
+		devices:             deps.Devices,
 	}
 }
 

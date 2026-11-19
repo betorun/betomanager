@@ -58,6 +58,8 @@ const emptyEtag = "ACAB"
 type PolicyService struct {
 	DB     *gorm.DB
 	Engine *Engine
+	// Notify : e-mail aux personnes dont les accès changent (nil : aucun).
+	Notify MembershipNotifier
 }
 
 // GetPolicyPermission : permission pour lire la policy de r.
@@ -125,6 +127,7 @@ func (s *PolicyService) Set(ctx context.Context, caller Principal, r ResourceNam
 	}
 
 	var changed []Principal
+	var members []MemberChange
 	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		current, err := loadPolicy(ctx, tx, r, true)
 		if err != nil {
@@ -140,6 +143,7 @@ func (s *PolicyService) Set(ctx context.Context, caller Principal, r ResourceNam
 			return ErrLastOwner
 		}
 		changed = diffPrincipals(current, bindings)
+		members = memberChanges(caller, policyBindings(current, r), bindings)
 		added, removed := diffBindings(current, bindings)
 		audit.Annotate(ctx, "bindings_added", added)
 		audit.Annotate(ctx, "bindings_removed", removed)
@@ -159,6 +163,11 @@ func (s *PolicyService) Set(ctx context.Context, caller Principal, r ResourceNam
 	}
 	for _, p := range changed {
 		notifyChanged(p)
+	}
+	if s.Notify != nil {
+		for _, c := range members {
+			s.Notify.AccessChanged(ctx, caller, r, c)
+		}
 	}
 	return s.Get(ctx, r)
 }

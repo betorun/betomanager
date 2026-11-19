@@ -87,6 +87,8 @@ type GroupMember struct {
 type GroupService struct {
 	DB     *gorm.DB
 	Engine *Engine
+	// Notify : e-mail à la personne ajoutée ou retirée (nil : aucun).
+	Notify MembershipNotifier
 }
 
 func (s *GroupService) Create(ctx context.Context, caller Principal, orgID uuid.UUID, groupID, displayName, description string) (*Group, error) {
@@ -231,11 +233,15 @@ func (s *GroupService) AddMember(ctx context.Context, caller Principal, orgID, i
 	if err := s.checkNoEscalation(ctx, caller, g); err != nil {
 		return nil, err
 	}
-	if err := s.DB.WithContext(ctx).Exec(`INSERT INTO iam_group_members (group_id, principal, created_by)
-		VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, g.ID, string(resolved), string(caller)).Error; err != nil {
-		return nil, err
+	res := s.DB.WithContext(ctx).Exec(`INSERT INTO iam_group_members (group_id, principal, created_by)
+		VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, g.ID, string(resolved), string(caller))
+	if res.Error != nil {
+		return nil, res.Error
 	}
 	notifyChanged(resolved)
+	if s.Notify != nil && res.RowsAffected > 0 && resolved != caller {
+		s.Notify.GroupMembershipChanged(ctx, caller, g, resolved, true)
+	}
 	audit.Annotate(ctx, "group", g.Principal)
 	audit.Annotate(ctx, "member", string(resolved))
 	return &GroupMember{Principal: resolved, AddedAt: time.Now()}, nil
@@ -262,6 +268,9 @@ func (s *GroupService) RemoveMember(ctx context.Context, orgID, id uuid.UUID, me
 	notifyChanged(member)
 	audit.Annotate(ctx, "group", g.Principal)
 	audit.Annotate(ctx, "member", string(member))
+	if s.Notify != nil {
+		s.Notify.GroupMembershipChanged(ctx, "", g, member, false)
+	}
 	return nil
 }
 

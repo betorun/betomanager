@@ -297,6 +297,7 @@ func (a *App) initSecurity() error {
 		return fmt.Errorf("iam: %w (set iam.api_key_pepper / KUBEMANAGER_IAM_API_KEY_PEPPER)", err)
 	}
 	a.ServiceAccounts = sa
+	a.wireAPIKeyAlerts(sa)
 	a.Security.Middleware.SetKeyAuthenticator(sa)
 	a.ClusterAgents = iam.NewClusterAgents(sa)
 	if a.AuthCache != nil {

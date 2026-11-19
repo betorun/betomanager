@@ -26,6 +26,7 @@ func (a *App) authDeps(deps *identitySvc.Deps) error {
 	deps.Limiter = a.Cache
 	deps.Logger = a.Logger
 	deps.Identities = &auth.Identities{DB: a.DB}
+	deps.Devices = &auth.Devices{DB: a.DB}
 	deps.SocialProviders = socialProviders(a.Config.Social)
 
 	sender, err := a.mailSender()

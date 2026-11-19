@@ -34,6 +34,17 @@ Contenu : titre, salutation (nom complet, sinon partie locale de l'email), corps
 
 Langue : celle du contexte (`i18n.From(ctx)`), anglais si `EN`, français sinon.
 
+## Accès et clés API
+
+Hors des alertes de projet ci-dessus (même `Notifier`, même gabarit) :
+
+- **Nouvelle clé API d'un compte de service** (`APIKeyCreated`, type `iam.api_key_created`, sujet = la clé) : aux propriétaires et éditeurs du projet ; nom de la clé, compte, auteur (adresse e-mail), date d'expiration ; lien `/service-accounts`. Appelé par `iam.ServiceAccountService.OnKeyCreated` (pas pour les clés des agents de cluster).
+- **Accès d'une personne** (`AccessChanged`) : à la personne concernée, à chaque changement de sa policy IAM sur un **projet** ou une **organisation** (pas les sous-ressources) : accès accordé, rôle modifié (rôles affichés, titres traduits), accès retiré. Calculé dans `iam.PolicyService.Set` (personnes `user:` seulement ; l'auteur du changement n'est pas prévenu). Sans limite de fréquence.
+- **Groupes** (`GroupMembershipChanged`) : ajout à un groupe (une fois : un ré-ajout ne renvoie rien) ou retrait.
+- Non couverts : l'ancien chemin RBAC (`/rbac/assign-role`, `DELETE /rbac/:projectID/members/:userID`) et la création d'un projet (l'auteur devient propriétaire).
+
+Les valeurs saisies par les clients (nom de clé, titre d'un rôle personnalisé, auteur) sont insérées sans accolades (`plainValue`) : pas d'injection de modèle.
+
 ## Configuration
 
 Le `Notifier` est construit par `alertNotifier()` ([alerts_wiring.go](../../internal/infrastructure/router/alerts_wiring.go)) à trois endroits : contrôleur des clusters (serveur), activités de build et `Recoverer` (worker). Il vaut nil, avec un avertissement au démarrage, si :

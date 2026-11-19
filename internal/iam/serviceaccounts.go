@@ -175,6 +175,10 @@ type ServiceAccountService struct {
 
 	usageMu  sync.Mutex
 	lastUsed map[string]time.Time // keyID → dernière écriture last_used_at
+
+	// OnKeyCreated : appelé après la création d'une clé par une personne (e-mail
+	// aux propriétaires du projet) ; jamais avec le secret.
+	OnKeyCreated func(ctx context.Context, sa *ServiceAccount, key APIKey, caller Principal)
 }
 
 func NewServiceAccountService(db *gorm.DB, engine *Engine, pepper []byte) (*ServiceAccountService, error) {
@@ -288,7 +292,11 @@ func (s *ServiceAccountService) CreateKey(ctx context.Context, caller Principal,
 	if !d.Allowed {
 		return nil, ErrActAsRequired
 	}
-	return s.issueKey(ctx, s.DB, sa.ID, string(caller), req)
+	key, err := s.issueKey(ctx, s.DB, sa.ID, string(caller), req)
+	if err == nil && s.OnKeyCreated != nil && sa.ClusterID == nil {
+		s.OnKeyCreated(ctx, sa, key.APIKey, caller)
+	}
+	return key, err
 }
 
 // issueKey : génère et enregistre une clé pour le compte saID ; le secret

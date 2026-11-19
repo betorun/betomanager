@@ -100,6 +100,12 @@ Le grant « password » n'est **jamais** offert aux clients : c'est un appel int
 - **Vérification d'email** et **mot de passe oublié** : jetons à usage unique, hachés, 24 h et 1 h. Liens vers des pages Next.js (`/verify-email`, `/reset-password`). Le backend applique le résultat via l'API admin Keycloak (`emailVerified`, `reset-password`) et révoque les sessions après une réinitialisation.
 - **Changement de mot de passe** : ancien mot de passe vérifié, sessions des autres appareils révoquées.
 - Réponses identiques que le compte existe ou non.
+- **E-mails de sécurité** (au titulaire, hors du chemin de la requête, au mieux ; lien `/settings#sessions`) :
+  - **nouvelle connexion** depuis un appareil jamais vu (table `user_devices`, migration 000048 : famille client · navigateur · système tirée du User-Agent, pas l'adresse IP ; la toute première connexion d'un compte n'envoie rien). L'e-mail donne l'appareil, l'adresse IP et l'heure (UTC). Limite : deux machines de même navigateur et système se confondent (pas de cookie d'appareil) ;
+  - **code de secours utilisé** pour se connecter (remplace l'e-mail d'appareil pour cette connexion) ;
+  - double authentification **activée** ou **désactivée** ; **nouveaux codes de secours** ;
+  - **compte Google ou GitHub lié** à un compte existant (pas à la création d'un compte par Google/GitHub).
+  La CLI envoie `betorun-cli (<système>)` pour que l'appareil soit nommé.
 
 ## 8. Google et GitHub
 

@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"runtime"
+	"time"
+)
 
 // Chemins de l'API, relatifs à l'URL de base (…/kmanager/v1).
 const (
@@ -50,7 +53,8 @@ const (
 // Client HTTP.
 const (
 	// userAgent : User-Agent des requêtes de la CLI.
-	userAgent = "betorun-cli"
+	// Le système sert à nommer l'appareil dans l'e-mail « nouvelle connexion ».
+	userAgent = "betorun-cli (" + runtime.GOOS + ")"
 	// bearerPrefix : schéma de l'en-tête Authorization.
 	bearerPrefix = "Bearer "
 	// httpTimeout : délai maximal d'un appel (hors flux de logs et envois) et

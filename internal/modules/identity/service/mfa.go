@@ -39,6 +39,7 @@ func (s *service) ConfirmTOTP(ctx context.Context, userID, sessionID uuid.UUID, 
 		return nil, err
 	}
 	audit.Annotate(ctx, "mfa", "totp_enabled")
+	s.securityMail(ctx, userID, emailMFAEnabled, s.consoleLink(pageSecurity, ""), nil)
 	out := &identitytypes.RecoveryCodesResponse{RecoveryCodes: codes}
 	if t, err := s.sessions.MarkMFA(ctx, userID, sessionID); err == nil {
 		out.AccessToken = t.AccessToken
@@ -56,6 +57,7 @@ func (s *service) DisableTOTP(ctx context.Context, userID, sessionID uuid.UUID) 
 		return err
 	}
 	audit.Annotate(ctx, "mfa", "totp_disabled")
+	s.securityMail(ctx, userID, emailMFADisabled, s.consoleLink(pageSecurity, ""), nil)
 	return nil
 }
 
@@ -69,6 +71,7 @@ func (s *service) RegenerateRecoveryCodes(ctx context.Context, userID, sessionID
 		return nil, err
 	}
 	audit.Annotate(ctx, "mfa", "recovery_codes_regenerated")
+	s.securityMail(ctx, userID, emailRecoveryRegenerated, s.consoleLink(pageSecurity, ""), nil)
 	return &identitytypes.RecoveryCodesResponse{RecoveryCodes: codes}, nil
 }
 

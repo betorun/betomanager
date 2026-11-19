@@ -179,6 +179,7 @@ func (s *service) MFALogin(ctx context.Context, in identitytypes.MFALoginRequest
 	}
 	audit.Annotate(ctx, "login", "succeeded")
 	audit.Annotate(ctx, "mfa_method", method)
+	s.noticeLogin(ctx, ch.UserID, ch.Kind, method, cl)
 	if user, err := s.users.FindByKeycloakUserID(ctx, ch.Subject); err == nil && user != nil {
 		s.touchLastLogin(ctx, user)
 	}

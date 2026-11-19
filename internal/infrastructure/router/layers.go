@@ -31,7 +31,7 @@ import (
 func (a *App) initDomainLayers() error {
 	a.Logger.Info("Initializing domain layers...")
 
-	policies := &iam.PolicyService{DB: a.DB, Engine: a.IAM}
+	policies := &iam.PolicyService{DB: a.DB, Engine: a.IAM, Notify: a.membershipNotifier()}
 	rbacService := authSvc.NewRBACService(a.Repos.Auth, a.Logger)
 	rbacService.Policies = policies
 	apiKeyService := authSvc.NewAPIKeyService(

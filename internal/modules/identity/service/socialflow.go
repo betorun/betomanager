@@ -138,6 +138,8 @@ func (s *service) resolveSocialUser(ctx context.Context, p *social.Profile) (uui
 	}
 
 	kcUser, err := s.keycloak.FindUserByEmail(ctx, p.Email)
+	// existing : compte déjà là, confirmé ; le titulaire est prévenu du lien.
+	existing := err == nil && kcUser.EmailVerified
 	switch {
 	case err == nil:
 		if !kcUser.Enabled {
@@ -180,6 +182,11 @@ func (s *service) resolveSocialUser(ctx context.Context, p *social.Profile) (uui
 		return uuid.Nil, "", err
 	}
 	audit.Annotate(ctx, "social", "linked")
+	if existing {
+		// Compte existant : un nouveau moyen de connexion s'y ajoute.
+		s.securityMail(ctx, user.ID, emailIdentityLinked, s.consoleLink(pageSecurity, ""),
+			map[string]string{"Provider": providerTitle(p.Provider), "Email": p.Email})
+	}
 	return user.ID, kcUser.ID, nil
 }
 
@@ -208,6 +215,7 @@ func (s *service) completeLogin(ctx context.Context, userID uuid.UUID, subject s
 		s.touchLastLogin(ctx, user)
 	}
 	audit.Annotate(ctx, "login", "succeeded")
+	s.noticeLogin(ctx, userID, kind, "", cl)
 	return authResponse(t), nil
 }
 

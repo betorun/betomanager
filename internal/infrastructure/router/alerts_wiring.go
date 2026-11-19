@@ -1,6 +1,9 @@
 package router
 
 import (
+	"context"
+
+	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/mail"
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
 )
@@ -29,4 +32,33 @@ func (a *App) alertNotifier() *alerts.Notifier {
 	}
 	return &alerts.Notifier{Store: alerts.NewStore(a.DB), Mail: sender, ConsoleURL: a.Config.Frontend.BaseURL,
 		Logger: a.Logger.With("component", "alerts")}
+}
+
+// wireAPIKeyAlerts : e-mail aux propriétaires et éditeurs du projet à chaque
+// nouvelle clé API d'un compte de service.
+func (a *App) wireAPIKeyAlerts(sa *iam.ServiceAccountService) {
+	n := a.alertNotifier()
+	if n == nil {
+		return
+	}
+	sa.OnKeyCreated = func(ctx context.Context, acct *iam.ServiceAccount, key iam.APIKey, caller iam.Principal) {
+		account := acct.DisplayName
+		if account == "" {
+			account = acct.AccountID
+		}
+		n.APIKeyCreated(ctx, acct.ProjectID, key.ID, account, key.DisplayName, a.principalLabel(ctx, caller), key.ExpiresAt)
+	}
+}
+
+// principalLabel : adresse e-mail d'une personne, sinon le principal tel quel.
+func (a *App) principalLabel(ctx context.Context, p iam.Principal) string {
+	kind, id, err := p.Parse()
+	if err != nil || kind != iam.KindUser {
+		return string(p)
+	}
+	var email string
+	if err := a.DB.WithContext(ctx).Table("users").Select("email").Where("id = ?", id).Scan(&email).Error; err != nil || email == "" {
+		return string(p)
+	}
+	return email
 }
