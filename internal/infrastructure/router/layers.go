@@ -65,6 +65,7 @@ func (a *App) initDomainLayers() error {
 		ResolverName: workloadsSvc.ResolverName(a.Config.Kubernetes.DomainDNSServer),
 		Target:       firstNonEmptyString(a.Config.Kubernetes.IngressTarget, a.Config.Vps.AdressIp),
 		TLS:          !a.Config.Kubernetes.CustomDomainInsecure,
+		ManagedZone:  a.managedZone,
 	}
 	// Identité des workloads : cluster des workloads connu et STS en place.
 	if a.STS != nil && a.STS.WorkloadClusterID != "" && a.ServiceAccounts != nil {
@@ -190,22 +191,23 @@ func (a *App) initDomainLayers() error {
 	}
 
 	a.Controllers = &ControllerContainer{
-		Builds:     buildController,
-		GitHub:     a.newGitHubController(a.GitHub),
-		Registries: registriesController,
-		Billing:    a.newBillingController(),
-		RBAC:       rbacController,
-		APIKey:     apiKeyController,
-		Project:    projectController,
-		Workload:   workloadController,
-		Identity:   identityController,
-		Auth:       authController,
-		Realtime:   realtimeController,
-		Clusters:   clustersController,
-		Site:       siteController,
-		IAM:        a.newIAMController(policies),
-		Copilot:    copilot.NewController(copilotService),
-		Databases:  a.newDatabasesController(),
+		Builds:      buildController,
+		GitHub:      a.newGitHubController(a.GitHub),
+		Registries:  registriesController,
+		Billing:     a.newBillingController(),
+		DomainSales: a.newDomainSalesController(),
+		RBAC:        rbacController,
+		APIKey:      apiKeyController,
+		Project:     projectController,
+		Workload:    workloadController,
+		Identity:    identityController,
+		Auth:        authController,
+		Realtime:    realtimeController,
+		Clusters:    clustersController,
+		Site:        siteController,
+		IAM:         a.newIAMController(policies),
+		Copilot:     copilot.NewController(copilotService),
+		Databases:   a.newDatabasesController(),
 	}
 
 	a.Logger.Info("Domain layers successfully initialized.")

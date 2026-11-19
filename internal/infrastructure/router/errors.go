@@ -19,6 +19,7 @@ import (
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
+	domainsalesDomain "github.com/thekrauss/kubemanager/internal/modules/domainsales/domain"
 	githubDomain "github.com/thekrauss/kubemanager/internal/modules/github/domain"
 	identityKC "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
@@ -233,6 +234,17 @@ var sentinelErrors = []sentinelMapping{
 	{billingDomain.ErrInvalidBudget, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{billingDomain.ErrPlanNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{billingDomain.ErrInvalidPayment, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{billingDomain.ErrInsufficientFunds, http.StatusPaymentRequired, "INSUFFICIENT_FUNDS", false},
+	{domainsalesDomain.ErrInvalidDomain, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{domainsalesDomain.ErrNotAvailable, http.StatusConflict, "DOMAIN_NOT_AVAILABLE", false},
+	{domainsalesDomain.ErrPremium, http.StatusConflict, "DOMAIN_PREMIUM", false},
+	{domainsalesDomain.ErrNoPrice, http.StatusServiceUnavailable, "DOMAIN_NO_PRICE", false},
+	{domainsalesDomain.ErrInvalidContact, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{domainsalesDomain.ErrOrderNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{domainsalesDomain.ErrNotActive, http.StatusConflict, "DOMAIN_NOT_ACTIVE", false},
+	{domainsalesDomain.ErrSalesDisabled, http.StatusServiceUnavailable, "DOMAIN_SALES_DISABLED", false},
+	{domainsalesDomain.ErrPriceChanged, http.StatusConflict, "DOMAIN_PRICE_CHANGED", false},
+	{domainsalesDomain.ErrUnavailable, http.StatusServiceUnavailable, "DOMAIN_SERVICE_UNAVAILABLE", false},
 	{billingDomain.ErrInvalidPlan, http.StatusBadRequest, "INVALID_PLAN", true},
 	{billingDomain.ErrPlanNeedsBilling, http.StatusConflict, "PLAN_NEEDS_BILLING", false},
 	// Les projets en cause aident le client à libérer de la place.

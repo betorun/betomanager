@@ -138,7 +138,7 @@ grille, pas dans le code.
 | 2 | Mesure, valorisation, coût estimé dans la console, rien n'est débité | **implémentée** |
 | 3 | Wallet, grand livre, recharge XYKPay, débits, alertes, crédit d'essai ; administration (organisations, crédits, ajustements, activation, recettes) | **implémentée** |
 | 4 | Grâce et suspension, reprise, factures et reçus PDF (TVA), budgets par projet, crédit d'essai par numéro | **implémentée** |
-| 5 | Plans liés aux limites et postpayé entreprise (**implémentés**) ; cartes (Stripe, plus tard), revente de domaines | en partie |
+| 5 | Plans, postpayé et revente de domaines en marque blanche (**implémentés**, achats réels derrière un interrupteur) ; cartes (Stripe, plus tard) | en partie |
 
 La phase 2 tourne quelques semaines sur de vrais clients (Bomba) : elle révèle
 les erreurs de mesure et cale la grille avant qu'un franc ne soit débité.

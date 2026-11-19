@@ -1506,5 +1506,105 @@
  {
   "fr": "Retirer l'exception de limites d'un projet : il revient aux limites de son plan",
   "en": "Remove a project's limits exception: it goes back to its plan's limits"
+ },
+ {
+  "fr": "Titulaire du domaine (le client)",
+  "en": "Domain owner (the customer)"
+ },
+ {
+  "fr": "Adresse",
+  "en": "Address"
+ },
+ {
+  "fr": "Ville",
+  "en": "City"
+ },
+ {
+  "fr": "Pays (code à deux lettres, ex. CG)",
+  "en": "Country (two-letter code, e.g. CG)"
+ },
+ {
+  "fr": "E-mail du titulaire",
+  "en": "Owner email"
+ },
+ {
+  "fr": "Prénom du titulaire",
+  "en": "Owner first name"
+ },
+ {
+  "fr": "Nom du titulaire",
+  "en": "Owner last name"
+ },
+ {
+  "fr": "Organisation (facultatif ; le domaine lui appartient alors)",
+  "en": "Organization (optional; it then owns the domain)"
+ },
+ {
+  "fr": "Téléphone au format international (+242…)",
+  "en": "Phone in international format (+242…)"
+ },
+ {
+  "fr": "Code postal (facultatif)",
+  "en": "Postal code (optional)"
+ },
+ {
+  "fr": "Renouveler chaque année (débité 30 jours avant l'expiration)",
+  "en": "Renew every year (charged 30 days before expiry)"
+ },
+ {
+  "fr": "Nom à acheter",
+  "en": "Name to buy"
+ },
+ {
+  "fr": "Prix annoncé à la recherche (refusé s'il a changé)",
+  "en": "Price shown by the search (refused if it changed)"
+ },
+ {
+  "fr": "Conteneur (web) qui répond sur ce domaine",
+  "en": "(Web) container answering on this domain"
+ },
+ {
+  "fr": "Brancher aussi www.<domaine>",
+  "en": "Also connect www.<domain>"
+ },
+ {
+  "fr": "Renouveler chaque année",
+  "en": "Renew every year"
+ },
+ {
+  "fr": "Domaines de l'organisation (achetés ou en commande)",
+  "en": "The organization's domains (bought or on order)"
+ },
+ {
+  "fr": "Brancher le domaine sur un conteneur web : enregistrements DNS écrits automatiquement",
+  "en": "Connect the domain to a web container: DNS records written automatically"
+ },
+ {
+  "fr": "Activer ou couper le renouvellement annuel",
+  "en": "Turn yearly renewal on or off"
+ },
+ {
+  "fr": "Identifiant du domaine",
+  "en": "Domain ID"
+ },
+ {
+  "fr": "Acheter un domaine : le solde est débité, la commande part aussitôt (remboursé si elle échoue)",
+  "en": "Buy a domain: the balance is charged, the order goes out right away (refunded if it fails)"
+ },
+ {
+  "fr": "Disponibilité et prix annuel d'un nom",
+  "en": "Availability and yearly price of a name"
+ },
+ {
+  "fr": "Nom recherché (ex. mon-site.com)",
+  "en": "Name searched (e.g. my-site.com)"
+ },
+ {
+  "fr": "Noms de domaine",
+  "en": "Domain names"
+ },
+ {
+  "fr": "Acheter un nom de domaine payé par le solde, le renouveler chaque année et le brancher sur un conteneur : les DNS sont configurés automatiquement.",
+  "en": "Buy a domain name paid from the balance, renew it every year and connect it to a container: DNS is configured automatically."
  }
 ]

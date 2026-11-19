@@ -70,6 +70,29 @@ type Catalog struct {
 	PostpaidTermsDays    int
 	PostpaidReminderDays int
 	PostpaidSuspendDays  int
+	// Domaines revendus : prix = prix du registraire (en euros) × EURRate,
+	// plus la marge (points de base), arrondi au palier supérieur.
+	DomainMarginBP int
+	DomainRoundTo  int64
+	// EURRate : unités de la monnaie pour 1 €, en millièmes (655957 :
+	// 655,957 FCFA, parité fixe).
+	EURRate Milli
+}
+
+// DomainPrice : prix de vente d'un domaine (unités de la monnaie) à partir
+// du prix du registraire en centimes d'euro ; 0 si la grille ne le permet pas.
+func (c Catalog) DomainPrice(eurCents int64) int64 {
+	if c.EURRate <= 0 || eurCents <= 0 {
+		return 0
+	}
+	// millièmes d'unité = centimes × taux (millièmes) / 100
+	base := eurCents * int64(c.EURRate) / 100
+	withMargin := base * int64(10000+c.DomainMarginBP) / 10000
+	units := ceilDiv(withMargin, int64(MilliPerUnit))
+	if step := c.DomainRoundTo; step > 1 {
+		units = ceilDiv(units, step) * step
+	}
+	return units
 }
 
 // DefaultCurrency : monnaie d'un compte sans réglage.

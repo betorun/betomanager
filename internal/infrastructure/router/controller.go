@@ -9,6 +9,7 @@ import (
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
 	"github.com/thekrauss/kubemanager/internal/modules/github"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identity "github.com/thekrauss/kubemanager/internal/modules/identity"
@@ -65,6 +66,8 @@ type ControllerContainer struct {
 	Databases  *databases.Controller
 	// Billing : facturation (coût estimé, grille de prix).
 	Billing *billing.Controller
+	// DomainSales : revente de noms de domaine.
+	DomainSales *domainsales.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -83,4 +86,5 @@ func AddAllRoutes(a *App) {
 	addCopilotRoutes(a)
 	addDatabaseRoutes(a)
 	addBillingRoutes(a)
+	addDomainSalesRoutes(a)
 }

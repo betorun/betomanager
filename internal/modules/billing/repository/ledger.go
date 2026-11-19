@@ -37,6 +37,10 @@ type Ledger interface {
 	// période atteignent target (crédits d'abord, puis argent). Rien si c'est
 	// déjà atteint ; idempotent par référence. Rend le montant débité.
 	ChargeUsage(ctx context.Context, org uuid.UUID, period string, target domain.Milli, reference, currency, description string, now time.Time) (domain.Milli, error)
+	// DebitCash : débite l'argent payé (jamais les crédits offerts) pour un
+	// achat, si cash + allowance couvre le montant (allowance : plafond du
+	// postpayé) ; domain.ErrInsufficientFunds sinon. Idempotent par référence.
+	DebitCash(ctx context.Context, org uuid.UUID, amount, allowance domain.Milli, kind, reference, currency, description, by, counter string, now time.Time) (bool, error)
 	// GrantCredit : crédit offert (transaction et lot) ; false si la référence existe.
 	GrantCredit(ctx context.Context, g *domain.CreditGrant, reference, by string, now time.Time) (bool, error)
 	// ExpireCredits : retire le reste des crédits expirés ; rend leur nombre.
@@ -445,4 +449,28 @@ func (s *ledgerStore) SettleTopup(ctx context.Context, id uuid.UUID, status, fai
 		return tx.First(&out, "id = ?", id).Error
 	})
 	return &out, err
+}
+
+func (s *ledgerStore) DebitCash(ctx context.Context, org uuid.UUID, amount, allowance domain.Milli, kind, reference, currency, description, by, counter string, now time.Time) (bool, error) {
+	var written bool
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockOrg(tx, org); err != nil {
+			return err
+		}
+		cash, _, err := balances(tx, org)
+		if err != nil {
+			return err
+		}
+		if cash+allowance < amount {
+			return domain.ErrInsufficientFunds
+		}
+		t, err := domain.NewTransaction(org, kind, reference, currency, description, by,
+			map[string]domain.Milli{domain.CashAccount(org): -amount, counter: amount}, now)
+		if err != nil {
+			return err
+		}
+		written, err = post(tx, t)
+		return err
+	})
+	return written, err
 }

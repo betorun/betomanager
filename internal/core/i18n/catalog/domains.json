@@ -1,0 +1,46 @@
+[
+ {
+  "fr": "La commande de domaines n'est pas ouverte sur cette plateforme",
+  "en": "registrar: domain ordering is not enabled on this platform"
+ },
+ {
+  "fr": "Nom de domaine invalide : par exemple mon-site.com",
+  "en": "invalid domain name: e.g. mon-site.com"
+ },
+ {
+  "fr": "Ce domaine n'est pas disponible",
+  "en": "this domain is not available"
+ },
+ {
+  "fr": "Les domaines premium ne sont pas vendus ici",
+  "en": "premium domains are not sold here"
+ },
+ {
+  "fr": "Ce domaine ne peut pas être chiffré pour le moment",
+  "en": "this domain cannot be priced right now"
+ },
+ {
+  "fr": "Titulaire invalide : prénom et nom, e-mail, téléphone international, adresse, ville et pays à deux lettres sont obligatoires",
+  "en": "invalid owner details: first and last name, email, international phone, address, city and two-letter country are required"
+ },
+ {
+  "fr": "Domaine introuvable",
+  "en": "domain order not found"
+ },
+ {
+  "fr": "Ce domaine n'est pas encore actif",
+  "en": "this domain is not active yet"
+ },
+ {
+  "fr": "La vente de domaines n'est pas encore ouverte sur cette plateforme",
+  "en": "domain sales are not open on this platform yet"
+ },
+ {
+  "fr": "Le prix a changé : relancez la recherche",
+  "en": "the price changed: search again"
+ },
+ {
+  "fr": "Le service des noms de domaine ne répond pas : réessayez dans quelques minutes",
+  "en": "the domain name service is not responding: try again in a few minutes"
+ }
+]

@@ -130,5 +130,9 @@
  {
   "fr": "Paiement invalide : un montant positif et une référence",
   "en": "invalid payment: a positive amount and a reference"
+ },
+ {
+  "fr": "Solde insuffisant : rechargez d'abord",
+  "en": "insufficient balance: top up first"
  }
 ]

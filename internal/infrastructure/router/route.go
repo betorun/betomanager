@@ -594,3 +594,22 @@ func addBillingRoutes(app *App) {
 	admin.AddRoute("/:currency", http.MethodPut, "Nouvelle version de la grille d'une monnaie (montants entiers, par mois ; une minute pour les builds)",
 		g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource), tonic.Handler(r.UpdateCatalog, http.StatusOK))
 }
+
+// addDomainSalesRoutes : revente de noms de domaine (ADR 0012, phase 5).
+func addDomainSalesRoutes(app *App) {
+	r := app.Controllers.DomainSales
+	if r == nil {
+		return
+	}
+	g := newGuards(app)
+	org := security.OrganizationParam("id")
+	d := RootGroup.NewGroup("/organizations/:id/domains", "Noms de domaine").
+		Named("Noms de domaine", "Acheter un nom de domaine payé par le solde, le renouveler chaque année et le brancher sur un conteneur : les DNS sont configurés automatiquement.")
+	d.AddRoute("", http.MethodGet, "Domaines de l'organisation (achetés ou en commande)", g.Perm(iam.BillingAccountsGet, org), tonic.Handler(r.List, http.StatusOK))
+	d.AddRoute("/search", http.MethodGet, "Disponibilité et prix annuel d'un nom", g.Perm(iam.BillingAccountsGet, org), tonic.Handler(r.Search, http.StatusOK))
+	d.AddRoute("", http.MethodPost, "Acheter un domaine : le solde est débité, la commande part aussitôt (remboursé si elle échoue)",
+		g.Perm(iam.BillingPaymentsCreate, org), tonic.Handler(r.Buy, http.StatusCreated))
+	d.AddRoute("/:orderID/auto-renew", http.MethodPut, "Activer ou couper le renouvellement annuel", g.Perm(iam.BillingAccountsUpdate, org), tonic.Handler(r.SetAutoRenew, http.StatusOK))
+	d.AddRoute("/:orderID/attach", http.MethodPost, "Brancher le domaine sur un conteneur web : enregistrements DNS écrits automatiquement",
+		g.Perm(iam.BillingAccountsUpdate, org), tonic.Handler(r.Attach, http.StatusOK))
+}

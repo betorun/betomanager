@@ -56,6 +56,9 @@ type CatalogUpdate struct {
 	PostpaidTermsDays    int        `json:"postpaid_terms_days" description:"Postpayé : échéance des factures, en jours"`
 	PostpaidReminderDays int        `json:"postpaid_reminder_days" description:"Postpayé : relance, en jours après l'échéance"`
 	PostpaidSuspendDays  int        `json:"postpaid_suspend_days" description:"Postpayé : suspension, en jours après l'échéance"`
+	DomainMarginBP       int        `json:"domain_margin_bp" description:"Domaines : marge sur le prix du registraire, en points de base (2000 = 20 %)"`
+	DomainRoundTo        int64      `json:"domain_round_to" description:"Domaines : prix arrondi au palier supérieur (ex. 500)"`
+	EURRateMilli         int64      `json:"eur_rate_milli" description:"Domaines : unités de la monnaie pour 1 €, en millièmes (655957 pour le FCFA)"`
 }
 
 // CatalogFromUpdate : grille validée. Les tailles doivent croître (CPU,
@@ -97,6 +100,7 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 		"trial_credit": u.TrialCredit, "trial_days": int64(u.TrialDays), "grace_days": int64(u.GraceDays),
 		"postpaid_credit_limit": u.PostpaidCreditLimit, "postpaid_terms_days": int64(u.PostpaidTermsDays),
 		"postpaid_reminder_days": int64(u.PostpaidReminderDays), "postpaid_suspend_days": int64(u.PostpaidSuspendDays),
+		"domain_margin_bp": int64(u.DomainMarginBP), "domain_round_to": u.DomainRoundTo, "eur_rate_milli": u.EURRateMilli,
 	} {
 		if v < 0 {
 			return Catalog{}, invalid("%s cannot be negative", name)
@@ -122,6 +126,7 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 	}
 	c.PostpaidCreditLimit = FromUnits(u.PostpaidCreditLimit)
 	c.PostpaidTermsDays, c.PostpaidReminderDays, c.PostpaidSuspendDays = u.PostpaidTermsDays, u.PostpaidReminderDays, u.PostpaidSuspendDays
+	c.DomainMarginBP, c.DomainRoundTo, c.EURRate = u.DomainMarginBP, u.DomainRoundTo, Milli(u.EURRateMilli)
 	return c, nil
 }
 
@@ -132,7 +137,8 @@ func (c Catalog) Update() CatalogUpdate {
 		DiskGiMonthly: v.DiskGiMonthly, BuildMinute: v.BuildMinute, SiteDomain: v.SiteDomain, Free: v.Free,
 		TopupMin: v.TopupMin, TopupMax: v.TopupMax, TrialCredit: v.TrialCredit, TrialDays: v.TrialDays, GraceDays: v.GraceDays,
 		PostpaidCreditLimit: v.PostpaidCreditLimit, PostpaidTermsDays: v.PostpaidTermsDays,
-		PostpaidReminderDays: v.PostpaidReminderDays, PostpaidSuspendDays: v.PostpaidSuspendDays}
+		PostpaidReminderDays: v.PostpaidReminderDays, PostpaidSuspendDays: v.PostpaidSuspendDays,
+		DomainMarginBP: v.DomainMarginBP, DomainRoundTo: v.DomainRoundTo, EURRateMilli: v.EURRateMilli}
 }
 
 // CatalogVersionView : une version de grille (administration).

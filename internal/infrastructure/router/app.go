@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
+	domainsalesSvc "github.com/thekrauss/kubemanager/internal/modules/domainsales/service"
 	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
@@ -173,6 +174,10 @@ func (a *App) RunWorker(ctx context.Context) error {
 		// Phase 3 : débit de l'usage (organisations activées), recharges en
 		// attente, crédits expirés, alertes de solde.
 		go billing.RunWallet(ctx, billingSvc.DefaultWalletEvery)
+	}
+	// Domaines revendus : commandes à passer et à suivre, renouvellements.
+	if sales := a.domainSalesService(); sales != nil && sales.Registrar != nil {
+		go sales.Run(ctx, domainsalesSvc.DefaultEvery)
 	}
 
 	// Une panne du worker doit sortir en erreur : sinon le code 0 ne déclenche

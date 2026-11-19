@@ -74,6 +74,9 @@ type OVHConfig struct {
 	ConsumerKey       string `mapstructure:"consumer_key"`
 	// Subsidiary : filiale OVH des commandes (ex. FR), qui fixe la devise.
 	Subsidiary string `mapstructure:"subsidiary"`
+	// OrderingEnabled : achats réels permis (payés par le moyen de paiement
+	// par défaut du compte OVH). Faux : recherche et prix seulement.
+	OrderingEnabled bool `mapstructure:"ordering_enabled"`
 }
 
 // BillingConfig : rail de paiement des recharges.

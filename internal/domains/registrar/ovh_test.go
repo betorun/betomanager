@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +54,29 @@ func fakeOVH(t *testing.T, offers string) (*OVH, *[]string) {
 		assert.Equal(t, "exemple.sn", r.URL.Query().Get("domain"))
 		_, _ = io.WriteString(w, offers)
 	})
+	handle("POST /order/cart/c1/domain", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"itemId":7,"prices":[]}`)
+	})
+	handle("POST /me/contact", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `{"id":42}`) })
+	handle("POST /order/cart/c1/item/7/configuration", func(http.ResponseWriter, *http.Request) {})
+	handle("POST /order/cart/c1/assign", func(http.ResponseWriter, *http.Request) {})
+	handle("POST /order/cart/c1/checkout", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"orderId":9001,"prices":{"withTax":{"value":8.49}}}`)
+	})
+	handle("GET /me/order/9001/status", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `"delivered"`) })
+	handle("GET /domain/exemple.sn/serviceInfos", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"expiration":"2031-11-19","renew":{"automatic":true}}`)
+	})
+	handle("PUT /domain/exemple.sn/serviceInfos", func(http.ResponseWriter, *http.Request) {})
+	handle("GET /domain/zone/exemple.sn/record", func(w http.ResponseWriter, r *http.Request) {
+		// Parking OVH sur la racine : un A à remplacer.
+		if r.URL.Query().Get("fieldType") == "A" && r.URL.Query().Get("subDomain") == "" {
+			_, _ = io.WriteString(w, `[11]`)
+			return
+		}
+		_, _ = io.WriteString(w, `[]`)
+	})
+	handle("DELETE /domain/zone/exemple.sn/record/11", func(http.ResponseWriter, *http.Request) {})
 	handle("POST /domain/zone/exemple.sn/record", func(http.ResponseWriter, *http.Request) {})
 	handle("POST /domain/zone/exemple.sn/refresh", func(http.ResponseWriter, *http.Request) {})
 	srv := httptest.NewServer(mux)
@@ -69,7 +93,7 @@ func TestOVH_Check(t *testing.T) {
 	o, _ := fakeOVH(t, `[{"orderable":true,"action":"create","offer":"gold","prices":[{"label":"RENEW","price":{"value":1,"currencyCode":"EUR"}},{"label":"TOTAL","price":{"value":12.99,"currencyCode":"EUR"}}]}]`)
 	a, err := o.Check(context.Background(), "exemple.sn")
 	require.NoError(t, err)
-	assert.Equal(t, &Availability{Domain: "exemple.sn", Available: true, PriceCents: 1299, Currency: "EUR"}, a)
+	assert.Equal(t, &Availability{Domain: "exemple.sn", Available: true, PriceCents: 1299, Currency: "EUR", RenewCents: 100}, a)
 
 	o, _ = fakeOVH(t, `[{"orderable":false,"action":"create","prices":[]}]`)
 	a, err = o.Check(context.Background(), "exemple.sn")
@@ -91,17 +115,52 @@ func TestOVH_SetRecords(t *testing.T) {
 		{Type: "CNAME", Name: "www.exemple.sn", Value: "ingress.betorun.app.", TTL: 300},
 		{Type: "A", Name: "exemple.sn", Value: "203.0.113.10"},
 	}))
-	require.Len(t, *calls, 3)
+	var posts []string
+	deleted := false
+	for _, c := range *calls {
+		if strings.HasPrefix(c, "POST /domain/zone/exemple.sn/record ") {
+			posts = append(posts, c)
+		}
+		if strings.HasPrefix(c, "DELETE /domain/zone/exemple.sn/record/11") {
+			deleted = true
+		}
+	}
+	assert.True(t, deleted, "le parking OVH de la racine est retiré")
+	require.Len(t, posts, 2)
 	var first map[string]any
-	_, raw, _ := cutBody((*calls)[0])
+	_, raw, _ := cutBody(posts[0])
 	require.NoError(t, json.Unmarshal([]byte(raw), &first))
 	assert.Equal(t, "www", first["subDomain"])
 	assert.EqualValues(t, 300, first["ttl"])
-	_, raw, _ = cutBody((*calls)[1])
+	_, raw, _ = cutBody(posts[1])
 	var second map[string]any
 	require.NoError(t, json.Unmarshal([]byte(raw), &second))
 	assert.Equal(t, "", second["subDomain"], "racine du domaine")
-	assert.Contains(t, (*calls)[2], "/refresh", "zone appliquée à la fin")
+	assert.Contains(t, (*calls)[len(*calls)-1], "/refresh", "zone appliquée à la fin")
+}
+
+func TestOVH_RegisterFlow(t *testing.T) {
+	o, calls := fakeOVH(t, `[]`)
+	o.cfg.OrderingEnabled = true
+	res, err := o.Register(context.Background(), Order{Domain: "exemple.sn", Years: 1, Owner: Contact{FirstName: "Awa", LastName: "Diop",
+		Email: "awa@ex.sn", Phone: "+242061234567", Address: "1 rue", City: "Brazzaville", Country: "cg"}})
+	require.NoError(t, err)
+	assert.Equal(t, "9001", res.OrderID)
+	assert.Equal(t, int64(849), res.PriceCents)
+	joined := strings.Join(*calls, "\n")
+	assert.Contains(t, joined, `"phone":"+242.061234567"`, "format OVH")
+	assert.Contains(t, joined, `"value":"/me/contact/42"`, "le client est titulaire")
+	assert.Contains(t, joined, `"autoPayWithPreferredPaymentMethod":true`)
+
+	st, err := o.OrderStatus(context.Background(), "9001")
+	require.NoError(t, err)
+	assert.Equal(t, OrderDelivered, st)
+	info, err := o.Info(context.Background(), "exemple.sn")
+	require.NoError(t, err)
+	assert.Equal(t, 2031, info.Expiration.Year())
+	assert.True(t, info.AutoRenew)
+	require.NoError(t, o.SetAutoRenew(context.Background(), "exemple.sn", false))
+	assert.Contains(t, (*calls)[len(*calls)-1], `"deleteAtExpiration":true`)
 }
 
 func cutBody(call string) (string, string, bool) {
