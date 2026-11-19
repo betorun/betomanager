@@ -126,5 +126,9 @@
  {
   "fr": "Les limites du plan sont inférieures à ce que certains projets réservent déjà",
   "en": "the plan's limits are below what some projects already reserve"
+ },
+ {
+  "fr": "Paiement invalide : un montant positif et une référence",
+  "en": "invalid payment: a positive amount and a reference"
  }
 ]

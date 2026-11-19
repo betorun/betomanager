@@ -55,8 +55,11 @@ type Service struct {
 	// limites des projets (tests).
 	Plans  repository.Plans
 	Limits ProjectLimiter
-	Now    func() time.Time
-	Logger *zap.SugaredLogger
+	// Postpayé : réglages, créances, relances (nil : prépayé seulement).
+	Postpaid  repository.Postpaid
+	Reminders InvoiceReminder
+	Now       func() time.Time
+	Logger    *zap.SugaredLogger
 }
 
 func (s *Service) now() time.Time {

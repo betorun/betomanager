@@ -145,14 +145,30 @@ Un **plan** fixe les limites de **chaque projet** de l'organisation (CPU, mémoi
 | PUT | `/admin/billing/organizations/:id/plan` | `platform.billingAccounts.update` | Attribuer un plan |
 | DELETE | `/admin/billing/projects/:id/limits-override` | `platform.projects.setLimits` | Retirer l'exception : retour aux limites du plan |
 
+## Postpayé (phase 5, migration 000039)
+
+Pour les entreprises, activé par l'équipe (`PUT /admin/billing/organizations/:id/postpaid`) ; active aussi la facturation réelle.
+
+- L'usage est débité à l'heure comme en prépayé : le solde devient une **dette**, tolérée jusqu'au **plafond de crédit** (défaut de la grille : `postpaid_credit_limit`, 200 000 ; réglable par client). Au-delà : grâce puis suspension, comme un solde épuisé.
+- Chaque facture mensuelle porte une **échéance** (`postpaid_terms_days`, 30 j ; réglable par client) et les **instructions de paiement** (`billing.issuer.payment_instructions`).
+- **Impayés** : les paiements soldent les factures de la plus ancienne à la plus récente (`domain.Receivables`, calculé à partir de la dette moins l'usage pas encore facturé). Relance e-mail une fois par facture à `postpaid_reminder_days` (7 j) après l'échéance (`billing_dunning`) ; suspension douce à `postpaid_suspend_days` (15 j), levée dès que la dette redescend.
+- **Paiements** : virement enregistré par l'équipe (`POST /admin/billing/organizations/:id/payments`, compte `platform:bank`), ou recharge mobile money par le client.
+
+| Méthode | Chemin | Permission | Description |
+|---|---|---|---|
+| PUT | `/admin/billing/organizations/:id/postpaid` | `platform.billingAccounts.update` | Postpayé (plafond, échéance) ou prépayé |
+| POST | `/admin/billing/organizations/:id/payments` | `platform.billingAccounts.update` | Virement reçu |
+
+Le wallet (`GET …/billing/wallet`) porte alors `postpaid` : plafond, échéance, dette, disponible, factures à payer.
+
 ## Tests
 
 - `domain/` : tailles, prix, plafond, offre gratuite, projection, validation d'une grille.
 - `service/` : relevé idempotent, plus grande taille de l'heure, nouvelle version de grille, monnaie inconnue.
 - `xykpay/` : signature des webhooks, client (faux serveur).
 - `pdf/` : rendu d'une facture et d'un reçu (`PDF_OUT=… go test ./internal/modules/billing/pdf/` écrit l'exemple).
-- `repository/` (vrai Postgres, `IAM_E2E=1` après `bash scripts/iam_e2e_db.sh`) : relevé et estimation de bout en bout, versions de grille ; grand livre équilibré et immuable ; activation, crédit d'essai, débit (crédits d'abord, idempotent), recharge par webhook signé (créditée une fois), ajustement, expiration, historique, administration ; grâce puis suspension, reprise après recharge (seuls les conteneurs arrêtés par elle), crédit d'essai une fois par numéro, budget avec arrêt puis relance, facture et reçu (numéros, TVA, PDF, immuables) ; plans (offre publique, plan payant sans facturation refusé, limites appliquées à tous les projets, abonnement mesuré, descente refusée sans rien appliquer, nouveau projet aligné, plan modifié appliqué aussitôt avec les projets en retard signalés, exception respectée puis retirée).
+- `repository/` (vrai Postgres, `IAM_E2E=1` après `bash scripts/iam_e2e_db.sh`) : relevé et estimation de bout en bout, versions de grille ; grand livre équilibré et immuable ; activation, crédit d'essai, débit (crédits d'abord, idempotent), recharge par webhook signé (créditée une fois), ajustement, expiration, historique, administration ; grâce puis suspension, reprise après recharge (seuls les conteneurs arrêtés par elle), crédit d'essai une fois par numéro, budget avec arrêt puis relance, facture et reçu (numéros, TVA, PDF, immuables) ; plans (offre publique, plan payant sans facturation refusé, limites appliquées à tous les projets, abonnement mesuré, descente refusée sans rien appliquer, nouveau projet aligné, plan modifié appliqué aussitôt avec les projets en retard signalés, exception respectée puis retirée) ; postpayé (dette sous le plafond, facture à échéance, suspension après le retard, virement qui solde et relance).
 
 ## Suite
 
-Phase 5 (suite) : cartes, postpayé entreprise, revente de domaines. Restent aussi : la page « compte suspendu » des sites statiques (serveur des sites à trancher), la suppression des données après 30 jours de suspension (aujourd'hui décision de l'équipe, pas automatique).
+Phase 5 (suite) : cartes (Stripe, plus tard), revente de domaines (OVH : vérification de disponibilité validée sur le vrai compte ; achat à coder). Restent aussi : la page « compte suspendu » des sites statiques (serveur des sites à trancher), la suppression des données après 30 jours de suspension (aujourd'hui décision de l'équipe, pas automatique).

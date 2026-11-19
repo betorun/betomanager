@@ -96,6 +96,8 @@ type Wallet struct {
 	// arrêtés faute de solde, jusqu'à la prochaine recharge.
 	GraceUntil  *time.Time `json:"grace_until,omitempty"`
 	SuspendedAt *time.Time `json:"suspended_at,omitempty"`
+	// Postpaid : présent en postpayé (plafond, dette, factures à payer).
+	Postpaid *PostpaidView `json:"postpaid,omitempty"`
 }
 
 // DaysLeft : jours entiers restants, ou nil sans consommation.

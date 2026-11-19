@@ -59,11 +59,20 @@ func (s *Service) Wallet(ctx context.Context, org uuid.UUID) (*domain.Wallet, er
 		return nil, err
 	}
 	balance := cash + credit
+	// Postpayé : l'état se juge sur ce qui reste avant le plafond.
+	effective := balance
+	var post *domain.PostpaidView
+	if acc.Postpaid && s.Postpaid != nil {
+		if post, err = s.postpaidView(ctx, org, acc, c, cash, credit); err != nil {
+			return nil, err
+		}
+		effective = balance + domain.FromUnits(post.CreditLimit)
+	}
 	w := &domain.Wallet{Currency: c.Currency, Charging: acc.Charging, ChargingSince: acc.ChargingSince,
 		Cash: cash.Units(), Credit: credit.Units(), Balance: balance.Units(), Credits: []domain.CreditView{},
-		PerDay: perDay.Units(), DaysLeft: domain.DaysLeft(balance, perDay),
-		Status: domain.WalletStatus(acc.Charging, balance, perDay), TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(),
-		SuspendedAt: acc.SuspendedAt}
+		PerDay: perDay.Units(), DaysLeft: domain.DaysLeft(effective, perDay),
+		Status: domain.WalletStatus(acc.Charging, effective, perDay), TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(),
+		SuspendedAt: acc.SuspendedAt, Postpaid: post}
 	if acc.Charging && acc.GraceStartedAt != nil && acc.SuspendedAt == nil {
 		until := domain.GraceUntil(*acc.GraceStartedAt, c.GraceDays)
 		w.GraceUntil = &until
@@ -436,6 +445,7 @@ func (s *Service) RunWallet(ctx context.Context, every time.Duration) {
 		}
 		s.checkBudgets(ctx)
 		s.IssueDocuments(ctx)
+		s.dunning(ctx)
 		// Limites des projets au niveau de leur plan (nouveau projet, plan modifié).
 		if applied, missed, err := s.ReconcileLimits(ctx, nil, nil); err != nil {
 			s.log().Warnw("billing: limits reconciliation failed", "error", err)

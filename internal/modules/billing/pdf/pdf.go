@@ -26,6 +26,8 @@ type Doc struct {
 	Total     domain.Milli
 	VAT       domain.Milli
 	VATRateBP int
+	// DueAt : échéance (postpayé) ; nil : déjà réglée par le solde prépayé.
+	DueAt *time.Time
 }
 
 // Couleurs (marque betorun, sobres à l'impression).
@@ -118,6 +120,9 @@ func Render(d Doc) ([]byte, error) {
 	if d.Period != "" {
 		meta = append(meta, "Période : "+periodLabel(d.Period))
 	}
+	if d.DueAt != nil {
+		meta = append(meta, "À payer avant le "+dateFR(*d.DueAt))
+	}
 	p.MultiCell(0, 4.6, tr(strings.Join(meta, "\n")), "", "R", false)
 	p.SetY(max(after, p.GetY()) + 8)
 
@@ -184,7 +189,11 @@ func Render(d Doc) ([]byte, error) {
 		if d.Data.PaidByCredits > 0 {
 			row("Réglé par crédits offerts", money(-d.Data.PaidByCredits, d.Currency), false)
 		}
-		row("Net à payer TTC (réglé par le solde)", money(d.Total, d.Currency), true)
+		if d.DueAt != nil {
+			row("Net à payer TTC", money(d.Total, d.Currency), true)
+		} else {
+			row("Net à payer TTC (réglé par le solde)", money(d.Total, d.Currency), true)
+		}
 		if d.VATRateBP > 0 {
 			ht := d.Total - d.VAT
 			row("dont montant HT", money(ht, d.Currency), false)
@@ -201,7 +210,13 @@ func Render(d Doc) ([]byte, error) {
 	p.Ln(10)
 	p.SetFont("Helvetica", "", 8.5)
 	color(muted)
-	if d.Kind == domain.DocInvoice {
+	if d.Kind == domain.DocInvoice && d.DueAt != nil {
+		text(4.2, "Facture de la consommation du mois, à régler avant le "+dateFR(*d.DueAt)+" par virement ou par mobile money depuis la console betorun. Prix TTC.")
+		if d.Data.Issuer.PaymentInstructions != "" {
+			p.Ln(2)
+			text(4.2, d.Data.Issuer.PaymentInstructions)
+		}
+	} else if d.Kind == domain.DocInvoice {
 		text(4.2, "Facture de la consommation du mois, déjà réglée par le solde prépayé du compte (aucun paiement à effectuer). Prix TTC.")
 	} else {
 		text(4.2, "Reçu d'une recharge du solde prépayé. Le solde est consommé selon l'usage ; la TVA figure sur les factures mensuelles de consommation.")

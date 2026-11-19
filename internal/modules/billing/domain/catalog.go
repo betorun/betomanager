@@ -64,6 +64,12 @@ type Catalog struct {
 	// GraceDays : jours de solde négatif tolérés avant la suspension douce
 	// (plafonnés aussi à GraceDays jours de consommation de dette).
 	GraceDays int
+	// Postpayé (valeurs par défaut, réglables client par client) : plafond de
+	// dette, échéance des factures, relance et suspension après l'échéance.
+	PostpaidCreditLimit  Milli
+	PostpaidTermsDays    int
+	PostpaidReminderDays int
+	PostpaidSuspendDays  int
 }
 
 // DefaultCurrency : monnaie d'un compte sans réglage.

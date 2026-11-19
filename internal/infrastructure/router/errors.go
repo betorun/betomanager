@@ -232,6 +232,7 @@ var sentinelErrors = []sentinelMapping{
 	{billingDomain.ErrDocumentNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{billingDomain.ErrInvalidBudget, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{billingDomain.ErrPlanNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{billingDomain.ErrInvalidPayment, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{billingDomain.ErrInvalidPlan, http.StatusBadRequest, "INVALID_PLAN", true},
 	{billingDomain.ErrPlanNeedsBilling, http.StatusConflict, "PLAN_NEEDS_BILLING", false},
 	// Les projets en cause aident le client à libérer de la place.

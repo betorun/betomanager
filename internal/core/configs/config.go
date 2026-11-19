@@ -54,6 +54,26 @@ type GlobalConfig struct {
 	// Billing : facturation (ADR 0012). Aucun montant ici : les grilles
 	// sont en base, modifiables depuis l'administration.
 	Billing BillingConfig `mapstructure:"billing"`
+	// Domains : revente de noms de domaine (registraire). Prod :
+	// KUBEMANAGER_DOMAINS_OVH_*.
+	Domains DomainsConfig `mapstructure:"domains"`
+}
+
+// DomainsConfig : registraires.
+type DomainsConfig struct {
+	OVH OVHConfig `mapstructure:"ovh"`
+}
+
+// OVHConfig : API OVH (https://eu.api.ovh.com/createToken/). Clé limitée à
+// /order/* et /domain/*. Vide : revente de domaines fermée.
+type OVHConfig struct {
+	// Endpoint : défaut https://eu.api.ovh.com/1.0.
+	Endpoint          string `mapstructure:"endpoint"`
+	ApplicationKey    string `mapstructure:"application_key"`
+	ApplicationSecret string `mapstructure:"application_secret"`
+	ConsumerKey       string `mapstructure:"consumer_key"`
+	// Subsidiary : filiale OVH des commandes (ex. FR), qui fixe la devise.
+	Subsidiary string `mapstructure:"subsidiary"`
 }
 
 // BillingConfig : rail de paiement des recharges.
@@ -73,6 +93,9 @@ type BillingIssuerConfig struct {
 	// VATRateBP : taux de TVA en points de base (1890 = 18,90 %) ; les prix
 	// de la grille sont TTC.
 	VATRateBP int `mapstructure:"vat_rate_bp"`
+	// PaymentInstructions : comment régler une facture postpayée (RIB, banque…),
+	// imprimé sur la facture.
+	PaymentInstructions string `mapstructure:"payment_instructions"`
 	// InvoicePrefix / ReceiptPrefix : défaut BTR / REC.
 	InvoicePrefix string `mapstructure:"invoice_prefix"`
 	ReceiptPrefix string `mapstructure:"receipt_prefix"`

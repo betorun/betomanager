@@ -225,6 +225,11 @@ type CatalogView struct {
 	TrialCredit     int64      `json:"trial_credit"`
 	TrialDays       int        `json:"trial_days"`
 	GraceDays       int        `json:"grace_days"`
+	// Postpayé : valeurs par défaut.
+	PostpaidCreditLimit  int64 `json:"postpaid_credit_limit"`
+	PostpaidTermsDays    int   `json:"postpaid_terms_days"`
+	PostpaidReminderDays int   `json:"postpaid_reminder_days"`
+	PostpaidSuspendDays  int   `json:"postpaid_suspend_days"`
 }
 
 type SizeView struct {
@@ -245,7 +250,9 @@ func (c Catalog) View() CatalogView {
 	v := CatalogView{Version: c.Version, Currency: c.Currency, DatabaseMonthly: c.DatabaseMonthly.Units(),
 		DiskGiMonthly: c.DiskGiMonthly.Units(), BuildMinute: c.BuildMinute.Units(), SiteDomain: c.SiteDomain.Units(),
 		Free:     FreeView{Compute: c.Free.Compute.Units(), Database: c.Free.Database.Units(), BuildMinutes: c.Free.BuildMinutes},
-		TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(), TrialCredit: c.TrialCredit.Units(), TrialDays: c.TrialDays, GraceDays: c.GraceDays}
+		TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(), TrialCredit: c.TrialCredit.Units(), TrialDays: c.TrialDays, GraceDays: c.GraceDays,
+		PostpaidCreditLimit: c.PostpaidCreditLimit.Units(), PostpaidTermsDays: c.PostpaidTermsDays,
+		PostpaidReminderDays: c.PostpaidReminderDays, PostpaidSuspendDays: c.PostpaidSuspendDays}
 	for _, s := range c.Sizes {
 		v.Sizes = append(v.Sizes, SizeView{ID: s.ID, CPUMilli: s.CPUMilli, MemMi: s.MemMi, Monthly: s.Monthly.Units()})
 	}

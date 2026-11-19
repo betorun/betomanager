@@ -174,3 +174,51 @@ func (n *Notifier) BudgetAlert(ctx context.Context, project uuid.UUID, level int
 		n.deliver(ctx, project, subject, KindBudget, BalanceEvery, budgetCopies[key], amount, pageBilling)
 	})
 }
+
+// ── Postpayé : facture en retard ────────────────────────────────────────
+
+// KindInvoiceOverdue : une relance par facture (le module billing la retient aussi).
+const KindInvoiceOverdue = "billing.invoice_overdue"
+
+var invoiceOverdueCopies = pair(
+	alertCopy{"Facture {{.Name}} en retard", "Une facture attend son paiement",
+		"La facture {{.Name}} de l'organisation « {{.Project}} » n'est pas encore réglée. Réglez-la par virement ou par mobile money depuis la console : sans paiement, les conteneurs de l'organisation seront arrêtés.",
+		"Voir la facture"},
+	alertCopy{"Invoice {{.Name}} overdue", "An invoice is waiting for payment",
+		"Invoice {{.Name}} of organization \"{{.Project}}\" isn't paid yet. Pay it by bank transfer or by mobile money from the console: without payment, the organization's containers will be stopped.",
+		"View the invoice"})
+
+// InvoiceOverdue : facture postpayée impayée après son échéance.
+func (n *Notifier) InvoiceOverdue(ctx context.Context, org uuid.UUID, number string, unpaid int64, dueAt time.Time, currency string) {
+	if n == nil {
+		return
+	}
+	label := fmt.Sprintf("%s (%s)", number, money(unpaid, currency))
+	n.run(ctx, func(ctx context.Context) {
+		if n.Mail == nil || n.Store == nil {
+			return
+		}
+		subject := uuid.NewSHA1(org, []byte("invoice-"+number))
+		if claimed, err := n.Store.Claim(ctx, subject, KindInvoiceOverdue, BalanceEvery); err != nil || !claimed {
+			return
+		}
+		recipients, err := n.Store.OrgRecipients(ctx, org)
+		if err != nil {
+			return
+		}
+		name, err := n.Store.OrgName(ctx, org)
+		if err != nil {
+			return
+		}
+		link := strings.TrimRight(n.ConsoleURL, "/") + pageBilling
+		for _, r := range recipients {
+			msg, err := renderWith(ctx, invoiceOverdueCopies, r, name, label, link, orgOutro)
+			if err == nil {
+				err = n.Mail.Send(ctx, msg)
+			}
+			if err != nil {
+				n.log().Warnw("invoice reminder email failed", "organization", org, zap.Error(err))
+			}
+		}
+	})
+}

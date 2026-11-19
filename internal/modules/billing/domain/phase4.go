@@ -145,6 +145,8 @@ type Issuer struct {
 	// VATRateBP : taux de TVA en points de base (1890 = 18,90 %). Les prix de
 	// la grille sont TTC : la facture en extrait la TVA.
 	VATRateBP int
+	// PaymentInstructions : comment payer une facture postpayée (RIB…).
+	PaymentInstructions string
 	// InvoicePrefix / ReceiptPrefix : préfixes de numérotation.
 	InvoicePrefix string
 	ReceiptPrefix string
@@ -202,6 +204,8 @@ type Document struct {
 	Data           []byte     `gorm:"type:jsonb;not null"`
 	PDF            []byte     `gorm:"column:pdf;not null"`
 	IssuedAt       time.Time  `gorm:"not null"`
+	// DueAt : échéance (postpayé) ; nil : facture déjà réglée par le solde.
+	DueAt *time.Time
 }
 
 func (Document) TableName() string { return "billing_documents" }
