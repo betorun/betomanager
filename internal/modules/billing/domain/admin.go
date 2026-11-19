@@ -49,6 +49,8 @@ type OrgDetail struct {
 	Estimate     Estimate          `json:"estimate"`
 	Transactions []TransactionView `json:"transactions"`
 	Topups       []TopupView       `json:"topups"`
+	// Plan : plan de l'organisation (absent si les plans ne sont pas branchés).
+	Plan *PlanView `json:"plan,omitempty"`
 }
 
 // AdminOrgsRequest : recherche.

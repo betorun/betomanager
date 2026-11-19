@@ -262,3 +262,61 @@ func (h *Controller) SetBudget(c *gin.Context, in *domain.BudgetRequest) (*domai
 	}
 	return h.Service.SetBudget(c.Request.Context(), project, *in, principal(c))
 }
+
+// ── Plans ───────────────────────────────────────────────────────────────
+
+// PublicPlans : plans proposés (page Tarifs).
+func (h *Controller) PublicPlans(c *gin.Context, in *domain.PlansRequest) (*domain.PlansResponse, error) {
+	return h.Service.PublicPlans(c.Request.Context(), in.Currency)
+}
+
+// OrgPlan : plan de l'organisation et plans proposés.
+func (h *Controller) OrgPlan(c *gin.Context, in *domain.OrgPath) (*domain.OrgPlan, error) {
+	org, err := parseOrg(in.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.OrgPlan(c.Request.Context(), org)
+}
+
+// ChangePlan : le client change de plan.
+func (h *Controller) ChangePlan(c *gin.Context, in *domain.ChangePlanRequest) (*domain.OrgPlan, error) {
+	org, err := parseOrg(in.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.ChangePlan(c.Request.Context(), org, in.Plan, principal(c), false)
+}
+
+// AdminChangePlan : l'équipe attribue un plan (y compris non public, sans
+// facturation active).
+func (h *Controller) AdminChangePlan(c *gin.Context, in *domain.ChangePlanRequest) (*domain.OrgPlan, error) {
+	org, err := parseOrg(in.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.ChangePlan(c.Request.Context(), org, in.Plan, principal(c), true)
+}
+
+// AdminPlans : tous les plans.
+func (h *Controller) AdminPlans(c *gin.Context) (*domain.AdminPlansResponse, error) {
+	return h.Service.AdminPlans(c.Request.Context())
+}
+
+// AdminSavePlan : crée ou modifie un plan ; ses limites suivent aussitôt.
+func (h *Controller) AdminSavePlan(c *gin.Context, in *domain.PlanUpdate) (*domain.SavePlanResponse, error) {
+	return h.Service.SavePlan(c.Request.Context(), *in, principal(c))
+}
+
+// AdminClearOverride : le projet revient aux limites de son plan.
+func (h *Controller) AdminClearOverride(c *gin.Context, in *domain.ProjectLimitsPath) (*domain.SavePlanResponse, error) {
+	project, err := parseProject(in.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	missed, err := h.Service.ClearOverride(c.Request.Context(), project)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.SavePlanResponse{NotApplied: missed}, nil
+}

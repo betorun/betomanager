@@ -20,6 +20,8 @@ type Inventory interface {
 	ProjectNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 	RunningWorkloads(ctx context.Context, org uuid.UUID, project *uuid.UUID) ([]domain.WorkloadRef, error)
 	ProjectOrg(ctx context.Context, project uuid.UUID) (uuid.UUID, error)
+	ProjectUsages(ctx context.Context, org uuid.UUID) ([]domain.ProjectUsage, error)
+	LimitTargets(ctx context.Context, org *uuid.UUID, plan *string) ([]domain.LimitTarget, error)
 }
 
 // Réglages par défaut du relevé.
@@ -49,8 +51,12 @@ type Service struct {
 	Containers Containers
 	Budgets    BudgetAlerter
 	Issuer     domain.Issuer
-	Now        func() time.Time
-	Logger     *zap.SugaredLogger
+	// Phase 5 : plans. Limits nil : le plan est enregistré sans toucher aux
+	// limites des projets (tests).
+	Plans  repository.Plans
+	Limits ProjectLimiter
+	Now    func() time.Time
+	Logger *zap.SugaredLogger
 }
 
 func (s *Service) now() time.Time {

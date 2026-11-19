@@ -126,6 +126,9 @@ func (c Catalog) BuildEstimate(month time.Time, totals []Total, names map[uuid.U
 	e.Total = (gross - free.total).Units()
 
 	for id, amount := range byProject {
+		if id == uuid.Nil {
+			continue // abonnement : il appartient à l'organisation, pas à un projet
+		}
 		e.Projects = append(e.Projects, ProjectCost{ProjectID: id.String(), Name: names[id], Amount: amount.Units()})
 	}
 	sort.Slice(e.Projects, func(i, j int) bool { return e.Projects[i].Amount > e.Projects[j].Amount })

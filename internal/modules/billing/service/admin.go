@@ -81,8 +81,16 @@ func (s *Service) Org(ctx context.Context, id uuid.UUID) (*domain.OrgDetail, err
 	if err != nil {
 		return nil, err
 	}
-	return &domain.OrgDetail{OrgSummary: sum, Projects: projects, Wallet: *w, Estimate: *e,
-		Transactions: txs.Transactions, Topups: topups.Topups}, nil
+	out := &domain.OrgDetail{OrgSummary: sum, Projects: projects, Wallet: *w, Estimate: *e,
+		Transactions: txs.Transactions, Topups: topups.Topups}
+	if s.Plans != nil {
+		p, err := s.OrgPlan(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out.Plan = &p.Current
+	}
+	return out, nil
 }
 
 func (s *Service) requireOrg(ctx context.Context, id uuid.UUID) error {
