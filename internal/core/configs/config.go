@@ -51,6 +51,42 @@ type GlobalConfig struct {
 	LLM LLMConfig `mapstructure:"llm"`
 	// Databases : bases Postgres gérées (CloudNativePG).
 	Databases DatabasesConfig `mapstructure:"databases"`
+	// Billing : facturation (ADR 0012). Aucun montant ici : les grilles
+	// sont en base, modifiables depuis l'administration.
+	Billing BillingConfig `mapstructure:"billing"`
+}
+
+// BillingConfig : rail de paiement des recharges.
+type BillingConfig struct {
+	XYKPay XYKPayConfig `mapstructure:"xykpay"`
+	// Issuer : entité qui facture (factures et reçus). Nom et adresse vides :
+	// aucun document émis. Prod : KUBEMANAGER_BILLING_ISSUER_*.
+	Issuer BillingIssuerConfig `mapstructure:"issuer"`
+}
+
+// BillingIssuerConfig : mentions légales des factures.
+type BillingIssuerConfig struct {
+	Name    string `mapstructure:"name"`
+	Address string `mapstructure:"address"`
+	TaxID   string `mapstructure:"tax_id"`
+	Country string `mapstructure:"country"`
+	// VATRateBP : taux de TVA en points de base (1890 = 18,90 %) ; les prix
+	// de la grille sont TTC.
+	VATRateBP int `mapstructure:"vat_rate_bp"`
+	// InvoicePrefix / ReceiptPrefix : défaut BTR / REC.
+	InvoicePrefix string `mapstructure:"invoice_prefix"`
+	ReceiptPrefix string `mapstructure:"receipt_prefix"`
+}
+
+// XYKPayConfig : compte marchand betorun chez XYKPay. Vide : recharges
+// fermées. Prod : KUBEMANAGER_BILLING_XYKPAY_*.
+type XYKPayConfig struct {
+	// BaseURL : ex. https://pay.sykedu.com (sans /api/v1).
+	BaseURL string `mapstructure:"base_url"`
+	// APIKey : clé secrète (xyk_sk_…).
+	APIKey string `mapstructure:"api_key"`
+	// WebhookSecret : secret de signature des webhooks (XYK-Signature).
+	WebhookSecret string `mapstructure:"webhook_secret"`
 }
 
 // DatabasesConfig : bases gérées.

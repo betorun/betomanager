@@ -14,5 +14,101 @@
  {
   "fr": "Grille de prix invalide",
   "en": "invalid price catalog"
+ },
+ {
+  "fr": "Une raison est obligatoire",
+  "en": "a reason is required"
+ },
+ {
+  "fr": "Une recharge attend déjà la confirmation sur un téléphone",
+  "en": "a top-up is already waiting for confirmation on a phone"
+ },
+ {
+  "fr": "Le montant ne peut pas être nul",
+  "en": "amount must not be zero"
+ },
+ {
+  "fr": "La facturation n'est pas encore active pour cette organisation : rien à recharger",
+  "en": "billing is not active for this organization yet: nothing to top up"
+ },
+ {
+  "fr": "Transaction de facturation déséquilibrée",
+  "en": "billing transaction is not balanced"
+ },
+ {
+  "fr": "Montant invalide",
+  "en": "invalid amount"
+ },
+ {
+  "fr": "Curseur invalide",
+  "en": "invalid cursor"
+ },
+ {
+  "fr": "Opérateur Mobile Money invalide",
+  "en": "invalid mobile money operator"
+ },
+ {
+  "fr": "Numéro invalide : format international, par exemple +242061234567",
+  "en": "invalid phone number: international format, e.g. +242061234567"
+ },
+ {
+  "fr": "Signature du webhook invalide",
+  "en": "invalid webhook signature"
+ },
+ {
+  "fr": "Le paiement en ligne n'est pas configuré sur cette plateforme",
+  "en": "online payments are not configured on this platform"
+ },
+ {
+  "fr": "Organisation introuvable",
+  "en": "organization not found"
+ },
+ {
+  "fr": "Les paiements ne sont pas configurés",
+  "en": "payments are not configured"
+ },
+ {
+  "fr": "Le paiement a été refusé",
+  "en": "the payment was refused"
+ },
+ {
+  "fr": "Montant de recharge hors limites",
+  "en": "top-up amount out of range"
+ },
+ {
+  "fr": "Recharge introuvable",
+  "en": "top-up not found"
+ },
+ {
+  "fr": "Les recharges ne sont pas ouvertes pour cette monnaie",
+  "en": "top-ups are not open for this currency"
+ },
+ {
+  "fr": "Réessayez plus tard",
+  "en": "try again later"
+ },
+ {
+  "fr": "Corps illisible",
+  "en": "unreadable body"
+ },
+ {
+  "fr": "Le solde de cette organisation est épuisé, ou le projet a atteint son budget : rechargez (ou relevez le budget) pour redémarrer des conteneurs",
+  "en": "billing: this organization's balance is used up, or the project reached its budget: top up (or raise the budget) to start containers again"
+ },
+ {
+  "fr": "Document introuvable",
+  "en": "document not found"
+ },
+ {
+  "fr": "Informations de facturation invalides : raison sociale obligatoire, pays en code à deux lettres",
+  "en": "invalid billing profile: legal name required, country as a two-letter code"
+ },
+ {
+  "fr": "Budget invalide : un montant entier positif, ou 0 pour le retirer",
+  "en": "invalid budget: a positive whole amount, or 0 to remove it"
+ },
+ {
+  "fr": "Projet inconnu",
+  "en": "unknown project"
  }
 ]

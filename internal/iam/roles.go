@@ -74,6 +74,7 @@ var (
 	platformAdminPerms = []Permission{
 		PlatformClustersList, PlatformClusterKeysList, PlatformClusterKeysCreate, PlatformClusterKeysRotate,
 		PlatformClusterKeysRevoke, PlatformProjectsSetLimits, PlatformBillingCatalogsGet, PlatformBillingCatalogsUpdate,
+		PlatformBillingAccountsGet, PlatformBillingAccountsUpdate,
 	}
 )
 

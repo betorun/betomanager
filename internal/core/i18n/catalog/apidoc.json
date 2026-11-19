@@ -1378,5 +1378,113 @@
  {
   "fr": "Prix en vigueur des conteneurs (par taille), des bases, du disque et des builds, et offre gratuite. Fixés par l'équipe de la plateforme.",
   "en": "Current prices of containers (per size), databases, disk and builds, and the free tier. Set by the platform team."
+ },
+ {
+  "fr": "Montant, en unités de la monnaie du compte",
+  "en": "Amount, in units of the account's currency"
+ },
+ {
+  "fr": "Opérateur Mobile Money (ex. cg_mtn, cg_airtel)",
+  "en": "Mobile Money operator (e.g. cg_mtn, cg_airtel)"
+ },
+ {
+  "fr": "Numéro Mobile Money, au format international (+242…)",
+  "en": "Mobile Money number, in international format (+242…)"
+ },
+ {
+  "fr": "Recharges récentes",
+  "en": "Recent top-ups"
+ },
+ {
+  "fr": "Recharger par mobile money : la demande arrive sur le téléphone, l'argent est crédité à sa confirmation",
+  "en": "Top up by mobile money: the request reaches the phone, the money is credited once confirmed"
+ },
+ {
+  "fr": "Une recharge (son état est relu chez le prestataire si elle attend encore)",
+  "en": "A top-up (its status is read again from the provider while it is pending)"
+ },
+ {
+  "fr": "Identifiant de la recharge",
+  "en": "Top-up ID"
+ },
+ {
+  "fr": "Mouvements du solde (recharges, débits d'usage par jour, crédits), du plus récent au plus ancien",
+  "en": "Balance movements (top-ups, daily usage charges, credits), newest first"
+ },
+ {
+  "fr": "Curseur de la page suivante (next_before)",
+  "en": "Cursor of the next page (next_before)"
+ },
+ {
+  "fr": "Nombre de mouvements (défaut 50, au plus 200)",
+  "en": "Number of movements (default 50, at most 200)"
+ },
+ {
+  "fr": "Solde de l'organisation : argent, crédits offerts, consommation par jour, jours restants",
+  "en": "Organization balance: money, credits granted, daily usage, days left"
+ },
+ {
+  "fr": "Adresse de facturation",
+  "en": "Billing address"
+ },
+ {
+  "fr": "Pays (code ISO à deux lettres, ex. CG)",
+  "en": "Country (two-letter ISO code, e.g. CG)"
+ },
+ {
+  "fr": "Raison sociale (ou nom) portée sur les factures",
+  "en": "Legal name (or name) shown on invoices"
+ },
+ {
+  "fr": "Numéro d'identification fiscale (NIU…), facultatif",
+  "en": "Tax identification number (NIU…), optional"
+ },
+ {
+  "fr": "Budget mensuel en unités de la monnaie (0 : retirer le budget)",
+  "en": "Monthly budget in currency units (0: remove the budget)"
+ },
+ {
+  "fr": "true : arrêter les conteneurs du projet une fois le budget atteint ; false : alerte seulement",
+  "en": "true: stop the project's containers once the budget is reached; false: alert only"
+ },
+ {
+  "fr": "Factures mensuelles et reçus de recharge",
+  "en": "Monthly invoices and top-up receipts"
+ },
+ {
+  "fr": "Le PDF d'une facture ou d'un reçu, tel qu'émis",
+  "en": "The PDF of an invoice or a receipt, as issued"
+ },
+ {
+  "fr": "Identifiant de la facture ou du reçu",
+  "en": "Invoice or receipt ID"
+ },
+ {
+  "fr": "Informations portées sur les factures (raison sociale, numéro fiscal, adresse)",
+  "en": "Details shown on invoices (legal name, tax number, address)"
+ },
+ {
+  "fr": "Modifier les informations de facturation (prochaines factures)",
+  "en": "Change the billing details (next invoices)"
+ },
+ {
+  "fr": "Budget du projet et sa consommation du mois",
+  "en": "Project budget and its usage this month"
+ },
+ {
+  "fr": "Fixer (montant positif) ou retirer (0) le budget mensuel du projet",
+  "en": "Set (positive amount) or remove (0) the project's monthly budget"
+ },
+ {
+  "fr": "Identifiant du projet",
+  "en": "Project ID"
+ },
+ {
+  "fr": "Budget mensuel d'un projet : une alerte quand il est presque atteint, puis atteint, et l'arrêt de ses conteneurs si vous le demandez.",
+  "en": "Monthly budget of a project: an alert when it is almost reached, then reached, and its containers stopped if you ask for it."
+ },
+ {
+  "fr": "Budget du projet",
+  "en": "Project budget"
  }
 ]

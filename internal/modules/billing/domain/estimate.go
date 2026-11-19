@@ -137,6 +137,25 @@ func (c Catalog) BuildEstimate(month time.Time, totals []Total, names map[uuid.U
 	return e
 }
 
+// NetCost : coût de la période (plafonds compris), offre gratuite déduite.
+// C'est ce que la facturation réelle débite.
+func (c Catalog) NetCost(totals []Total) Milli {
+	var gross, compute, database, build Milli
+	for _, t := range totals {
+		cost := t.Cost()
+		gross += cost
+		switch t.Meter {
+		case MeterCompute:
+			compute += cost
+		case MeterDatabase, MeterDatabaseDisk:
+			database += cost
+		case MeterBuildMinutes:
+			build += cost
+		}
+	}
+	return gross - c.freeTier(compute, database, build).total
+}
+
 type freeUse struct{ compute, database, build, total Milli }
 
 func (f freeUse) used() FreeTierUsed {
@@ -198,6 +217,11 @@ type CatalogView struct {
 	BuildMinute     int64      `json:"build_minute"`
 	SiteDomain      int64      `json:"site_domain_monthly"`
 	Free            FreeView   `json:"free_tier"`
+	TopupMin        int64      `json:"topup_min"`
+	TopupMax        int64      `json:"topup_max"`
+	TrialCredit     int64      `json:"trial_credit"`
+	TrialDays       int        `json:"trial_days"`
+	GraceDays       int        `json:"grace_days"`
 }
 
 type SizeView struct {
@@ -217,7 +241,8 @@ type FreeView struct {
 func (c Catalog) View() CatalogView {
 	v := CatalogView{Version: c.Version, Currency: c.Currency, DatabaseMonthly: c.DatabaseMonthly.Units(),
 		DiskGiMonthly: c.DiskGiMonthly.Units(), BuildMinute: c.BuildMinute.Units(), SiteDomain: c.SiteDomain.Units(),
-		Free: FreeView{Compute: c.Free.Compute.Units(), Database: c.Free.Database.Units(), BuildMinutes: c.Free.BuildMinutes}}
+		Free:     FreeView{Compute: c.Free.Compute.Units(), Database: c.Free.Database.Units(), BuildMinutes: c.Free.BuildMinutes},
+		TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(), TrialCredit: c.TrialCredit.Units(), TrialDays: c.TrialDays, GraceDays: c.GraceDays}
 	for _, s := range c.Sizes {
 		v.Sizes = append(v.Sizes, SizeView{ID: s.ID, CPUMilli: s.CPUMilli, MemMi: s.MemMi, Monthly: s.Monthly.Units()})
 	}

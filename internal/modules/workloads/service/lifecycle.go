@@ -173,6 +173,9 @@ func (s *WorkloadService) Start(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	if err := s.canRun(ctx, w.ProjectID); err != nil {
+		return err
+	}
 	if err := ensureNotDeleting(w); err != nil {
 		return err
 	}
@@ -239,6 +242,9 @@ func (s *WorkloadService) Restart(ctx context.Context, id uuid.UUID) error {
 func (s *WorkloadService) Rollback(ctx context.Context, id uuid.UUID, toRevision int) error {
 	w, err := s.Repo.GetByID(ctx, id)
 	if err != nil {
+		return err
+	}
+	if err := s.canRun(ctx, w.ProjectID); err != nil {
 		return err
 	}
 	if err := ensureNotDeleting(w); err != nil {
