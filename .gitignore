@@ -1,4 +1,8 @@
 *.md
+# Documentation versionnée : docs/, docs des modules, README.
+!README.md
+!docs/**/*.md
+!internal/**/docs/*.md
 .env
 .env.local
 .env.prod
