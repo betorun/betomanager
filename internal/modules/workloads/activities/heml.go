@@ -416,7 +416,9 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 			},
 		},
 		"networkPolicy": map[string]any{
-			"enabled":             true,
+			"enabled": true,
+			// Réseau privé : les conteneurs du projet se joignent entre eux.
+			"projectNetwork":      true,
 			"ingressNSLabelKey":   namespaceNameLabel,
 			"ingressNSLabelValue": fallback(input.IngressNamespace, defaultIngressNamespace),
 			"egress": map[string]any{

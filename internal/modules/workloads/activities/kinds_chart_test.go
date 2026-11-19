@@ -124,3 +124,37 @@ func TestChart_CustomDomainPaths(t *testing.T) {
 		t.Fatalf("la route « / » a changé de nom : %s ≠ %s", nameOf(old), nameOf(y))
 	}
 }
+
+// Réseau privé : entrée ET sortie ouvertes entre pods du même projet, pour
+// toutes les sortes (un worker appelle l'API, un site appelle Keycloak).
+func TestChart_ProjectPrivateNetwork(t *testing.T) {
+	for _, kind := range []string{"web", "worker", "cron"} {
+		in := baseInput(kind)
+		in.ProjectID = "11111111-1111-1111-1111-111111111111"
+		if kind == "cron" {
+			in.Process.Schedule = "@daily"
+		}
+		y := renderKind(t, in)
+		i := strings.Index(y, "kind: NetworkPolicy")
+		if i < 0 {
+			t.Fatalf("%s : pas de NetworkPolicy", kind)
+		}
+		np := y[i:]
+		if j := strings.Index(np, "\n---"); j > 0 {
+			np = np[:j]
+		}
+		np = np[strings.Index(np, "spec:"):] // hors labels de la politique elle-même
+		sel := `km-project-id: "11111111-1111-1111-1111-111111111111"`
+		if strings.Count(np, sel) != 2 {
+			t.Fatalf("%s : règle d'entrée et de sortie du projet attendues\n%s", kind, np)
+		}
+		if !strings.Contains(np, "app.kubernetes.io/part-of: kubemanager") {
+			t.Fatalf("%s : sélecteur sans part-of\n%s", kind, np)
+		}
+	}
+	// Sans projet connu : aucune règle « projet » (un label vide viserait tout).
+	y := renderKind(t, baseInput("web"))
+	if strings.Contains(y, "Réseau privé du projet") {
+		t.Fatal("règle projet rendue sans projet")
+	}
+}

@@ -116,12 +116,16 @@ type UpdateWorkloadRequest struct {
 
 // LiveStatus : snapshot merge DB + K8s runtime pour un workload donné.
 type LiveStatus struct {
-	ID                string      `json:"id"`
-	Name              string      `json:"name"`
-	Namespace         string      `json:"namespace"`
-	Status            string      `json:"status"` // DB-side : STARTING/RUNNING/FAILED...
-	Phase             string      `json:"phase"`  // DB-side : HELM_PREPARING/DEPLOYED/...
-	ExternalURL       string      `json:"external_url,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
+	Status      string `json:"status"` // DB-side : STARTING/RUNNING/FAILED...
+	Phase       string `json:"phase"`  // DB-side : HELM_PREPARING/DEPLOYED/...
+	ExternalURL string `json:"external_url,omitempty"`
+	// InternalURL : adresse dans le réseau privé du projet (conteneur web) :
+	// les autres conteneurs du projet le joignent par elle, sans passer par
+	// Internet.
+	InternalURL       string      `json:"internal_url,omitempty"`
 	Image             string      `json:"image"`
 	Replicas          int32       `json:"replicas"`       // desired
 	ReadyReplicas     int32       `json:"ready_replicas"` // K8s runtime
