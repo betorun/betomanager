@@ -2,16 +2,6 @@ package middleware
 
 import "time"
 
-// Clés d'API (APIKeyAuth).
-const (
-	// apiKeyLookupPrefixLen : caractères de la clé servant à la retrouver en base.
-	apiKeyLookupPrefixLen = 7
-	// apiKeyAuthScheme : schéma « Authorization: ApiKey <clé> ».
-	apiKeyAuthScheme = "ApiKey"
-	// apiKeyUsageUpdateTimeout : mise à jour asynchrone des compteurs d'usage.
-	apiKeyUsageUpdateTimeout = 5 * time.Second
-)
-
 // Codes d'erreur renvoyés par le limiteur de débit.
 const (
 	errCodeRateLimitBackendUnavailable = "RATE_LIMIT_BACKEND_UNAVAILABLE"
