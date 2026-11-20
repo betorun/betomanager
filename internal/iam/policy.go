@@ -494,26 +494,33 @@ func DescribeMembers(ctx context.Context, db *gorm.DB, principals []Principal) (
 		if !ok {
 			continue
 		}
-		rows, err := db.WithContext(ctx).Raw(q, ids).Rows()
+		members, err := scanMembers(ctx, db, q, kind, ids)
 		if err != nil {
 			return nil, err
 		}
-		for rows.Next() {
-			var id uuid.UUID
-			var email, name string
-			if err := rows.Scan(&id, &email, &name); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			out = append(out, MemberInfo{Principal: Principal(kind + ":" + id.String()), Email: email, DisplayName: name})
-		}
-		// Connexion coupée en cours de lecture : pas de liste de membres tronquée.
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, err
-		}
+		out = append(out, members...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Principal < out[j].Principal })
 	return out, nil
+}
+
+// scanMembers : une requête de membres ; rows est fermé quel que soit le
+// chemin de sortie (panique comprise).
+func scanMembers(ctx context.Context, db *gorm.DB, q, kind string, ids []uuid.UUID) ([]MemberInfo, error) {
+	rows, err := db.WithContext(ctx).Raw(q, ids).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MemberInfo
+	for rows.Next() {
+		var id uuid.UUID
+		var email, name string
+		if err := rows.Scan(&id, &email, &name); err != nil {
+			return nil, err
+		}
+		out = append(out, MemberInfo{Principal: Principal(kind + ":" + id.String()), Email: email, DisplayName: name})
+	}
+	// Connexion coupée en cours de lecture : pas de liste de membres tronquée.
+	return out, rows.Err()
 }
