@@ -24,7 +24,8 @@ import (
 // newDiskResizeController : agrandissement des disques par copie. Sans
 // cluster, les lectures restent possibles et les demandes sont refusées.
 func (a *App) newDiskResizeController() *diskresize.Controller {
-	s := &diskresize.Service{Store: &diskresize.GormStore{DB: a.DB}, Logger: a.Logger.With("component", "disk-resize")}
+	s := &diskresize.Service{Store: &diskresize.GormStore{DB: a.DB}, Logger: a.Logger.With("component", "disk-resize"),
+		Spawner: a.spawner()}
 	if a.Services != nil && a.Services.Workload != nil {
 		s.Workloads = &resizeWorkloads{app: a}
 	}

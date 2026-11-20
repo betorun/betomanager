@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/thekrauss/kubemanager/internal/core/background"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -151,6 +152,8 @@ type Service struct {
 	Now       func() time.Time
 	// Sync : l'opération tourne dans l'appel (tests).
 	Sync bool
+	// Spawner : tâches de fond suivies par l'arrêt (nil : goroutine simple).
+	Spawner background.Spawner
 }
 
 func (s *Service) now() time.Time {
@@ -219,7 +222,11 @@ func (s *Service) Start(ctx context.Context, project, workloadID uuid.UUID, size
 	if s.Sync {
 		run(ctx)
 	} else {
-		go run(context.WithoutCancel(ctx))
+		// Suivie par l'arrêt mais pas annulée (voir run) : un arrêt plus
+		// long que le délai laisse l'opération « en cours » sans verrou, et
+		// la demande suivante la reprend.
+		detached := context.WithoutCancel(ctx)
+		background.Go(s.Spawner, "disk-resize", func(context.Context) { run(detached) })
 	}
 	out := *r
 	return &out, nil
