@@ -97,6 +97,9 @@ type App struct {
 	Repos       *RepositoryContainer
 	Services    *ServiceContainer
 	Controllers *ControllerContainer
+
+	// life : contexte de vie et suivi des tâches de fond (lifecycle.go).
+	life lifecycle
 }
 
 func NewApp(cfg *configs.GlobalConfig) *App {
@@ -105,6 +108,7 @@ func NewApp(cfg *configs.GlobalConfig) *App {
 }
 
 func (a *App) Init(ctx context.Context) error {
+	a.life.init(ctx)
 	if err := a.initDependencies(); err != nil {
 		return fmt.Errorf("dependency init: %w", err)
 	}
@@ -173,36 +177,37 @@ func (a *App) RunWorker(ctx context.Context) error {
 		if n := a.alertNotifier(); n != nil { // pas d'interface non nulle autour d'un nil
 			recoverer.Alerts = n
 		}
-		go recoverer.Run(ctx, workloadsSvc.DefaultRecoverEvery)
+		a.goWith(ctx, "workload-recovery", func(ctx context.Context) { recoverer.Run(ctx, workloadsSvc.DefaultRecoverEvery) })
 	}
 
 	// Facturation : relevé de l'usage réservé (ADR 0012, phase 2 à blanc).
 	if billing := a.billingService(); billing != nil {
-		go billing.Run(ctx, billingSvc.DefaultSampleEvery)
+		a.goWith(ctx, "billing-sample", func(ctx context.Context) { billing.Run(ctx, billingSvc.DefaultSampleEvery) })
 		// Phase 3 : débit de l'usage (organisations activées), recharges en
 		// attente, crédits expirés, alertes de solde.
-		go billing.RunWallet(ctx, billingSvc.DefaultWalletEvery)
+		a.goWith(ctx, "billing-wallet", func(ctx context.Context) { billing.RunWallet(ctx, billingSvc.DefaultWalletEvery) })
 	}
 	// Domaines revendus : commandes à passer et à suivre, renouvellements.
 	if sales := a.domainSalesService(); sales != nil && sales.Registrar != nil {
-		go sales.Run(ctx, domainsalesSvc.DefaultEvery)
+		a.goWith(ctx, "domain-sales", func(ctx context.Context) { sales.Run(ctx, domainsalesSvc.DefaultEvery) })
 	}
 
 	// Usage réel des disques : alertes à 80 et 100 %, arrêt du conteneur à 120 %.
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
-		go a.diskUsageService().Run(ctx, diskusage.DefaultEvery)
+		disks := a.diskUsageService()
+		a.goWith(ctx, "disk-usage", func(ctx context.Context) { disks.Run(ctx, diskusage.DefaultEvery) })
 	}
 
 	// Sauvegarde nocturne des services qui en ont (MariaDB).
 	if b := a.addonBackupService(); b.Backups != nil {
-		go b.RunBackups(ctx, addons.BackupEvery)
+		a.goWith(ctx, "addon-backups", func(ctx context.Context) { b.RunBackups(ctx, addons.BackupEvery) })
 	}
 
 	// « Me prévenir » : e-mail quand un service annoncé ouvre (ADR 0013).
 	if n := a.alertNotifier(); n != nil {
 		waitlist := &addons.Service{Waitlists: &addons.GormWaitlist{DB: a.DB}, Announcer: n,
 			Logger: a.Logger.With("component", "addon-waitlist")}
-		go waitlist.RunWaitlistNotifier(ctx, addons.WaitlistEvery)
+		a.goWith(ctx, "addon-waitlist", func(ctx context.Context) { waitlist.RunWaitlistNotifier(ctx, addons.WaitlistEvery) })
 	}
 
 	// Une panne du worker doit sortir en erreur : sinon le code 0 ne déclenche
@@ -254,6 +259,8 @@ func (a *App) startHealthServer() *http.Server {
 }
 
 func (a *App) shutdownInfra() {
+	// Tâches de fond d'abord : elles utilisent encore la base, Redis, Temporal.
+	a.stopBackground()
 	if a.UsageAccumulator != nil {
 		flushCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		a.UsageAccumulator.Stop(flushCtx)

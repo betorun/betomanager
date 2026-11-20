@@ -8,6 +8,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/audit"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 )
@@ -30,16 +31,32 @@ func (a *App) startIAMSync(ctx context.Context) {
 	})
 
 	sub := a.Redis.Subscribe(ctx, iamInvalidateChannel)
-	go func() {
+	a.goWith(ctx, "iam-sync", func(ctx context.Context) {
 		defer sub.Close()
-		for msg := range sub.Channel() {
-			from, principal, ok := strings.Cut(msg.Payload, "|")
-			if !ok || from == origin {
+		consumeInvalidations(ctx, sub.Channel(), origin, a.IAM.Invalidate)
+	})
+}
+
+// consumeInvalidations : applique les invalidations reçues des autres
+// process jusqu'à l'annulation de ctx ou la fermeture du canal. Avant, la
+// boucle ne regardait que le canal, qui ne se ferme qu'avec l'abonnement :
+// elle ne s'arrêtait jamais.
+func consumeInvalidations(ctx context.Context, ch <-chan *redis.Message, origin string, invalidate func(iam.Principal)) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			from, principal, found := strings.Cut(msg.Payload, "|")
+			if !found || from == origin {
 				continue
 			}
-			a.IAM.Invalidate(iam.Principal(principal))
+			invalidate(iam.Principal(principal))
 		}
-	}()
+	}
 }
 
 // platformReconcileEvery : délai maximal pour qu'un changement de la liste du
@@ -79,7 +96,7 @@ func (a *App) startPlatformRolesReconciler(ctx context.Context) {
 		}
 	}
 	run()
-	go func() {
+	a.goWith(ctx, "platform-roles", func(ctx context.Context) {
 		t := time.NewTicker(platformReconcileEvery)
 		defer t.Stop()
 		for {
@@ -90,5 +107,5 @@ func (a *App) startPlatformRolesReconciler(ctx context.Context) {
 				run()
 			}
 		}
-	}()
+	})
 }

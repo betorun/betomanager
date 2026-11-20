@@ -289,7 +289,7 @@ func (a *App) initSecurity() error {
 	// IAM : point de décision unique des autorisations (docs/architecture/iam.md).
 	a.IAM = iam.NewEngine(&iam.GormStore{DB: a.DB}, iam.DefaultCacheTTL)
 	a.Security.Middleware.SetAuthorizer(a.IAM)
-	a.startIAMSync(context.Background())
+	a.startIAMSync(a.life.context())
 
 	sa, err := iam.NewServiceAccountService(a.DB, a.IAM, []byte(a.Config.IAM.APIKeyPepper))
 	if err != nil {
@@ -322,7 +322,7 @@ func (a *App) initSecurity() error {
 	if err := a.initSTS(); err != nil {
 		return err
 	}
-	a.startPlatformRolesReconciler(context.Background())
+	a.startPlatformRolesReconciler(a.life.context())
 	return nil
 }
 
@@ -461,16 +461,21 @@ func (a *App) initSTS() error {
 	a.Security.Middleware.SetTokenVerifier(a.STS)
 
 	logErr := func(err error) { a.Logger.Errorw("sts background task failed", "error", err) }
-	go keys.Run(context.Background(), logErr)
-	go func() {
+	a.goBackground("sts-keys", func(ctx context.Context) { keys.Run(ctx, logErr) })
+	a.goBackground("sts-assertions-purge", func(ctx context.Context) {
 		t := time.NewTicker(10 * time.Minute)
 		defer t.Stop()
-		for range t.C {
-			if err := a.STS.PurgeUsedAssertions(context.Background()); err != nil {
-				logErr(err)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := a.STS.PurgeUsedAssertions(ctx); err != nil {
+					logErr(err)
+				}
 			}
 		}
-	}()
+	})
 	return nil
 }
 

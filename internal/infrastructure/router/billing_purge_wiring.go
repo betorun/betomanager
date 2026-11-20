@@ -35,9 +35,9 @@ func (a *App) startSuspensionPurge(ctx context.Context) {
 	if n := a.alertNotifier(); n != nil { // pas d'interface non nulle autour d'un nil
 		billing.PurgeAlerts = n
 	}
-	go billing.RunPurge(ctx, billingSvc.DefaultPurgeEvery)
+	a.goWith(ctx, "billing-purge", func(ctx context.Context) { billing.RunPurge(ctx, billingSvc.DefaultPurgeEvery) })
 	if p.databases != nil {
-		go p.expireArchives(ctx)
+		a.goWith(ctx, "database-archives-expiry", p.expireArchives)
 	}
 }
 
