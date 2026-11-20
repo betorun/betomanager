@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/thekrauss/kubemanager/internal/core/background"
 	"github.com/thekrauss/kubemanager/internal/modules/addons/domain"
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -92,6 +93,8 @@ type Service struct {
 	// Backups : sauvegardes des services qui en ont (nil : indisponibles).
 	Backups *BackupConfig
 	Logger  *zap.SugaredLogger
+	// Spawner : tâches de fond suivies par l'arrêt (nil : goroutine simple).
+	Spawner background.Spawner
 }
 
 func (s *Service) available() error {

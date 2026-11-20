@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/thekrauss/kubemanager/internal/core/background"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/objectstore"
 	"github.com/thekrauss/kubemanager/internal/modules/addons/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -215,6 +216,14 @@ func (s *Service) ListBackups(ctx context.Context, projectID, id uuid.UUID) (*do
 	if list == nil {
 		list = []domain.Backup{}
 	}
+	// « En cours » depuis plus longtemps qu'une copie ne peut durer : reste
+	// d'un process arrêté net (le planificateur l'ignore déjà, backupStale).
+	now := s.Backups.now()
+	for i := range list {
+		if list[i].Status == domain.BackupRunning && now.Sub(list[i].CreatedAt) > backupStale {
+			list[i].Status, list[i].Error = domain.BackupFailed, domain.ErrBackupInterrupted.Error()
+		}
+	}
 	return &domain.BackupList{Backups: list, Kept: domain.BackupsKept}, nil
 }
 
@@ -234,12 +243,15 @@ func (s *Service) StartBackup(ctx context.Context, projectID, id uuid.UUID, acto
 		unlock()
 		return nil, err
 	}
-	go func() {
+	background.Go(s.Spawner, "addon-backup", func(stop context.Context) {
 		defer unlock()
 		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), backupTimeout+time.Minute)
 		defer cancel()
+		// Arrêt de l'API : la copie s'interrompt et l'enregistre, base encore
+		// ouverte (l'arrêt attend la fin de la tâche).
+		defer context.AfterFunc(stop, cancel)()
 		_ = s.runBackup(bg, t, b) // erreur déjà journalisée et enregistrée sur la sauvegarde
-	}()
+	})
 	return b, nil
 }
 
@@ -265,6 +277,9 @@ func (s *Service) runBackup(ctx context.Context, t *backupTarget, b *domain.Back
 	up.mu.Unlock()
 	if err == nil && !received {
 		err = errors.New("the backup did not reach the API")
+	}
+	if err != nil && errors.Is(ctx.Err(), context.Canceled) {
+		err = domain.ErrBackupInterrupted // arrêt de l'API, pas une panne de la copie
 	}
 	keep := context.WithoutCancel(ctx)
 	at := s.Backups.now()

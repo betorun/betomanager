@@ -90,5 +90,9 @@
  {
   "fr": "La confirmation ne correspond pas au nom du service",
   "en": "the confirmation does not match the service name"
+ },
+ {
+  "fr": "La sauvegarde a été interrompue par un redémarrage de la plateforme : lancez-en une nouvelle",
+  "en": "the backup was interrupted by a platform restart: start a new one"
  }
 ]

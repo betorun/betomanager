@@ -94,4 +94,6 @@ var (
 	ErrBackupNotRestorable = errors.New("only a completed backup can be restored")
 	ErrBackupTooLarge      = errors.New("the backup is too large")
 	ErrConfirmMismatch     = errors.New("the confirmation does not match the service name")
+	// ErrBackupInterrupted : copie coupée par un redémarrage de la plateforme.
+	ErrBackupInterrupted = errors.New("the backup was interrupted by a platform restart: start a new one")
 )

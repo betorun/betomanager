@@ -21,7 +21,7 @@ import (
 // conteneurs, le contrôleur existe mais répond « indisponible ».
 func (a *App) newAddonsController() *addons.Controller {
 	s := &addons.Service{Repo: &addons.GormRepository{DB: a.DB}, Projects: a.Repos.Project, Logger: a.Logger,
-		Waitlists: &addons.GormWaitlist{DB: a.DB}}
+		Waitlists: &addons.GormWaitlist{DB: a.DB}, Spawner: a.spawner()}
 	if a.Services != nil && a.Services.Workload != nil && a.Repos.Workload != nil && a.Variables != nil {
 		s.Workloads = &addonWorkloads{repo: a.Repos.Workload, svc: a.Services.Workload, vars: a.Variables}
 	}
@@ -55,7 +55,7 @@ func (a *App) addonBackups() *addons.BackupConfig {
 // addonBackupService : passage nocturne (worker).
 func (a *App) addonBackupService() *addons.Service {
 	s := &addons.Service{Repo: &addons.GormRepository{DB: a.DB}, Projects: a.Repos.Project,
-		Logger: a.Logger.With("component", "addon-backups"), Backups: a.addonBackups()}
+		Logger: a.Logger.With("component", "addon-backups"), Backups: a.addonBackups(), Spawner: a.spawner()}
 	if a.Services != nil && a.Services.Workload != nil && a.Repos.Workload != nil && a.Variables != nil {
 		s.Workloads = &addonWorkloads{repo: a.Repos.Workload, svc: a.Services.Workload, vars: a.Variables}
 	}
