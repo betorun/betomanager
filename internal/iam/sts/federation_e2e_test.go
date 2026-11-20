@@ -181,6 +181,7 @@ func TestE2E_Federation(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Contains(t, body["error_description"], "no federation trust for this issuer")
 	code, body = exchange(ci.token(t, svc.Issuer, mainSub, nil), url.Values{"subject_token_type": {"urn:x"}})
+	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "invalid_request", body["error"])
 
 	// Deux comptes font confiance au même sujet : il faut préciser lequel.
@@ -189,6 +190,7 @@ func TestE2E_Federation(t *testing.T) {
 	_, err = sas.CreateTrust(ctx, awa, projectID, sa2.ID, iam.FederationTrustInput{Issuer: ci.srv.URL, SubjectPattern: "repo:sunupay/*"})
 	require.NoError(t, err)
 	code, body = exchange(ci.token(t, svc.Issuer, mainSub, nil), nil)
+	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "invalid_request", body["error"])
 	assert.Contains(t, body["error_description"], "service_account")
 	code, _ = exchange(ci.token(t, svc.Issuer, mainSub, nil), url.Values{"service_account": {string(sa2.Principal)}})

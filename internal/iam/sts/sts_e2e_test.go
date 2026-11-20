@@ -235,6 +235,7 @@ func TestE2E_JWTBearerFlow(t *testing.T) {
 		assert.Equal(t, "invalid_grant", body["error"], name)
 	}
 	code, body = exchange("")
+	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "invalid_request", body["error"])
 	form := url.Values{"grant_type": {"client_credentials"}}
 	req := httptest.NewRequest("POST", "/iam/token", strings.NewReader(form.Encode()))
