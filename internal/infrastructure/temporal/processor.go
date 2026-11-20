@@ -22,29 +22,29 @@ import (
 	projectActivities "github.com/thekrauss/kubemanager/internal/modules/projects/activities"
 	projectRepo "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	projectWorkflows "github.com/thekrauss/kubemanager/internal/modules/projects/workflows"
+	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
 	siteActivities "github.com/thekrauss/kubemanager/internal/modules/sites/activities"
 	siteRepository "github.com/thekrauss/kubemanager/internal/modules/sites/repository"
 	siteWorkflows "github.com/thekrauss/kubemanager/internal/modules/sites/workflows"
 	workloadActivities "github.com/thekrauss/kubemanager/internal/modules/workloads/activities"
 	workloadRepository "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
-	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
 	workloadWorkflows "github.com/thekrauss/kubemanager/internal/modules/workloads/workflows"
 )
 
 type WorkerConfig struct {
-	Client       client.Client
-	Config       *configs.GlobalConfig
-	Logger       *zap.SugaredLogger
-	K8sClient    *kubernetes.Clientset
-	K8sConfig    *rest.Config
-	DB           *gorm.DB
-	RBACSvc      authSvc.IRBACService
-	Idempotency  idempotency.AtomicManager
-	Publisher    realtime.Publisher
-	ObjectStore  objectstore.Store                // nil si sites statiques désactivés
-	Builds       *buildActivities.Activities      // nil si builds désactivés
-	Pull         *pull.Secrets                    // nil sans cluster
-	Variables    workloadRepository.VariableStore
+	Client      client.Client
+	Config      *configs.GlobalConfig
+	Logger      *zap.SugaredLogger
+	K8sClient   *kubernetes.Clientset
+	K8sConfig   *rest.Config
+	DB          *gorm.DB
+	RBACSvc     authSvc.IRBACService
+	Idempotency idempotency.AtomicManager
+	Publisher   realtime.Publisher
+	ObjectStore objectstore.Store           // nil si sites statiques désactivés
+	Builds      *buildActivities.Activities // nil si builds désactivés
+	Pull        *pull.Secrets               // nil sans cluster
+	Variables   workloadRepository.VariableStore
 }
 
 type TemporalProcessor struct {

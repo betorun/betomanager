@@ -16,8 +16,8 @@ type fakeAtomic struct {
 }
 
 func (f *fakeAtomic) Lookup(context.Context, string, string, any) (bool, error) { return false, nil }
-func (f *fakeAtomic) Store(context.Context, string, string, any) error           { return nil }
-func (f *fakeAtomic) Hash(any, ...string) (string, error)                        { return "h", nil }
+func (f *fakeAtomic) Store(context.Context, string, string, any) error          { return nil }
+func (f *fakeAtomic) Hash(any, ...string) (string, error)                       { return "h", nil }
 func (f *fakeAtomic) Begin(_ context.Context, key, _ string, _ time.Duration, _ any) (BeginStatus, error) {
 	if f.inProgress[key] {
 		return BeginInProgress, nil

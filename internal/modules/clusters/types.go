@@ -2,17 +2,17 @@
 //
 // Protocole Restate-compatible (watcher existant pousse sur ces endpoints) :
 //
-//   POST /clusters/ClusterService/Enroll
-//     → Enregistre le cluster auprès de kubemanager au démarrage du watcher.
+//	POST /clusters/ClusterService/Enroll
+//	  → Enregistre le cluster auprès de kubemanager au démarrage du watcher.
 //
-//   GET  /clusters/ConfigService/{clusterID}/Get
-//     → Retourne la config dynamique (dedup, batch, enabled_reasons) que
-//       le watcher applique à chaud pour ajuster son comportement.
+//	GET  /clusters/ConfigService/{clusterID}/Get
+//	  → Retourne la config dynamique (dedup, batch, enabled_reasons) que
+//	    le watcher applique à chaud pour ajuster son comportement.
 //
-//   POST /clusters/ProjectService/{clusterID}/onPodEvent
-//     → Reçoit un event pod (CrashLoopBackOff, OOMKilled, etc.), extrait
-//       projectID/workloadID des labels K8s, met à jour la DB workload,
-//       publie sur Centrifugo pour que le frontend reçoive en live.
+//	POST /clusters/ProjectService/{clusterID}/onPodEvent
+//	  → Reçoit un event pod (CrashLoopBackOff, OOMKilled, etc.), extrait
+//	    projectID/workloadID des labels K8s, met à jour la DB workload,
+//	    publie sur Centrifugo pour que le frontend reçoive en live.
 //
 // Authentification : API key de kind "cluster" (créée une fois par admin,
 // injectée dans la config du watcher au deploy).
@@ -72,7 +72,7 @@ type PodEvent struct {
 
 // PodEventAck : ACK envoyé au watcher. Intentionnellement minimal.
 type PodEventAck struct {
-	EventID  string `json:"event_id,omitempty"`
-	Status   string `json:"status"` // "accepted" | "ignored" | "mapped"
+	EventID    string `json:"event_id,omitempty"`
+	Status     string `json:"status"` // "accepted" | "ignored" | "mapped"
 	WorkloadID string `json:"workload_id,omitempty"`
 }

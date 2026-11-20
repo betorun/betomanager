@@ -31,9 +31,9 @@ type GlobalConfig struct {
 	JWT         JWTConfig      `mapstructure:"jwt"`
 	Frontend    FrontendConfig `mapstructure:"frontend"`
 	// Social : connexion avec Google / GitHub (applications OAuth de betorun).
-	Social       SocialConfig       `mapstructure:"social"`
+	Social SocialConfig `mapstructure:"social"`
 	// SSO : connexion d'entreprise par organisation (iam.md §9.2).
-	SSO SSOConfig `mapstructure:"sso"`
+	SSO          SSOConfig          `mapstructure:"sso"`
 	Roles        RolesConfig        `mapstructure:"roles"`
 	Kubernetes   KubernetesConfig   `mapstructure:"kubernetes"`
 	Vps          Vps                `mapstructure:"vps"`

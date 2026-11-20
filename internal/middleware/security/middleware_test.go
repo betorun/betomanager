@@ -29,11 +29,11 @@ func TestExtractBearerToken(t *testing.T) {
 	}{
 		{"", ""},
 		{"Bearer abc.def.ghi", "abc.def.ghi"},
-		{"bearer abc", "abc"},   // case-insensitive
-		{"BEARER  abc", "abc"},  // extra spaces trimmed
-		{"ApiKey foo", ""},      // wrong scheme
-		{"abc.def.ghi", ""},     // no scheme
-		{"Bearer", ""},          // no token
+		{"bearer abc", "abc"},  // case-insensitive
+		{"BEARER  abc", "abc"}, // extra spaces trimmed
+		{"ApiKey foo", ""},     // wrong scheme
+		{"abc.def.ghi", ""},    // no scheme
+		{"Bearer", ""},         // no token
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, extractBearerToken(c.in), "input=%q", c.in)
@@ -288,15 +288,15 @@ func TestIsPublicPath_BoundaryCheck(t *testing.T) {
 
 	// Chemins piégeux — le fix doit les rejeter.
 	privateCases := []string{
-		"/api/v1/health-admin",                  // typosquatting
-		"/api/v1/healthcheck",                   // concatenation
-		"/kmanager/v1/identity/registerbypass",  // concat sur register
-		"/kmanager/v1/identity/loginfoo",        // concat sur login
-		"/kmanager/v1/identity/social",          // prefix sans / final
-		"/kmanager/v1/identity/oidc",            // prefix sans / final
-		"/swagger",                              // sans / final
-		"/swaggerxss",                           // typosquatting
-		"/metrics-admin",                        // typosquatting
+		"/api/v1/health-admin",                 // typosquatting
+		"/api/v1/healthcheck",                  // concatenation
+		"/kmanager/v1/identity/registerbypass", // concat sur register
+		"/kmanager/v1/identity/loginfoo",       // concat sur login
+		"/kmanager/v1/identity/social",         // prefix sans / final
+		"/kmanager/v1/identity/oidc",           // prefix sans / final
+		"/swagger",                             // sans / final
+		"/swaggerxss",                          // typosquatting
+		"/metrics-admin",                       // typosquatting
 	}
 	for _, p := range privateCases {
 		assert.False(t, isPublicPath(p), "ne doit PAS être public: %s", p)

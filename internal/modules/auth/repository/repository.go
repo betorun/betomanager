@@ -53,5 +53,4 @@ type AuthRepository interface {
 	Upsert(ctx context.Context, member *domain.ProjectMember) error
 	FindFirstActiveByUser(ctx context.Context, userID uuid.UUID) (*domain.ProjectMember, error)
 	FindByKeycloakUserID(ctx context.Context, kcUserID string) (*domain.User, error)
-
 }
