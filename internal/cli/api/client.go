@@ -166,6 +166,9 @@ func (c *Client) UploadWithFields(ctx context.Context, path string, fields map[s
 		return err
 	}
 	pr, pw := io.Pipe()
+	// Au retour, le tube est fermé : sinon la goroutine d'écriture reste
+	// bloquée si la requête n'a jamais lu le corps (requête invalide…).
+	defer pr.Close()
 	mw := newMultipart(pw)
 	go func() {
 		for k, v := range fields {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 // Un envoi lent dépasse le délai des appels ordinaires sans être coupé (100 Mo à
@@ -56,4 +57,14 @@ func TestNew_ResponseHeaderTimeout(t *testing.T) {
 	assert.Equal(t, httpTimeout, c.HTTP.Timeout)
 	assert.Zero(t, c.uploadClient().Timeout)
 	assert.Same(t, c.HTTP.Transport, c.uploadClient().Transport)
+}
+
+// Requête impossible à construire : la goroutine qui écrit le corps
+// multipart ne doit pas rester bloquée sur le tube (serveur MCP longue durée).
+func TestUpload_NoWriterLeakOnBadRequest(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+	c := New("http://bad host") // espace : URL invalide, NewRequest échoue
+	c.Source = staticSource("t")
+	big := strings.NewReader(strings.Repeat("x", 1<<20)) // plus que le tampon du tube
+	require.Error(t, c.Upload(context.Background(), "/up", "archive", "a.zip", big, nil))
 }
