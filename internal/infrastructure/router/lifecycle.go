@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/thekrauss/kubemanager/internal/core/background"
 )
 
 // Tâches de fond de l'application (synchro IAM, rotation des clés STS,
@@ -92,3 +94,12 @@ func (a *App) stopBackground() {
 		a.Logger.Warnw("background tasks still running at shutdown", "timeout", timeout)
 	}
 }
+
+// appSpawner : les tâches de fond des modules passent par le cycle de vie
+// de l'application (annulées puis attendues à l'arrêt).
+type appSpawner struct{ a *App }
+
+func (s appSpawner) Go(name string, fn func(stop context.Context)) { s.a.goBackground(name, fn) }
+
+// spawner : à donner aux modules qui lancent des tâches de fond.
+func (a *App) spawner() background.Spawner { return appSpawner{a} }
