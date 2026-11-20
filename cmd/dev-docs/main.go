@@ -719,10 +719,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "❌ Create %s: %v\n", *outputPath, err)
 		os.Exit(1)
 	}
-	defer out.Close()
-
 	if err := tmpl.Execute(out, PortalTplData{DocsDataJSON: template.JS(jsonBytes)}); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Template execute: %v\n", err)
+		os.Exit(1)
+	}
+	// Fichier écrit : l'erreur de Close (disque plein…) compte.
+	if err := out.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Write %s: %v\n", *outputPath, err)
 		os.Exit(1)
 	}
 
