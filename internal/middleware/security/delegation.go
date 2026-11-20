@@ -11,7 +11,8 @@ import (
 )
 
 /*
-Jetons délégués (sts.MethodDelegated) : un agent de betorun (le Copilot)
+	Jetons délégués (sts.MethodDelegated) : un agent de betorun (le Copilot)
+
 agit au nom d'une personne. Trois bornes, en plus des droits IAM de la
 personne, qui restent la limite haute :
 
