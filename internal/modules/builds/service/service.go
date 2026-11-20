@@ -330,7 +330,7 @@ func (s *Service) Logs(ctx context.Context, project, id uuid.UUID, follow bool) 
 		if stream := s.podLogs(ctx, id, follow); stream != nil {
 			return stream, nil
 		}
-		if b, err = s.Repo.Get(ctx, project, id); err != nil {
+		if _, err = s.Repo.Get(ctx, project, id); err != nil {
 			return nil, err
 		}
 	}

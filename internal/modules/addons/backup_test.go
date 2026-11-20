@@ -27,7 +27,7 @@ type memBackups struct {
 }
 
 func (m *memBackups) CreateBackup(_ context.Context, b *domain.Backup) error {
-	return m.SaveBackup(nil, b)
+	return m.SaveBackup(context.Background(), b)
 }
 func (m *memBackups) SaveBackup(_ context.Context, b *domain.Backup) error {
 	m.mu.Lock()

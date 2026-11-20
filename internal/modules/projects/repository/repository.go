@@ -12,7 +12,6 @@ import (
 	"github.com/thekrauss/kubemanager/internal/core/pgerr"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
-	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/organizations"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -122,7 +121,7 @@ func (r *pgProjectRepo) DeleteProject(ctx context.Context, projectID string) err
 		return err
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Unscoped().Where("id = ?", id).Delete(&domain.Project{}).Error; err != nil {
+		if err := tx.Unscoped().Where("id = ?", id).Delete(&dauth.Project{}).Error; err != nil {
 			return err
 		}
 		return iam.DeleteResourcePolicy(ctx, tx, iam.ProjectName(id))

@@ -103,7 +103,8 @@ func TestE2E_SiteDeployAndServe(t *testing.T) {
 		}
 		return srv.Handler(), srv.InternalHandler()
 	}
-	h, internal := newHandler()
+	h, _ := newHandler()
+	var internal http.Handler
 	host := site.Subdomain + ".sites.localhost:8088"
 
 	rec := do(h, host, "/")

@@ -140,11 +140,6 @@ func Dir(root string) (Result, error) {
 					if len(node.Args) >= 2 {
 						add(node.Args[1], true)
 					}
-				default:
-					// Helpers locaux (fonction ou méthode) qui portent un message destiné au client.
-					if h, ok := messageHelpers[funcName(node.Fun)]; ok && h.arg < len(node.Args) {
-						add(node.Args[h.arg], h.format)
-					}
 				case "errors.New":
 					if len(node.Args) == 1 && frenchLiteral(node.Args[0]) {
 						add(node.Args[0], false)
@@ -152,6 +147,11 @@ func Dir(root string) (Result, error) {
 				case "fmt.Errorf":
 					if len(node.Args) >= 1 && (frenchLiteral(node.Args[0]) || wrapsWithDetail(node.Args[0])) {
 						add(node.Args[0], true)
+					}
+				default:
+					// Helpers locaux (fonction ou méthode) qui portent un message destiné au client.
+					if h, ok := messageHelpers[funcName(node.Fun)]; ok && h.arg < len(node.Args) {
+						add(node.Args[h.arg], h.format)
 					}
 				}
 			case *ast.CompositeLit:

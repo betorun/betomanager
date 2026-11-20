@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -302,7 +301,7 @@ func TestIdempotency_HandlerFailure_MarkedAsFail(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, w1.Code)
 
 	// Non-2xx → Fail() est appelé, donc la key est retirée → retry autorisé.
-	scopedKey := fmt.Sprintf("idem:user-1:POST:/resource:fail-key")
+	scopedKey := "idem:user-1:POST:/resource:fail-key"
 	mgr.mu.Lock()
 	_, exists := mgr.records[scopedKey]
 	mgr.mu.Unlock()

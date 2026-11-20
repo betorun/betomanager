@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/thekrauss/kubemanager/internal/modules/projects/workflows"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/thekrauss/kubemanager/internal/modules/projects/workflows"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
