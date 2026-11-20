@@ -47,10 +47,14 @@ type Task func(ctx context.Context)
 
 // Pool : worker pool borné avec graceful shutdown.
 type Pool struct {
-	cfg      Config
-	tasks    chan Task
-	wg       sync.WaitGroup
-	logger   *zap.SugaredLogger
+	cfg    Config
+	tasks  chan Task
+	wg     sync.WaitGroup
+	logger *zap.SugaredLogger
+	// mu : Submit (lecture) contre Shutdown (écriture). Sans lui, un Submit
+	// qui a vu closed=false peut envoyer sur le canal que Shutdown vient de
+	// fermer : panique « send on closed channel ».
+	mu       sync.RWMutex
 	closed   atomic.Bool
 	dropped  atomic.Uint64 // compteur des tâches rejetées (queue pleine)
 	executed atomic.Uint64
@@ -90,6 +94,8 @@ func New(cfg Config) *Pool {
 // Retourne false si le pool est fermé OU si la queue est pleine —
 // dans les deux cas, la tâche est jetée et le compteur `dropped` incrémenté.
 func (p *Pool) Submit(task Task) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.closed.Load() {
 		p.dropped.Add(1)
 		return false
@@ -107,6 +113,10 @@ func (p *Pool) Submit(task Task) bool {
 // À utiliser avec parcimonie : bloque le caller (potentiellement un handler HTTP).
 // Retourne false si le pool est fermé.
 func (p *Pool) SubmitBlocking(task Task) bool {
+	// Le verrou est tenu pendant l'attente : Shutdown attend que l'envoi
+	// aboutisse (les workers vident la file pendant ce temps).
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.closed.Load() {
 		p.dropped.Add(1)
 		return false
@@ -118,10 +128,13 @@ func (p *Pool) SubmitBlocking(task Task) bool {
 // Shutdown ferme la queue et attend que les workers finissent les tâches en cours.
 // Si le timeout est dépassé, retourne false (tâches pouvant être perdues).
 func (p *Pool) Shutdown(timeout time.Duration) bool {
+	p.mu.Lock()
 	if !p.closed.CompareAndSwap(false, true) {
+		p.mu.Unlock()
 		return true // déjà shutdown
 	}
 	close(p.tasks)
+	p.mu.Unlock()
 
 	done := make(chan struct{})
 	go func() {

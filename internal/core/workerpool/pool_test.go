@@ -120,3 +120,33 @@ func TestPool_TaskTimeout_Respected(t *testing.T) {
 		t.Fatal("tâche n'a pas eu de deadline")
 	}
 }
+
+// Submit concurrent à Shutdown : jamais de « send on closed channel ».
+func TestSubmitDuringShutdownDoesNotPanic(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		p := New(Config{Workers: 2, QueueSize: 4, TaskTimeout: time.Second})
+		var wg sync.WaitGroup
+		panicked := make(chan any, 8)
+		for g := 0; g < 4; g++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						panicked <- r
+					}
+				}()
+				for j := 0; j < 50; j++ {
+					p.Submit(func(context.Context) {})
+				}
+			}()
+		}
+		p.Shutdown(time.Second)
+		wg.Wait()
+		select {
+		case r := <-panicked:
+			t.Fatalf("Submit panicked during Shutdown: %v", r)
+		default:
+		}
+	}
+}
