@@ -36,6 +36,7 @@ func (a *App) authDeps(deps *identitySvc.Deps) error {
 	deps.Logger = a.Logger
 	deps.Identities = &auth.Identities{DB: a.DB}
 	deps.Devices = &auth.Devices{DB: a.DB}
+	deps.Spawner = a.spawner()
 	deps.SocialProviders = socialProviders(a.Config.Social)
 	if a.Config.SSO.AllowInsecureIssuers {
 		a.Logger.Warnw("sso: insecure identity providers allowed (http, private addresses) — local development only")

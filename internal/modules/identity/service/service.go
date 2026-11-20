@@ -15,6 +15,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/auth/sso"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/mail"
 
+	"github.com/thekrauss/kubemanager/internal/core/background"
 	"github.com/thekrauss/kubemanager/internal/core/cache"
 	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	authrepos "github.com/thekrauss/kubemanager/internal/modules/auth/repository"
@@ -157,6 +158,8 @@ type Deps struct {
 	Devices *auth.Devices
 	// SSO : connexion d'entreprise par organisation (nil : indisponible).
 	SSO *sso.Store
+	// Spawner : e-mails de sécurité suivis par l'arrêt (nil : goroutine simple).
+	Spawner background.Spawner
 }
 
 type service struct {
@@ -179,6 +182,7 @@ type service struct {
 	identities        *auth.Identities
 	devices           *auth.Devices
 	sso               *sso.Store
+	spawner           background.Spawner
 }
 
 func NewService(deps Deps) Service {
@@ -202,6 +206,7 @@ func NewService(deps Deps) Service {
 		identities:        deps.Identities,
 		devices:           deps.Devices,
 		sso:               deps.SSO,
+		spawner:           deps.Spawner,
 	}
 }
 

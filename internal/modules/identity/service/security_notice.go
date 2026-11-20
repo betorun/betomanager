@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/thekrauss/kubemanager/internal/auth"
+	"github.com/thekrauss/kubemanager/internal/core/background"
 	"github.com/thekrauss/kubemanager/internal/core/i18n"
 )
 
@@ -25,7 +26,9 @@ func (s *service) securityMail(ctx context.Context, userID uuid.UUID, kind email
 	}
 	// Langue et valeurs de la requête gardées, annulation non.
 	bg := context.WithoutCancel(ctx)
-	go func() {
+	// Suivi par l'arrêt sans être annulé : l'avertissement part dans le
+	// délai d'arrêt plutôt que d'être perdu.
+	background.Go(s.spawner, "security-mail", func(context.Context) {
 		ctx, cancel := context.WithTimeout(bg, securityMailTimeout)
 		defer cancel()
 		user, err := s.users.GetUserByID(ctx, userID)
@@ -50,7 +53,7 @@ func (s *service) securityMail(ctx context.Context, userID uuid.UUID, kind email
 		if err != nil && s.logger != nil {
 			s.logger.Errorw("security email failed", "kind", kind, zap.Error(err))
 		}
-	}()
+	})
 }
 
 // whenText : date et heure de l'événement, en UTC.
