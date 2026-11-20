@@ -1,6 +1,7 @@
 package router
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,7 +29,7 @@ func bindHook(maxBodyBytes int64) tonic.BindHook {
 		if err := fillParams(c, reflect.ValueOf(i)); err != nil {
 			return err
 		}
-		if err := c.ShouldBindWith(i, binding.JSON); err != nil && err != io.EOF {
+		if err := c.ShouldBindWith(i, binding.JSON); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("error parsing request body: %s", err.Error())
 		}
 		return nil

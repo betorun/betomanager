@@ -336,7 +336,7 @@ func (r *cacheRedis) StoreResetToken(ctx context.Context, token, userID string, 
 func (r *cacheRedis) GetResetToken(ctx context.Context, token string) (string, error) {
 	key := r.getKey(KeyResetToken, token)
 	val, err := r.Client.Get(ctx, key).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return "", ErrCacheMiss
 	}
 	return val, err
@@ -358,7 +358,7 @@ func (r *cacheRedis) setJSON(ctx context.Context, key string, value interface{},
 func (r *cacheRedis) getJSON(ctx context.Context, key string, v interface{}) error {
 	data, err := r.Client.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return ErrCacheMiss
 		}
 		return fmt.Errorf("failed to get value: %w", err)
@@ -399,7 +399,7 @@ func (r *cacheRedis) SetValue(ctx context.Context, key, value string, ttl time.D
 func (r *cacheRedis) GetValue(ctx context.Context, key string) (string, error) {
 	fullKey := ServiceKeyPrefix + key
 	val, err := r.Client.Get(ctx, fullKey).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return "", ErrCacheMiss
 	}
 	return val, err
@@ -407,7 +407,7 @@ func (r *cacheRedis) GetValue(ctx context.Context, key string) (string, error) {
 
 func (r *cacheRedis) TakeValue(ctx context.Context, key string) (string, error) {
 	val, err := r.Client.GetDel(ctx, ServiceKeyPrefix+key).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return "", ErrCacheMiss
 	}
 	return val, err

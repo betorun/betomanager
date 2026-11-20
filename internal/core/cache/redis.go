@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -56,7 +57,7 @@ func (c *RedisAuthCache) SetAccessTokenClaims(ctx context.Context, token string,
 func (c *RedisAuthCache) GetAccessTokenClaims(ctx context.Context, token string) (AccessTokenClaims, bool, error) {
 	key := redisAccessClaimsPrefix + secureKey(token)
 	raw, err := c.client.Get(ctx, key).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return AccessTokenClaims{}, false, nil
 	}
 	if err != nil {
@@ -96,7 +97,7 @@ func (c *RedisAuthCache) SetAPIKeyValidation(ctx context.Context, rawKey string,
 func (c *RedisAuthCache) GetAPIKeyValidation(ctx context.Context, rawKey string) (APIKeyValidation, bool, error) {
 	key := redisAPIKeyPrefix + secureKey(rawKey)
 	raw, err := c.client.Get(ctx, key).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return APIKeyValidation{}, false, nil
 	}
 	if err != nil {
@@ -126,7 +127,7 @@ func (c *RedisAuthCache) IsAPIKeyPrefixRevoked(ctx context.Context, prefix strin
 
 func (c *RedisAuthCache) Get(ctx context.Context, key string) (string, error) {
 	val, err := c.client.Get(ctx, key).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return "", nil
 	}
 	return val, err

@@ -2,6 +2,7 @@ package idempotency
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -63,7 +64,7 @@ func ExecuteWorker[T any](ctx context.Context, mgr Manager, key string, payloadH
 	var cached T
 	found, err := mgr.Lookup(ctx, key, payloadHash, &cached)
 	if err != nil {
-		if err == ErrInProgress {
+		if errors.Is(err, ErrInProgress) {
 			return zero, WorkerInProgress, nil
 		}
 		return zero, "", err

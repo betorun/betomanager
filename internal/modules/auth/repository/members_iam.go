@@ -10,6 +10,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -157,7 +158,7 @@ func (r *pgAuthRepo) FindFirstActiveByUser(ctx context.Context, userID uuid.UUID
 // rôle legacy équivalent du membre.
 func (r *pgAuthRepo) CheckProjectPermission(ctx context.Context, userID, projectID uuid.UUID, permSlug string) (bool, error) {
 	m, err := r.GetProjectMember(ctx, projectID, userID)
-	if err == gorm.ErrRecordNotFound {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, nil
 	}
 	if err != nil {
