@@ -279,11 +279,20 @@ func (s *Service) Last(ctx context.Context, project, workloadID uuid.UUID) (*Res
 	return r, nil
 }
 
-func (s *Service) phase(ctx context.Context, r *Resize, p string) {
+// phase : enregistre la phase AVANT d'agir. Faux si l'enregistrement
+// échoue : l'opération s'arrête là, « en cours » sans verrou, et la reprise
+// repart de la dernière phase enregistrée — qui décrit alors exactement
+// l'état des disques. Continuer sans trace ferait reprendre d'une phase
+// antérieure (ex. supprimer le disque temporaire qui porte les données).
+func (s *Service) phase(ctx context.Context, r *Resize, p string) bool {
+	prev := r.Phase
 	r.Phase = p
 	if err := s.Store.Save(context.WithoutCancel(ctx), r); err != nil {
-		s.log().Warnw("disk resize: phase not recorded", "resize", r.ID, "error", err)
+		r.Phase = prev
+		s.log().Errorw("disk resize: phase not recorded, stopping (resumable)", "resize", r.ID, "phase", p, "error", err)
+		return false
 	}
+	return true
 }
 
 // run : déroule les phases à partir de celle enregistrée.
@@ -309,7 +318,9 @@ func (s *Service) run(ctx context.Context, w *Workload, r *Resize) {
 	}
 
 	if r.Phase == PhaseStopping || r.Phase == PhaseCopying {
-		s.phase(ctx, r, PhaseStopping)
+		if !s.phase(ctx, r, PhaseStopping) {
+			return
+		}
 		if w.Status != "STOPPED" {
 			if err := s.Workloads.Stop(ctx, w.ID); err != nil {
 				fail(fmt.Errorf("the container could not be stopped: %w", err))
@@ -320,7 +331,9 @@ func (s *Service) run(ctx context.Context, w *Workload, r *Resize) {
 			rollback(err)
 			return
 		}
-		s.phase(ctx, r, PhaseCopying)
+		if !s.phase(ctx, r, PhaseCopying) {
+			return
+		}
 		if err := s.Claims.Delete(ctx, ns, temp); err != nil { // reste d'un essai précédent
 			rollback(err)
 			return
@@ -333,7 +346,9 @@ func (s *Service) run(ctx context.Context, w *Workload, r *Resize) {
 			rollback(err)
 			return
 		}
-		s.phase(ctx, r, PhaseSwapping)
+		if !s.phase(ctx, r, PhaseSwapping) {
+			return
+		}
 	}
 	if r.Phase == PhaseSwapping {
 		// Le disque d'origine n'est supprimé que s'il n'a pas déjà la
@@ -347,14 +362,18 @@ func (s *Service) run(ctx context.Context, w *Workload, r *Resize) {
 				return
 			}
 		}
-		s.phase(ctx, r, PhaseRestoring)
+		if !s.phase(ctx, r, PhaseRestoring) {
+			return
+		}
 	}
 	if r.Phase == PhaseRestoring {
 		if err := s.Claims.Copy(ctx, ns, temp, claim, w.UID, w.GID); err != nil {
 			fail(err)
 			return
 		}
-		s.phase(ctx, r, PhaseStarting)
+		if !s.phase(ctx, r, PhaseStarting) {
+			return
+		}
 	}
 	if r.Phase == PhaseStarting {
 		if err := s.Workloads.ApplySize(ctx, w.ID, r.ToSize); err != nil {
