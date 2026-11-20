@@ -325,17 +325,16 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 		return nil, none, betoerrors.New(betoerrors.CodeNotFound, "project not found")
 	}
 
-	replicas := int64(in.Replicas)
-	if replicas <= 0 {
+	if in.Replicas <= 0 {
 		// Non précisé : le quota comptait déjà 1, le déploiement partait à 0.
-		replicas, in.Replicas = 1, 1
+		in.Replicas = 1
 	}
 
 	// Sorte et processus : port, horaire, commande (worker et cron : sans port).
 	if err := domain.NormalizeProcess(&in.CreateWorkloadRequest); err != nil {
 		return nil, none, err // erreurs nommées : 400 traduit (router/errors.go)
 	}
-	replicas = int64(in.Replicas) // cron, service : ramené à une instance
+	replicas := int64(in.Replicas) // après NormalizeProcess : cron, service ramenés à une instance
 	if in.Kind == domain.KindWeb || in.Kind == domain.KindService {
 		if err := s.validateNetwork(in.TargetPort); err != nil {
 			return nil, none, err
