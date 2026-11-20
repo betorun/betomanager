@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/thekrauss/kubemanager/internal/audit"
+	"github.com/thekrauss/kubemanager/internal/core/background"
 	"github.com/thekrauss/kubemanager/internal/core/pgerr"
 
 	"github.com/google/uuid"
@@ -180,6 +181,9 @@ type ServiceAccountService struct {
 	usageMu   sync.Mutex
 	lastUsed  map[string]time.Time // keyID → dernière écriture last_used_at
 	lastSweep time.Time            // dernier balayage de lastUsed
+	// Spawner : écritures de last_used_at suivies par l'arrêt (nil :
+	// goroutine simple).
+	Spawner background.Spawner
 
 	// OnKeyCreated : appelé après la création d'une clé par une personne (e-mail
 	// aux propriétaires du projet) ; jamais avec le secret.
@@ -440,12 +444,12 @@ func (s *ServiceAccountService) touchUsage(keyID, ip string) {
 	if !s.shouldTouch(keyID, now) {
 		return
 	}
-	go func() {
+	background.Go(s.Spawner, "key-usage", func(context.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), keyUsageUpdateTimeout)
 		defer cancel()
 		_ = s.DB.WithContext(ctx).Model(&APIKey{}).Where("key_id = ?", keyID).
 			Updates(map[string]any{"last_used_at": now, "last_used_ip": ip}).Error
-	}()
+	})
 }
 
 // shouldTouch : vrai si last_used_at de la clé doit être écrit maintenant.

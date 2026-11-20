@@ -295,6 +295,7 @@ func (a *App) initSecurity() error {
 	if err != nil {
 		return fmt.Errorf("iam: %w (set iam.api_key_pepper / KUBEMANAGER_IAM_API_KEY_PEPPER)", err)
 	}
+	sa.Spawner = a.spawner()
 	a.ServiceAccounts = sa
 	a.wireAPIKeyAlerts(sa)
 	a.Security.Middleware.SetKeyAuthenticator(sa)
