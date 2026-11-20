@@ -177,8 +177,9 @@ type ServiceAccountService struct {
 	TokenURI string
 	now      func() time.Time
 
-	usageMu  sync.Mutex
-	lastUsed map[string]time.Time // keyID → dernière écriture last_used_at
+	usageMu   sync.Mutex
+	lastUsed  map[string]time.Time // keyID → dernière écriture last_used_at
+	lastSweep time.Time            // dernier balayage de lastUsed
 
 	// OnKeyCreated : appelé après la création d'une clé par une personne (e-mail
 	// aux propriétaires du projet) ; jamais avec le secret.
@@ -436,19 +437,37 @@ func (s *ServiceAccountService) Authenticate(ctx context.Context, raw, clientIP 
 // du chemin de la requête (pas de ligne chaude).
 func (s *ServiceAccountService) touchUsage(keyID, ip string) {
 	now := s.now()
-	s.usageMu.Lock()
-	if last, ok := s.lastUsed[keyID]; ok && now.Sub(last) < time.Minute {
-		s.usageMu.Unlock()
+	if !s.shouldTouch(keyID, now) {
 		return
 	}
-	s.lastUsed[keyID] = now
-	s.usageMu.Unlock()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), keyUsageUpdateTimeout)
 		defer cancel()
 		_ = s.DB.WithContext(ctx).Model(&APIKey{}).Where("key_id = ?", keyID).
 			Updates(map[string]any{"last_used_at": now, "last_used_ip": ip}).Error
 	}()
+}
+
+// shouldTouch : vrai si last_used_at de la clé doit être écrit maintenant.
+// Une fois par minute au plus, la table oublie les clés restées inactives
+// plus d'une minute (révoquées, expirées…) : sa taille suit les clés
+// actives, pas toutes celles vues depuis le démarrage.
+func (s *ServiceAccountService) shouldTouch(keyID string, now time.Time) bool {
+	s.usageMu.Lock()
+	defer s.usageMu.Unlock()
+	if now.Sub(s.lastSweep) >= time.Minute {
+		for k, t := range s.lastUsed {
+			if now.Sub(t) >= time.Minute {
+				delete(s.lastUsed, k)
+			}
+		}
+		s.lastSweep = now
+	}
+	if last, ok := s.lastUsed[keyID]; ok && now.Sub(last) < time.Minute {
+		return false
+	}
+	s.lastUsed[keyID] = now
+	return true
 }
 
 func isUniqueViolation(err error) bool {
