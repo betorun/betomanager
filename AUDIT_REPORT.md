@@ -63,7 +63,7 @@ Gravité : **haute** (panique, garde de sécurité, fuite en production), **moye
 
 ## 3. Décisions à valider
 
-1. **`CanRun` (facturation) reste fermée sur une erreur de lecture** (`cc28faf`). Avant, une panne de base laissait démarrer des conteneurs ; maintenant, elle bloque les démarrages tant qu'elle dure. Seul le cas « projet inconnu » (`ErrProjectUnknown`) laisse passer, comme avant.
+1. **`CanRun` (facturation) reste fermée sur une erreur de lecture : décision validée** (`cc28faf`, `aba8533`). Avant, une erreur de lecture passagère laissait démarrer des conteneurs, même dans une organisation suspendue. Désormais, si la garde ne peut lire ni l'organisation, ni le solde, ni le budget, la réponse est un 503 `BILLING_CHECK_UNAVAILABLE`, avec un message « réessayez dans un instant » traduit FR/EN ; la cause reste dans les journaux. Seul un projet inconnu (`ErrProjectUnknown`) laisse passer. Arrêter, supprimer ou recharger n'est jamais concerné.
 2. **Ordre de l'arrêt** (`b45df3d`, `2fb3701`) : serveurs HTTP/gRPC, puis tâches de fond (attente bornée par `Server.ShutdownTimeout`, 10 s par défaut), accumulateur, pool, puis Redis, cache et base. Les trois goroutines non suivies du §4 peuvent maintenant voir une base fermée si elles tournent encore. Avant, le processus se terminait de toute façon en les tuant : le résultat est le même, mais il peut y avoir quelques lignes d'erreur en plus dans les logs.
 3. **`.golangci.yml`** (`856c206`) : errcheck ignore :
    - `fmt.Fprint*` ;
