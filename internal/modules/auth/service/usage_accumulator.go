@@ -37,7 +37,10 @@ type UsageAccumulator struct {
 	flushes      atomic.Uint64
 	flushErrors  atomic.Uint64
 
-	stopCh  chan struct{}
+	stopCh chan struct{}
+	// kick : demande de flush anticipé (backpressure), traitée par run.
+	// Tampon de 1 : les demandes en rafale se fondent en une seule.
+	kick    chan struct{}
 	stopped atomic.Bool
 	wg      sync.WaitGroup
 }
@@ -70,6 +73,7 @@ func NewUsageAccumulator(cfg AccumulatorConfig) *UsageAccumulator {
 		maxPending:    cfg.MaxPending,
 		pending:       make(map[uuid.UUID]int),
 		stopCh:        make(chan struct{}),
+		kick:          make(chan struct{}, 1),
 	}
 }
 
@@ -85,8 +89,13 @@ func (a *UsageAccumulator) Incr(keyID uuid.UUID) {
 	a.mu.Unlock()
 
 	if a.pendingCount.Add(1) >= a.maxPending {
-		// Trigger un flush en arrière-plan (non-bloquant).
-		go a.flush(context.Background())
+		// Flush anticipé par la boucle run (non bloquant). Pas de goroutine
+		// par appel : une rafale en lançait des centaines, que Stop
+		// n'attendait pas.
+		select {
+		case a.kick <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -154,6 +163,8 @@ func (a *UsageAccumulator) run(ctx context.Context) {
 		case <-a.stopCh:
 			return
 		case <-ticker.C:
+			a.flush(ctx)
+		case <-a.kick:
 			a.flush(ctx)
 		}
 	}

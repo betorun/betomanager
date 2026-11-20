@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -103,7 +104,7 @@ func TestAccumulator_FlushOnBackpressure(t *testing.T) {
 	acc := NewUsageAccumulator(AccumulatorConfig{
 		Repo:          repo,
 		FlushInterval: time.Hour, // pas de tick
-		MaxPending:    5,          // seuil bas
+		MaxPending:    5,         // seuil bas
 	})
 	acc.Start(context.Background())
 	defer acc.Stop(context.Background())
@@ -127,4 +128,52 @@ func TestAccumulator_Stop_Idempotent(t *testing.T) {
 	acc.Start(context.Background())
 	acc.Stop(context.Background())
 	acc.Stop(context.Background()) // 2e appel : no-op, pas de panic
+}
+
+// blockingRepo : chaque flush attend release ; inFlight compte les appels en cours.
+type blockingRepo struct {
+	repository.AuthRepository
+	release  chan struct{}
+	inFlight atomic.Int64
+	maxSeen  atomic.Int64
+	total    atomic.Int64
+}
+
+func (b *blockingRepo) BatchIncrementAPIKeyUsage(ctx context.Context, m map[uuid.UUID]int) error {
+	n := b.inFlight.Add(1)
+	defer b.inFlight.Add(-1)
+	for {
+		seen := b.maxSeen.Load()
+		if n <= seen || b.maxSeen.CompareAndSwap(seen, n) {
+			break
+		}
+	}
+	for _, v := range m {
+		b.total.Add(int64(v))
+	}
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+	}
+	return nil
+}
+
+// Au-delà du seuil, un seul flush anticipé à la fois : pas une goroutine par
+// appel (une rafale de requêtes ne doit pas lancer des milliers de goroutines).
+func TestAccumulator_Backpressure_SingleEarlyFlush(t *testing.T) {
+	repo := &blockingRepo{release: make(chan struct{})}
+	acc := NewUsageAccumulator(AccumulatorConfig{Repo: repo, FlushInterval: time.Hour, MaxPending: 5})
+	acc.Start(context.Background())
+	before := runtime.NumGoroutine()
+	key := uuid.New()
+	for i := 0; i < 2000; i++ {
+		acc.Incr(key)
+	}
+	time.Sleep(50 * time.Millisecond)
+	grown := runtime.NumGoroutine() - before
+	close(repo.release)
+	acc.Stop(context.Background())
+	assert.LessOrEqual(t, grown, 2, "goroutines lancées par la rafale")
+	assert.LessOrEqual(t, repo.maxSeen.Load(), int64(1), "flushs anticipés simultanés")
+	assert.Equal(t, int64(2000), repo.total.Load(), "aucun incrément perdu")
 }
