@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -169,6 +170,12 @@ func (s *Service) startAll(ctx context.Context, ids []uuid.UUID) {
 	}
 }
 
+// unavailable : refus « réessayez » (503) ; la cause reste dans la chaîne
+// d'erreurs pour les journaux, jamais dans la réponse.
+func unavailable(cause error) error {
+	return fmt.Errorf("%w: %w", domain.ErrBillingCheckUnavailable, cause)
+}
+
 // CanRun : garde du service des conteneurs. Refuse de démarrer ou déployer
 // dans une organisation suspendue, ou dans un projet arrêté par son budget.
 func (s *Service) CanRun(ctx context.Context, project uuid.UUID) error {
@@ -180,18 +187,18 @@ func (s *Service) CanRun(ctx context.Context, project uuid.UUID) error {
 		return nil // projet inconnu ici : le service des conteneurs répondra
 	}
 	if err != nil {
-		return err // panne de lecture : la garde reste fermée
+		return unavailable(err) // panne de lecture : la garde reste fermée
 	}
 	acc, err := s.Ledger.Account(ctx, org)
 	if err != nil {
-		return err
+		return unavailable(err)
 	}
 	if acc.Charging && acc.SuspendedAt != nil {
 		return domain.ErrAccountSuspended
 	}
 	b, err := s.Phase4.Budget(ctx, project)
 	if err != nil {
-		return err
+		return unavailable(err)
 	}
 	if b != nil && b.Stop && b.AlertLevel >= domain.BudgetAlertOver && b.Period == s.now().Format("2006-01") {
 		return domain.ErrAccountSuspended

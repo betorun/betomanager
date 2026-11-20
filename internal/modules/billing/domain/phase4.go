@@ -306,3 +306,7 @@ var ErrAccountSuspended = errors.New("billing: this organization's balance is us
 // ErrProjectUnknown : le projet n'existe pas (ou plus) côté facturation. À
 // distinguer d'une erreur de lecture, qui ne doit jamais ouvrir une garde.
 var ErrProjectUnknown = errors.New("billing: unknown project")
+
+// ErrBillingCheckUnavailable : la garde n'a pas pu lire la facturation
+// (panne passagère de la base) ; le démarrage est refusé, à réessayer.
+var ErrBillingCheckUnavailable = errors.New("the billing check is temporarily unavailable: try again in a moment")

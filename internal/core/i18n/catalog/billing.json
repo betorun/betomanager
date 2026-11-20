@@ -96,6 +96,10 @@
   "en": "billing: this organization's balance is used up, or the project reached its budget: top up (or raise the budget) to start containers again"
  },
  {
+  "fr": "La vérification de facturation est momentanément impossible : réessayez dans un instant",
+  "en": "the billing check is temporarily unavailable: try again in a moment"
+ },
+ {
   "fr": "Projet inconnu de la facturation",
   "en": "billing: unknown project"
  },

@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
+	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	identityKC "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 )
 
@@ -27,6 +28,9 @@ func TestClassifyError(t *testing.T) {
 		{"typed with cause hides cause", &betoerrors.Error{Code: betoerrors.CodeNotFound, Message: "workload not found", Cause: errors.New("sql: secret detail")}, http.StatusNotFound, betoerrors.CodeNotFound, "workload not found"},
 		{"gorm not found", fmt.Errorf("get: %w", gorm.ErrRecordNotFound), http.StatusNotFound, betoerrors.CodeNotFound, "not found"},
 		{"sentinel credentials", identityKC.ErrInvalidCredentials, http.StatusUnauthorized, betoerrors.CodeUnauthorized, "invalid credentials"},
+		// Garde de facturation illisible : 503 « réessayez », cause tue au client.
+		{"billing check unavailable", fmt.Errorf("%w: %w", billingDomain.ErrBillingCheckUnavailable, errors.New("dial tcp 10.0.0.5:5432: connection refused")),
+			http.StatusServiceUnavailable, "BILLING_CHECK_UNAVAILABLE", billingDomain.ErrBillingCheckUnavailable.Error()},
 		{"unknown → 500 generic", errors.New("dial tcp 10.0.0.5:5432: connection refused"), http.StatusInternalServerError, betoerrors.CodeInternal, "internal server error"},
 	}
 	for _, tc := range cases {

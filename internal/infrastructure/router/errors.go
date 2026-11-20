@@ -276,6 +276,7 @@ var sentinelErrors = []sentinelMapping{
 	{billingDomain.ErrInvalidAdminAmount, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{billingDomain.ErrOrganizationNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{billingDomain.ErrAccountSuspended, http.StatusPaymentRequired, "ACCOUNT_SUSPENDED", false},
+	{billingDomain.ErrBillingCheckUnavailable, http.StatusServiceUnavailable, "BILLING_CHECK_UNAVAILABLE", false},
 	{billingDomain.ErrInvalidProfile, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{billingDomain.ErrDocumentNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{billingDomain.ErrInvalidBudget, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
