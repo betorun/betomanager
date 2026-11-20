@@ -41,6 +41,7 @@ Chaque page décrit un module avec la même structure : rôle, endpoints, DB, ac
 - [databases](modules/databases.md) — Postgres gérées (CloudNativePG) : branchement, import, contenu, remise à zéro
 - [addons](modules/addons.md) — services additionnels (Redis via Valkey) : catalogue, branchement, mise à jour, « Me prévenir »
 - [diskusage](modules/diskusage.md) — usage réel des disques : mesure horaire, alertes 80/100 %, arrêt à 120 %
+- [diskresize](modules/diskresize.md) — agrandir un disque par copie (conteneurs et services), reprenable après un échec
 - [builds](modules/builds.md) — construction d'images (BuildKit), registre de la plateforme, ménage et quota
 - [registries](modules/registries.md) — identifiants des registres d'images privés
 - [github](modules/github.md) — GitHub App, dépôts, déploiement à chaque push

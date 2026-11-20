@@ -41,6 +41,7 @@ var (
 	ErrPortRequired     = errors.New("a service container needs its port (target_port, e.g. 6379)")
 	ErrSingleInstance   = errors.New("a service container runs a single instance: its data lives on its disk")
 	ErrInvalidWaitFor   = errors.New("wait_for: at most 8 addresses name:port of the project")
+	ErrDiskResizeRoute  = errors.New("a disk grows by copy: use the disk resize (POST /workloads/{id}/disk)")
 	ErrManaged          = errors.New("this container is managed by a service: change it from the Services page")
 	ErrNotCron          = errors.New("this action is only available for a cron container")
 	ErrInvalidTimeZone  = errors.New("invalid time zone: use an IANA name such as Africa/Dakar")

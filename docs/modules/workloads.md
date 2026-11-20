@@ -65,6 +65,10 @@ Sous `/kmanager/v1/workloads`. Déclarées dans `addWorkloadRoutes` (et `addGitH
 | `DELETE` | `/:id/github` | `workloads.github.manage` | Supprimer le lien (le conteneur continue de tourner) |
 | `POST` | `/:id/github/deploy` | `workloads.workloads.update` | Construire et déployer le dernier commit de la branche suivie → 202 |
 
+### Disque
+
+Agrandir le disque d'un conteneur : `GET|POST /workloads/:id/disk`, par copie (le stockage `local-path` ne s'agrandit pas). Voir [diskresize](diskresize.md). `PATCH /workloads/:id` refuse désormais un autre `storage_size` sur un conteneur à disque.
+
 ## Sortes de conteneur (`kind`)
 
 Colonne `workloads.kind` (migration 000028), **immuable** après la création. Règles dans [domain/kind.go](../../internal/modules/workloads/domain/kind.go) (`NormalizeProcess`).

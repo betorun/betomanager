@@ -267,6 +267,17 @@ func (h *WorkloadController) UpdateWorkload(c *gin.Context, in *UpdateWorkloadPa
 	if err := h.ensureNotManaged(c, id); err != nil {
 		return err
 	}
+	if in.StorageSize != "" {
+		// local-path n'agrandit pas un disque : le redéploiement échouerait.
+		// L'agrandissement passe par une copie (POST /workloads/:id/disk).
+		w, err := h.WorkloadService.Get(c.Request.Context(), id)
+		if err != nil {
+			return err
+		}
+		if w.PersistenceEnabled && in.StorageSize != w.StorageSize {
+			return domain.ErrDiskResizeRoute
+		}
+	}
 	return h.WorkloadService.Update(c.Request.Context(), in.ID, in.UpdateWorkloadRequest)
 }
 

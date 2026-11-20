@@ -1,0 +1,46 @@
+[
+ {
+  "fr": "Un disque s'agrandit par copie : utilisez l'agrandissement du disque (POST /workloads/{id}/disk)",
+  "en": "a disk grows by copy: use the disk resize (POST /workloads/{id}/disk)"
+ },
+ {
+  "fr": "Un agrandissement du disque est déjà en cours pour ce conteneur",
+  "en": "a disk resize is already running for this container"
+ },
+ {
+  "fr": "Un agrandissement précédent s'est arrêté à mi-chemin : relancez-le avec la même taille pour le terminer",
+  "en": "a previous resize stopped halfway: retry it with the same size to finish it"
+ },
+ {
+  "fr": "Conteneur introuvable",
+  "en": "container not found"
+ },
+ {
+  "fr": "L'agrandissement des disques n'est pas disponible sur cette plateforme",
+  "en": "disk resize is not available on this platform"
+ },
+ {
+  "fr": "Taille de disque invalide : 1Gi, 2Gi, 5Gi, 10Gi ou 20Gi, plus grande que l'actuelle",
+  "en": "invalid disk size: 1Gi, 2Gi, 5Gi, 10Gi or 20Gi, larger than the current one"
+ },
+ {
+  "fr": "Quota dépassé : le plafond de stockage du projet ne permet pas cette taille",
+  "en": "quota exceeded: the project's storage limit does not allow this size"
+ },
+ {
+  "fr": "La copie du disque a échoué",
+  "en": "the disk copy failed"
+ },
+ {
+  "fr": "L'agrandissement a été interrompu : redemandez-le pour le reprendre",
+  "en": "the resize was interrupted: ask again to resume it"
+ },
+ {
+  "fr": "Ce conteneur n'a pas de disque",
+  "en": "this container has no disk"
+ },
+ {
+  "fr": "Ce conteneur porte un service : agrandissez son disque depuis la page Services",
+  "en": "this container is managed by a service: grow its disk from the Services page"
+ }
+]
