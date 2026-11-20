@@ -78,7 +78,8 @@ func (s *SMTP) Send(ctx context.Context, m Message) error {
 	dialer := &net.Dialer{Timeout: s.cfg.Timeout}
 	var conn net.Conn
 	if s.cfg.Port == 465 {
-		conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12})
+		tlsDialer := &tls.Dialer{NetDialer: dialer, Config: &tls.Config{ServerName: s.cfg.Host, MinVersion: tls.VersionTLS12}}
+		conn, err = tlsDialer.DialContext(ctx, "tcp", addr)
 	} else {
 		conn, err = dialer.DialContext(ctx, "tcp", addr)
 	}
@@ -90,6 +91,10 @@ func (s *SMTP) Send(ctx context.Context, m Message) error {
 	} else {
 		_ = conn.SetDeadline(time.Now().Add(s.cfg.Timeout))
 	}
+	// Annulation du contexte : la connexion est fermée, l'échange s'arrête
+	// (sans cela, un serveur muet bloquait jusqu'à l'échéance).
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	c, err := smtp.NewClient(conn, s.cfg.Host)
 	if err != nil {
 		conn.Close()
