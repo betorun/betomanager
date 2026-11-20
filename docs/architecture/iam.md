@@ -217,7 +217,7 @@ Un compte de service (SA) est une identité machine **appartenant à un projet**
   - *Déploiement* : `service_account` à la création du workload (actAs requis). Le chart `standard-app` monte un jeton Kubernetes projeté (audience = STS) et pose `BETORUN_TOKEN_FILE` et `BETORUN_STS_TOKEN_URI`.
   - *Clés du cluster* : le watcher publie l'émetteur et le JWKS des jetons de son cluster, car l'apiserver n'est pas joignable depuis l'extérieur.
   - *Échange* : `system:serviceaccount:<ns>:<release>` → workload → compte de service. Le jeton est lié au workload. Activé par `kubernetes.cluster_id`.
-- **CLI.** Flux device (RFC 8628) relayé vers le client Keycloak public `keycloak.cli_client_id` (`POST /identity/device/code`, `/identity/device/token`).
+- **CLI.** Flux device (RFC 8628) porté par le backend : le code est validé dans la console, la CLI reçoit une session betorun (`POST /identity/device/code`, `/identity/device/token`). Keycloak n'intervient pas.
 
 ### 7.3 STS : qui émet les jetons machine
 
@@ -290,7 +290,7 @@ Les clés existantes (`km_…`, rattachées à des utilisateurs) restent valides
 ## 9. Authentification des humains
 
 - **Keycloak reste le fournisseur d'identité** des humains (cf. [ADR-0005](../adr/0005-keycloak-source-of-truth.md)) : Authorization Code + PKCE (en place), Google/GitHub, flux device pour la CLI.
-- **Keycloak Organizations** (stable depuis Keycloak 26, en préversion dans la 25 utilisée aujourd'hui en dev) aligne nos organisations sur les siennes : membres, invitations, et **SSO par organisation** (le client branche son Google Workspace ou Azure AD) sans code de notre côté.
+- **SSO par organisation** : porté par le backend (OpenID Connect), et non par Keycloak Organizations. Le client branche son Entra ID, son Google Workspace, son Okta ou son Keycloak sans que Keycloak apparaisse (§9.2).
 - **MFA** : TOTP et WebAuthn/passkeys. Une politique d'organisation peut l'**imposer** ; obligatoire pour tout détenteur de `setIamPolicy` sur une organisation.
 - **Ré-authentification pour les actions sensibles** (*step-up*) : supprimer un projet, créer une clé, modifier une policy d'organisation exigent une authentification récente (`auth_time` < 10 min), sinon l'UI redemande le mot de passe ou la passkey.
 - **Jetons** : accès 10 min, refresh avec rotation et détection de réutilisation (un refresh rejoué révoque toute la session), sessions listables et révocables par l'utilisateur et par les admins de l'organisation.
@@ -317,6 +317,33 @@ Les clés existantes (`km_…`, rattachées à des utilisateurs) restent valides
 3. *Required actions* : activer *Configure OTP* et *WebAuthn Register Passwordless*.
 4. Vérifier que le scope client `acr` est dans les *default client scopes* du client web : le claim `acr` est alors présent dans le jeton d'accès.
 
+### 9.2 Connexion d'entreprise (SSO OpenID Connect) : fait (C, 2026-11-20)
+
+`internal/auth/sso/`, `internal/modules/identity/service/ssoflow.go`, `internal/modules/iamapi/sso.go`, migration 000055.
+
+- **Configuration** (`GET/PUT/DELETE /organizations/{id}/sso`, lecture `resourcemanager.organizations.get`, écriture `…update`) :
+  - émetteur et client ;
+  - le secret est chiffré (donnée associée `org-sso:<org>`) et n'est jamais relu ;
+  - options proposer et imposer ;
+  - rôle donné à la première connexion : aucun, `roles/viewer` ou `roles/editor`.
+  
+  L'activation vérifie la découverte. Changer d'émetteur ou de client remet le test à zéro.
+- **Domaines** :
+  - un domaine est prouvé par l'enregistrement TXT `_betorun-sso.<domaine>` = `betorun-sso=<jeton>` ;
+  - un domaine vérifié appartient à une seule organisation (index unique partiel) ;
+  - le dernier domaine ne peut pas être retiré tant que le SSO est imposé.
+- **Connexion** :
+  - `POST /identity/login/sso {email}` désigne l'organisation par le domaine de l'adresse et renvoie la page du fournisseur (PKCE, nonce, `login_hint`, état dans Redis pour 10 min, à usage unique) ;
+  - au retour, `POST /identity/login/sso/callback` échange le code et vérifie l'`id_token` : signature JWKS, `iss`, `aud`, `exp`, `iat`, nonce, `email_verified` et domaine vérifié ;
+  - le compte betorun est retrouvé ou créé (identité `sso:<org>`), le rôle de première connexion est attribué, puis une session betorun est ouverte avec `amr=["sso"]`, et le second facteur reste exigé si le compte en a un.
+- **Imposer** : refusé tant qu'aucun domaine n'est vérifié et qu'aucune connexion n'a réussi avec ce fournisseur. Une fois le SSO imposé, le mot de passe, Google, GitHub et la passkey sont refusés pour ces adresses (403 `SSO_REQUIRED`). Un mauvais mot de passe garde la réponse ordinaire, ce qui ne révèle rien.
+- **Sécurité réseau** : le client HTTP refuse les adresses privées (SSRF) et ne suit aucune redirection. `sso.allow_insecure_issuers` (http, loopback) existe pour le dev uniquement.
+- **Console** :
+  - bouton « Connexion d'entreprise (SSO) » sur l'écran de connexion, proposé aussi sur `SSO_REQUIRED` ;
+  - page de retour `/auth/sso/callback` ;
+  - section Paramètres → Connexion d'entreprise : fournisseur, adresse de retour à copier, domaines avec leur TXT et le bouton « Vérifier ».
+- **Plus tard** : SAML (pour les clients qui n'ont pas d'OIDC) et SCIM (provisionnement et déprovisionnement automatiques).
+
 ## 10. Accès du staff betorun
 
 Les rôles Keycloak `SUPER_ADMIN`/`ADMIN` ne donnent plus de contournement global :
@@ -324,12 +351,22 @@ Les rôles Keycloak `SUPER_ADMIN`/`ADMIN` ne donnent plus de contournement globa
 - Le staff a des **rôles plateforme** explicites sur la ressource `platform` (`roles/platform.support` en lecture, `roles/platform.admin`), vérifiés par le même `iam.Check`. Ils sont attribués par la configuration (`iam.platform_admins`, `iam.platform_support` : listes d'e-mails), réconciliée toutes les 10 min ; un e-mail retiré perd son rôle.
 - `roles/platform.admin` porte les clés de cluster et `platform.projects.setLimits` : `PATCH /admin/projects/{id}/limits` (CPU, mémoire, stockage ; sensible). Un client ne choisit pas ses limites : un projet naît avec les valeurs par défaut, seul le staff les change.
 - Accéder aux données d'un client exige une **justification** (ticket) et produit une entrée d'audit **visible par le client** (équivalent « Access Transparency » de Google).
-- Accès d'urgence (*break-glass*) : temporaire (1 h), à double validation, alerte immédiate.
+- Accès d'urgence (*break-glass*) : temporaire (1 h), à double validation, alerte immédiate (pas encore fait).
+
+**Fait (C, 2026-11-20).** `router.Access.Staff(target)` et `security.StaffAccess` couvrent les routes staff qui touchent un client :
+- limites d'un projet et d'une organisation ;
+- modules complémentaires ;
+- facturation d'une organisation.
+
+Sur ces routes, l'en-tête `X-Betorun-Justification` est obligatoire : il est encodé en URL et fait de 10 à 300 caractères. Sans lui, la réponse est 400 `JUSTIFICATION_REQUIRED`, même pour une lecture. L'entrée d'audit est rangée sous la ressource du **client** avec `staff_access`, la justification et la permission plateforme utilisée. La page Audit du client l'affiche « Équipe betorun » avec le motif, et propose un filtre dédié. La console staff demande le motif une fois par client et par onglet.
 
 ## 11. Journal d'audit
 
 - **Activité d'administration** (toujours activée, non désactivable) : tout changement de policy, de SA, de clé, de projet, d'organisation, tout accès staff.
-- **Accès aux données** (activable par organisation) : lectures sensibles (logs, secrets).
+- **Accès aux données** (activable par organisation, **fait** en C le 2026-11-20) : contrainte `logging.dataAccessLogs`.
+  - Routes marquées `Access.DataRead()` : variables d'un workload, logs d'un workload, logs de build.
+  - Leurs lectures sont journalisées avec `data_access=true` quand l'organisation l'a activé.
+  - Les lectures du staff le sont toujours.
 - Chaque entrée : horodatage, principal, mode d'authentification (session, SA, clé API `k7f3q9xz2m`, fédération), permission, ressource, décision (autorisé/refusé), IP, user agent, trace ID.
 - **Immuable** : table append-only (aucun `UPDATE`/`DELETE` accordé au rôle applicatif), partitionnée par mois, exportée vers le stockage objet en verrouillage WORM. Rétention : 400 jours pour l'administration.
 - Consultable par les clients avec `logging.auditLogs.read` (API + écran console). Page Audit : journal du projet (avec les actions d'organisation qui le touchent) et, pour qui a ce droit sur l'organisation (propriétaires par défaut), journal de l'organisation.
@@ -375,7 +412,10 @@ workload_identity_pools (id, project_id, issuer, attribute_mapping JSONB, attrib
 api_keys_v2            (id, public_id, service_account_id, hmac, restrictions JSONB,
                         expires_at, revoked_at, last_used_at, last_used_ip, created_by)
 
-org_policies       (resource_name, constraint, value JSONB)  -- ex. "iam.requireMfa": true, "iam.apiKeys.maxLifetime": "90d"
+org_policies       (resource_name, constraint, enforced, list_values JSONB)  -- 000011 + 000054 :
+                   --   iam.requireMfa, iam.allowedMemberDomains (liste), iam.disableServiceAccountKeyCreation, logging.dataAccessLogs
+org_sso            (organization_id PK, issuer, client_id, secret_sealed, enabled, enforced, jit_role, tested_at…)  -- 000055
+org_sso_domains    (organization_id, domain, token, verified_at)  -- domaine vérifié unique entre organisations
 audit_log          (partitionné par mois, append-only)
 ```
 
@@ -403,7 +443,13 @@ Le nom `{resource}` est le nom canonique (§3.1), ce qui rend les endpoints de p
 |---|---|---|
 | **A — fondations** (avant la facturation et le multi-projets) | Organisations (perso auto), noms de ressources, catalogue de permissions, rôles prédéfinis dans le code, `iam_bindings` + `iam.Check` + cache, déclaration obligatoire par route, API get/set/testIamPermissions, SA + clés API v2 restreintes, journal d'audit (administration), staff sans contournement | Tout le reste s'appuie dessus ; c'est ce qui coûterait cher à changer plus tard |
 | **B — machines et équipes** | STS, fédération OIDC GitHub/GitLab, clés de SA asymétriques, identité des workloads, flux device pour la CLI, groupes, rôles personnalisés, conditions d'expiration, MFA imposable, step-up | Débloque la CI sans secret et les équipes |
-| **C — entreprise** | Policies de refus (**fait**), politiques d'organisation étendues, SSO par organisation, dossiers, accès staff transparent côté client, journal d'accès aux données | Clients régulés, gouvernements, banques |
+| **C — entreprise** | Policies de refus (**fait**), politiques d'organisation étendues (**fait** : domaines des membres, clés de SA interdites, journal d'accès aux données), SSO OIDC par organisation (**fait**, §9.2), accès staff transparent côté client (**fait**, §10), journal d'accès aux données (**fait**, §11), dossiers (**reporté**, voir ci-dessous) | Clients régulés, gouvernements, banques |
+
+**Dossiers reportés (décision du 2026-11-20).** Une organisation compte au plus 3 projets aujourd'hui : un niveau intermédiaire n'apporte rien tant que cette limite tient. Le modèle le réserve déjà (§3, `folders/…`). Il sera ajouté quand un client aura besoin de déléguer l'administration d'un groupe de projets (entité, pays, filiale). Le travail à prévoir :
+- `resource_ancestry` à plusieurs niveaux ;
+- l'héritage dans `iam.Check` ;
+- le déplacement d'un projet (permission `resourcemanager.projects.move`) ;
+- un écran.
 
 Migration de l'existant pendant la phase A : création d'une organisation personnelle par utilisateur, rattachement de ses projets, conversion de `project_members` en bindings (§6.3), passage des routes sur `iam.Require`, clés utilisateur rattachées à un SA legacy (§8.4). `project_members` reste en lecture jusqu'à la bascule complète, puis est supprimée.
 
@@ -416,5 +462,5 @@ Migration de l'existant pendant la phase A : création d'une organisation person
 5. **Clés API rattachées à un compte de service**, plus jamais à un humain ; CLI humaine par flux device (§8).
 6. **Format de clé** `btr_live_…` avec checksum et stockage HMAC + pepper (§8.3).
 7. **Fin du contournement `SUPER_ADMIN`** au profit de rôles plateforme audités (§10).
-8. **Keycloak Organizations** pour aligner organisations, invitations et SSO (§9).
+8. ~~Keycloak Organizations pour aligner organisations, invitations et SSO~~. **Remplacé le 2026-11-20** : SSO OIDC porté par le backend (§9.2), Keycloak reste invisible.
 9. **Ordre des phases** A → B → C (§15), la phase A avant la facturation et le multi-projets.

@@ -105,10 +105,7 @@ func (ctrl *controller) Logout(c *gin.Context, in *identitytypes.LogoutRequest) 
 		}
 		return &identitytypes.LogoutResponse{}, nil
 	}
-	// Session ouverte avant le passage aux sessions betorun (transition).
-	if err := ctrl.service.Logout(c.Request.Context(), in.RefreshToken); err != nil {
-		return nil, err
-	}
+	// Jeton inconnu (ancienne session) : rien à fermer côté serveur.
 	// Blacklist du JTI pour rejeter immédiatement ce token côté middleware auth.
 	if ctrl.authCache != nil && accessToken != "" {
 		if jti := identitysvc.ExtractJTI(accessToken); jti != "" {
@@ -128,16 +125,8 @@ func (ctrl *controller) RefreshToken(c *gin.Context, in *identitytypes.RefreshTo
 	if strings.HasPrefix(in.RefreshToken, auth.RefreshTokenPrefix) {
 		return ctrl.service.RefreshSession(c.Request.Context(), in.RefreshToken)
 	}
-	// Session ouverte avant le passage aux sessions betorun (transition).
-	tokens, err := ctrl.service.RefreshToken(c.Request.Context(), in.RefreshToken)
-	if err != nil {
-		return nil, err
-	}
-	return &identitytypes.RefreshTokenResponse{
-		AccessToken:  tokens.AccessToken,
-		RefreshToken: tokens.RefreshToken,
-		ExpiresIn:    tokens.ExpiresIn,
-	}, nil
+	// Ancienne session (avant les sessions betorun) : se reconnecter.
+	return nil, auth.ErrRefreshInvalid
 }
 
 func (ctrl *controller) ValidateToken(c *gin.Context) (*identitytypes.TokenResponse, error) {

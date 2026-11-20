@@ -195,3 +195,21 @@ func newEtag() (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
+
+// GrantIfAbsent : donne role sur r au principal s'il n'y a encore aucun rôle
+// (première connexion d'entreprise, iam.md §9.2). Renvoie vrai si accordé.
+func GrantIfAbsent(ctx context.Context, db *gorm.DB, r ResourceName, p Principal, role, actor string) (bool, error) {
+	var n int64
+	if err := db.WithContext(ctx).Model(&bindingRow{}).Where("resource_name = ? AND principal = ?", string(r), string(p)).
+		Count(&n).Error; err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return false, nil
+	}
+	if err := AddBinding(ctx, db, Binding{Resource: r, Role: role, Principal: p}, actor); err != nil {
+		return false, err
+	}
+	notifyChanged(p)
+	return true, nil
+}

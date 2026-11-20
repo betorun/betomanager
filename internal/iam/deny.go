@@ -133,7 +133,7 @@ func firstDeny(policies []DenyPolicy, principals []Principal, perm Permission, n
 	return nil
 }
 
-// ── Cache du moteur ─────────────────────────────────────────────────────
+//  Cache du moteur
 
 type cachedDenies struct {
 	list    []DenyPolicy
@@ -210,7 +210,7 @@ type DenyRef struct {
 	Resource ResourceName `json:"resource"`
 }
 
-// ── Stockage ────────────────────────────────────────────────────────────
+//  Stockage ─
 
 type denyPolicyRow struct {
 	ID                  uuid.UUID `gorm:"type:uuid;primaryKey"`

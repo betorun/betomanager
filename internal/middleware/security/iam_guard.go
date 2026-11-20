@@ -359,7 +359,9 @@ func (m *MiddlewareManager) RequireFor(permFor func(iam.ResourceName) (iam.Permi
 		if !m.checkMFA(c, perm, resource) {
 			return
 		}
-		c.Next()
+		// Pas de c.Next() : gin passe seul au handler suivant. L'appeler ici
+		// exécuterait le handler avant les contrôles suivants d'une garde
+		// composée (PermAll, StaffAccess).
 	}
 }
 
@@ -391,10 +393,17 @@ func (m *MiddlewareManager) AuditMiddleware(w audit.Writer) gin.HandlerFunc {
 		c.Next()
 
 		denied := c.GetString(ctxIAMDecision) == audit.DecisionDeny
+		staffTarget := c.GetString(ctxStaffTarget)
+		dataRead := false
 		switch c.Request.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
-			if !denied {
-				return // lectures autorisées : journal d'accès aux données (phase C)
+			// Lecture autorisée : journalisée seulement si c'est un accès du
+			// staff, ou une lecture de données que l'organisation journalise.
+			if !denied && staffTarget == "" {
+				if !m.dataAccessLogged(c) {
+					return
+				}
+				dataRead = true
 			}
 		}
 		principal, ok := PrincipalFromContext(c)
@@ -421,6 +430,22 @@ func (m *MiddlewareManager) AuditMiddleware(w audit.Writer) gin.HandlerFunc {
 		}
 		if pid, err := uuid.Parse(c.GetString("projectID")); err == nil {
 			e.ProjectID = &pid
+		}
+		if dataRead {
+			if e.Metadata == nil {
+				e.Metadata = map[string]any{}
+			}
+			e.Metadata["data_access"] = true
+		}
+		if staffTarget != "" {
+			// Accès du staff : inscrit au journal du client, avec son motif.
+			if e.Metadata == nil {
+				e.Metadata = map[string]any{}
+			}
+			e.Metadata["staff_access"] = true
+			e.Metadata["justification"] = c.GetString(ctxStaffJustification)
+			e.Metadata["staff_permission_resource"] = e.Resource
+			e.Resource = staffTarget
 		}
 		if dp := c.GetString(ctxDenyPolicy); dp != "" {
 			if e.Metadata == nil {

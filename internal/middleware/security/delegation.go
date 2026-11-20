@@ -10,19 +10,21 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam/sts"
 )
 
-// Jetons délégués (sts.MethodDelegated) : un agent de betorun (le Copilot)
-// agit au nom d'une personne. Trois bornes, en plus des droits IAM de la
-// personne, qui restent la limite haute :
-//
-//  1. jamais d'action sensible (iam.PermissionInfo.Sensitive) : la personne
-//     la fait elle-même, avec sa double authentification ;
-//  2. portée « read » : permissions de lecture seulement ;
-//  3. routes Authenticated() (données de l'appelant : sessions, clés,
-//     profil, création de projet…) refusées, sauf celles déclarées
-//     AuthenticatedDelegable().
+/*
+Jetons délégués (sts.MethodDelegated) : un agent de betorun (le Copilot)
+agit au nom d'une personne. Trois bornes, en plus des droits IAM de la
+personne, qui restent la limite haute :
 
-// AuthMethodDelegated : valeur de "authMethod" (et de la colonne auth_method
-// de l'audit) pour un jeton délégué.
+ 1. jamais d'action sensible (iam.PermissionInfo.Sensitive) : la personne
+    la fait elle-même, avec sa double authentification ;
+ 2. portée « read » : permissions de lecture seulement ;
+ 3. routes Authenticated() (données de l'appelant : sessions, clés,
+    profil, création de projet…) refusées, sauf celles déclarées
+    AuthenticatedDelegable().
+
+AuthMethodDelegated : valeur de "authMethod" (et de la colonne auth_method
+de l'audit) pour un jeton délégué.
+*/
 const AuthMethodDelegated = "delegated"
 
 const (

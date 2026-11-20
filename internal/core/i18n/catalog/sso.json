@@ -1,0 +1,66 @@
+[
+ {
+  "fr": "L'adresse du fournisseur d'identité doit être une URL https sans paramètres",
+  "en": "the identity provider address must be an https URL without query or fragment"
+ },
+ {
+  "fr": "Le fournisseur d'identité est injoignable ou sa configuration OpenID est invalide",
+  "en": "the identity provider could not be reached or its OpenID configuration is invalid"
+ },
+ {
+  "fr": "Le fournisseur d'identité de votre entreprise n'a pas confirmé votre identité",
+  "en": "your company's identity provider did not confirm your identity"
+ },
+ {
+  "fr": "La connexion d'entreprise n'est pas configurée pour cette organisation",
+  "en": "company sign-in is not configured for this organization"
+ },
+ {
+  "fr": "Aucune connexion d'entreprise n'est configurée pour ce domaine",
+  "en": "no company sign-in is configured for this email domain"
+ },
+ {
+  "fr": "Votre organisation impose la connexion d'entreprise (SSO) pour cette adresse",
+  "en": "your organization requires company sign-in (SSO) for this address"
+ },
+ {
+  "fr": "L'identifiant du client est requis (255 caractères au plus)",
+  "en": "the client ID is required (255 characters at most)"
+ },
+ {
+  "fr": "Le secret du client est requis (1024 caractères au plus)",
+  "en": "the client secret is required (1024 characters at most)"
+ },
+ {
+  "fr": "Le rôle donné à la première connexion doit être lecteur, éditeur ou aucun",
+  "en": "the role given at first sign-in must be viewer, editor or none"
+ },
+ {
+  "fr": "Avant d'imposer la connexion d'entreprise, vérifiez un domaine et connectez-vous une fois avec elle",
+  "en": "before requiring company sign-in, verify a domain and sign in once with it"
+ },
+ {
+  "fr": "Ce domaine est déjà vérifié par une autre organisation",
+  "en": "this domain is already verified by another organization"
+ },
+ {
+  "fr": "L'enregistrement DNS n'est pas encore visible (il peut mettre quelques minutes à apparaître)",
+  "en": "the DNS record was not found yet (it can take a few minutes to appear)"
+ },
+ {
+  "fr": "Domaine introuvable",
+  "en": "domain not found"
+ },
+ {
+  "fr": "Trop de domaines (20 au plus)",
+  "en": "too many domains (20 at most)"
+ },
+ {
+  "fr": "Le fournisseur d'identité a renvoyé une adresse hors des domaines vérifiés de l'organisation",
+  "en": "the identity provider returned an address outside the organization's verified domains"
+ },
+ {
+  "fr": "sso : refus de contacter une adresse privée",
+  "en": "sso: refusing to contact a private address"
+ }
+]

@@ -101,3 +101,30 @@ func (g guards) ClusterAgent(ref security.ClusterRef) Access {
 		guard:   g.mw.RequireClusterAgent(ref),
 		summary: "agent du cluster visé (compte de service système), permission IAM `platform.clusters.report`"}
 }
+
+// then : la garde, puis check (exécuté seulement si la garde laisse passer).
+func (a Access) then(check gin.HandlerFunc, note string) Access {
+	guard := a.guard
+	a.guard = func(c *gin.Context) {
+		if guard != nil {
+			if guard(c); c.IsAborted() {
+				return
+			}
+		}
+		check(c)
+	}
+	a.summary += note
+	return a
+}
+
+// DataRead : la route lit des données du client (logs, variables). Si
+// l'organisation l'a demandé, chaque lecture entre au journal d'audit.
+func (a Access) DataRead() Access {
+	return a.then(security.MarkDataAccess, " ; lecture inscrite au journal d'accès aux données si l'organisation l'active")
+}
+
+// Staff : route du staff qui touche aux données d'un client : motif exigé
+// (en-tête X-Betorun-Justification), accès inscrit au journal du client.
+func (a Access) Staff(target security.StaffTarget) Access {
+	return a.then(security.StaffAccess(target), " ; motif exigé (en-tête `X-Betorun-Justification`), accès visible dans le journal d'audit du client")
+}

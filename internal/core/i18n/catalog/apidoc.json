@@ -1,5 +1,385 @@
 [
  {
+  "fr": "Adresse professionnelle : son domaine désigne l'organisation",
+  "en": "Work email address: its domain identifies the organization"
+ },
+ {
+  "fr": "Domaine des adresses (ex. exemple.sn)",
+  "en": "Domain of the email addresses (e.g. example.com)"
+ },
+ {
+  "fr": "Identifiant de l'application déclarée chez le fournisseur",
+  "en": "ID of the application registered with the provider"
+ },
+ {
+  "fr": "Secret de l'application (absent : inchangé). Jamais relu.",
+  "en": "Application secret (omitted: unchanged). Never returned."
+ },
+ {
+  "fr": "Proposer la connexion d'entreprise aux adresses des domaines vérifiés",
+  "en": "Offer company sign-in to addresses on the verified domains"
+ },
+ {
+  "fr": "Imposer la connexion d'entreprise à ces adresses (mot de passe, Google, GitHub et passkey refusés)",
+  "en": "Require company sign-in for these addresses (password, Google, GitHub and passkey refused)"
+ },
+ {
+  "fr": "Adresse de l'émetteur OpenID Connect (ex. https://login.microsoftonline.com/<tenant>/v2.0)",
+  "en": "OpenID Connect issuer URL (e.g. https://login.microsoftonline.com/<tenant>/v2.0)"
+ },
+ {
+  "fr": "Rôle donné sur l'organisation à la première connexion : roles/viewer, roles/editor ou vide",
+  "en": "Role granted on the organization at first sign-in: roles/viewer, roles/editor or empty"
+ },
+ {
+  "fr": "Connexion d'entreprise : code du fournisseur contre une session",
+  "en": "Company sign-in: provider code for a session"
+ },
+ {
+  "fr": "Connexion d'entreprise : code du fournisseur contre une session (ou second facteur demandé)",
+  "en": "Company sign-in: provider code for a session (or second factor requested)"
+ },
+ {
+  "fr": "Connexion d'entreprise : page du fournisseur de l'organisation qui a prouvé le domaine de l'adresse",
+  "en": "Company sign-in: sign-in page of the organization that proved the address's domain"
+ },
+ {
+  "fr": "Retirer la connexion d'entreprise",
+  "en": "Remove company sign-in"
+ },
+ {
+  "fr": "Retirer la connexion d'entreprise (les domaines prouvés restent)",
+  "en": "Remove company sign-in (proven domains are kept)"
+ },
+ {
+  "fr": "Revendiquer un domaine : enregistrement TXT à poser",
+  "en": "Claim a domain: TXT record to add"
+ },
+ {
+  "fr": "Vérifier l'enregistrement TXT d'un domaine",
+  "en": "Check a domain's TXT record"
+ },
+ {
+  "fr": "Connexion d'entreprise : fournisseur, domaines et adresse de retour",
+  "en": "Company sign-in: provider, domains and redirect URI"
+ },
+ {
+  "fr": "Connexion d'entreprise : fournisseur, domaines et adresse de retour (jamais le secret)",
+  "en": "Company sign-in: provider, domains and redirect URI (never the secret)"
+ },
+ {
+  "fr": "Configurer la connexion d'entreprise",
+  "en": "Configure company sign-in"
+ },
+ {
+  "fr": "Configurer la connexion d'entreprise (OpenID Connect) ; l'activer vérifie le fournisseur",
+  "en": "Configure company sign-in (OpenID Connect); enabling it checks the provider"
+ },
+ {
+  "fr": "Retirer un domaine",
+  "en": "Remove a domain"
+ },
+ {
+  "fr": "permission IAM `%s` ; lecture inscrite au journal d'accès aux données si l'organisation l'active",
+  "en": "IAM permission `%s`; the read is recorded in the data access log if the organization enables it"
+ },
+ {
+  "fr": "permission IAM `%s` ; motif exigé (en-tête `X-Betorun-Justification`), accès visible dans le journal d'audit du client",
+  "en": "IAM permission `%s`; a justification is required (`X-Betorun-Justification` header), the access is visible in the customer's audit log"
+ },
+ {
+  "fr": "Seules les personnes de ces domaines peuvent recevoir un accès (liste vide : tout le monde). Les accès déjà donnés restent.",
+  "en": "Only people from these domains can be granted access (empty list: anyone). Existing access is kept."
+ },
+ {
+  "fr": "Interdire les nouvelles clés de compte de service (la fédération d'identité reste possible)",
+  "en": "Forbid new service account keys (identity federation remains possible)"
+ },
+ {
+  "fr": "Inscrire au journal d'audit les lectures de données (logs, variables, identifiants)",
+  "en": "Record data reads (logs, variables, credentials) in the audit log"
+ },
+ {
+  "fr": "Nouveau nom (1 à 60 caractères)",
+  "en": "New name (1 to 60 characters)"
+ },
+ {
+  "fr": "Réponse de navigator.credentials.create() (JSON, base64url)",
+  "en": "Response of navigator.credentials.create() (JSON, base64url)"
+ },
+ {
+  "fr": "Nom affiché de la passkey (1 à 60 caractères)",
+  "en": "Display name of the passkey (1 to 60 characters)"
+ },
+ {
+  "fr": "Réponse de navigator.credentials.get() (JSON, base64url)",
+  "en": "Response of navigator.credentials.get() (JSON, base64url)"
+ },
+ {
+  "fr": "PublicKeyCredentialCreationOptions ou RequestOptions (JSON, base64url)",
+  "en": "PublicKeyCredentialCreationOptions or RequestOptions (JSON, base64url)"
+ },
+ {
+  "fr": "Connexion : options pour vérifier le second facteur avec une passkey",
+  "en": "Sign-in: options to verify the second factor with a passkey"
+ },
+ {
+  "fr": "Connexion : second facteur vérifié avec une passkey",
+  "en": "Sign-in: second factor verified with a passkey"
+ },
+ {
+  "fr": "Connexion par passkey : options pour le navigateur (sans e-mail)",
+  "en": "Passkey sign-in: options for the browser (no email)"
+ },
+ {
+  "fr": "Connexion par passkey : session ouverte (vaut second facteur)",
+  "en": "Passkey sign-in: session opened (counts as a second factor)"
+ },
+ {
+  "fr": "Passkeys du compte",
+  "en": "Account passkeys"
+ },
+ {
+  "fr": "Ajouter une passkey : options pour le navigateur (vérification récente exigée si un second facteur existe)",
+  "en": "Add a passkey: options for the browser (recent verification required if a second factor exists)"
+ },
+ {
+  "fr": "Ajouter une passkey : réponse du navigateur (codes de secours remis pour la première)",
+  "en": "Add a passkey: browser response (recovery codes given for the first one)"
+ },
+ {
+  "fr": "Retirer une passkey (vérification récente exigée)",
+  "en": "Remove a passkey (recent verification required)"
+ },
+ {
+  "fr": "Renommer une passkey",
+  "en": "Rename a passkey"
+ },
+ {
+  "fr": "Confirmer son identité avec une passkey : options pour le navigateur",
+  "en": "Confirm your identity with a passkey: options for the browser"
+ },
+ {
+  "fr": "Confirmer son identité avec une passkey avant une action sensible",
+  "en": "Confirm your identity with a passkey before a sensitive action"
+ },
+ {
+  "fr": "Ajouter une passkey : options pour le navigateur",
+  "en": "Add a passkey: options for the browser"
+ },
+ {
+  "fr": "Ajouter une passkey : réponse du navigateur",
+  "en": "Add a passkey: browser response"
+ },
+ {
+  "fr": "Connexion : options pour vérifier le second facteur avec une passkey",
+  "en": "Sign-in: options to verify the second factor with a passkey"
+ },
+ {
+  "fr": "Connexion par passkey : options pour le navigateur",
+  "en": "Passkey sign-in: options for the browser"
+ },
+ {
+  "fr": "Connexion par passkey : session ouverte",
+  "en": "Passkey sign-in: session opened"
+ },
+ {
+  "fr": "Retirer une passkey",
+  "en": "Remove a passkey"
+ },
+ {
+  "fr": "Nouvelle taille, parmi celles du modèle (vide : reprendre une opération interrompue)",
+  "en": "New size, among the template's sizes (empty: resume an interrupted operation)"
+ },
+ {
+  "fr": "Nouvelle taille : 2Gi, 5Gi, 10Gi ou 20Gi, plus grande que l'actuelle (vide : reprendre une opération interrompue)",
+  "en": "New size: 2Gi, 5Gi, 10Gi or 20Gi, larger than the current one (empty: resume an interrupted operation)"
+ },
+ {
+  "fr": "Agrandissement du disque d'un service : dernière opération et tailles proposées",
+  "en": "Service disk resize: last operation and offered sizes"
+ },
+ {
+  "fr": "Agrandir le disque d'un service (arrêt, copie vérifiée, relance ; en arrière-plan)",
+  "en": "Grow a service's disk (stop, checked copy, restart; in the background)"
+ },
+ {
+  "fr": "Agrandissement du disque : dernière opération et tailles proposées",
+  "en": "Disk resize: last operation and offered sizes"
+ },
+ {
+  "fr": "Agrandir le disque d'un conteneur (arrêt, copie vérifiée, relance ; en arrière-plan)",
+  "en": "Grow a container's disk (stop, checked copy, restart; in the background)"
+ },
+ {
+  "fr": "Agrandir le disque d'un service",
+  "en": "Grow a service's disk"
+ },
+ {
+  "fr": "Agrandir le disque d'un conteneur",
+  "en": "Grow a container's disk"
+ },
+ {
+  "fr": "Nom du service, retapé pour confirmer",
+  "en": "Service name, typed again to confirm"
+ },
+ {
+  "fr": "Restaurer une sauvegarde (copie de l'état actuel d'abord ; les données actuelles sont remplacées)",
+  "en": "Restore a backup (a copy of the current state is taken first; the current data is replaced)"
+ },
+ {
+  "fr": "Restaurer une sauvegarde",
+  "en": "Restore a backup"
+ },
+ {
+  "fr": "ID de la sauvegarde",
+  "en": "Backup ID"
+ },
+ {
+  "fr": "Sauvegardes d'un service (une chaque nuit, les 7 dernières gardées)",
+  "en": "Backups of a service (one every night, the last 7 are kept)"
+ },
+ {
+  "fr": "Sauvegardes d'un service",
+  "en": "Backups of a service"
+ },
+ {
+  "fr": "Sauvegarder un service tout de suite (la copie se fait en arrière-plan)",
+  "en": "Back up a service now (the copy runs in the background)"
+ },
+ {
+  "fr": "Sauvegarder un service tout de suite",
+  "en": "Back up a service now"
+ },
+ {
+  "fr": "Variable qui reçoit l'adresse de connexion (défaut selon le service : REDIS_URL, DATABASE_URL, MEILISEARCH_URL ; la clé Meilisearch va dans la variable en _KEY)",
+  "en": "Variable that receives the connection address (default depends on the service: REDIS_URL, DATABASE_URL, MEILISEARCH_URL; the Meilisearch key goes into the matching _KEY variable)"
+ },
+ {
+  "fr": "Disque en mode persistant : 1Gi (défaut), 2Gi ou 5Gi ; 10Gi aussi pour mariadb et meilisearch",
+  "en": "Disk in persistent mode: 1Gi (default), 2Gi or 5Gi; also 10Gi for mariadb and meilisearch"
+ },
+ {
+  "fr": "Usage (redis : persistent, par défaut, ou cache ; les autres : persistent seulement)",
+  "en": "Usage (redis: persistent, the default, or cache; the others: persistent only)"
+ },
+ {
+  "fr": "Modèle du catalogue : redis, mariadb ou meilisearch",
+  "en": "Catalog template: redis, mariadb or meilisearch"
+ },
+ {
+  "fr": "Ajouter un service (Redis via Valkey, MariaDB, Meilisearch) ; mot de passe généré, jamais renvoyé",
+  "en": "Add a service (Redis via Valkey, MariaDB, Meilisearch); password generated, never returned"
+ },
+ {
+  "fr": "Ajouter un service (Redis via Valkey, MariaDB, Meilisearch)",
+  "en": "Add a service (Redis via Valkey, MariaDB, Meilisearch)"
+ },
+ {
+  "fr": "Services additionnels (Redis via Valkey, MariaDB, Meilisearch) : installés et surveillés par betorun, joignables seulement depuis les conteneurs du projet.",
+  "en": "Additional services (Redis via Valkey, MariaDB, Meilisearch): installed and monitored by betorun, reachable only from the project's containers."
+ },
+ {
+  "fr": "Relancer une base arrêtée (prête en une minute environ)",
+  "en": "Start a stopped database again (ready in about a minute)"
+ },
+ {
+  "fr": "Relancer une base arrêtée",
+  "en": "Start a stopped database again"
+ },
+ {
+  "fr": "Arrêter une base (ses données sont gardées ; les conteneurs branchés perdent la connexion)",
+  "en": "Stop a database (its data is kept; attached containers lose their connection)"
+ },
+ {
+  "fr": "Arrêter une base",
+  "en": "Stop a database"
+ },
+ {
+  "fr": "Adresse https:// publique (URL de webhook entrant Slack, ou votre service)",
+  "en": "Public https:// address (Slack incoming webhook URL, or your service)"
+ },
+ {
+  "fr": "Ajouter un webhook d'alertes (Slack ou JSON signé ; secret de signature montré une fois)",
+  "en": "Add an alert webhook (Slack or signed JSON; signing secret shown once)"
+ },
+ {
+  "fr": "Ajouter un webhook d'alertes",
+  "en": "Add an alert webhook"
+ },
+ {
+  "fr": "Alertes du projet envoyées aussi vers Slack ou vers votre service (JSON signé).",
+  "en": "Project alerts also sent to Slack or to your service (signed JSON)."
+ },
+ {
+  "fr": "Envoyer un message d'essai au webhook",
+  "en": "Send a test message to the webhook"
+ },
+ {
+  "fr": "ID du webhook",
+  "en": "Webhook ID"
+ },
+ {
+  "fr": "Nom affiché (1 à 60 caractères)",
+  "en": "Display name (1 to 60 characters)"
+ },
+ {
+  "fr": "Webhooks d'alertes du projet (adresse masquée, dernier envoi)",
+  "en": "Project alert webhooks (masked address, last delivery)"
+ },
+ {
+  "fr": "Webhooks d'alertes du projet",
+  "en": "Project alert webhooks"
+ },
+ {
+  "fr": "Webhooks d'alertes",
+  "en": "Alert webhooks"
+ },
+ {
+  "fr": "slack ou json",
+  "en": "slack or json"
+ },
+ {
+  "fr": "Supprimer un webhook d'alertes",
+  "en": "Delete an alert webhook"
+ },
+ {
+  "fr": "Catégorie → reçue (true) ou coupée (false) : containers, builds, disk, api_keys",
+  "en": "Category → received (true) or muted (false): containers, builds, disk, api_keys"
+ },
+ {
+  "fr": "Changer la langue des e-mails ou couper une catégorie d'alertes (sécurité, accès et facturation ne se coupent pas)",
+  "en": "Change the email language or mute an alert category (security, access and billing emails cannot be muted)"
+ },
+ {
+  "fr": "Changer la langue des e-mails ou couper une catégorie d'alertes",
+  "en": "Change the email language or mute an alert category"
+ },
+ {
+  "fr": "Langue des e-mails : fr ou en",
+  "en": "Email language: fr or en"
+ },
+ {
+  "fr": "Ne plus recevoir une catégorie d'alertes (jeton du lien reçu ; désabonnement en un clic)",
+  "en": "Stop receiving an alert category (token from the received link; one-click unsubscribe)"
+ },
+ {
+  "fr": "Ne plus recevoir une catégorie d'alertes",
+  "en": "Stop receiving an alert category"
+ },
+ {
+  "fr": "Préférences d'e-mail : langue et alertes de projet reçues",
+  "en": "Email preferences: language and project alerts received"
+ },
+ {
+  "fr": "Alertes",
+  "en": "Alerts"
+ },
+ {
+  "fr": "Désabonnement des alertes e-mail par le lien reçu.",
+  "en": "Unsubscribe from email alerts with the received link."
+ },
+ {
   "fr": "1 à 200 (défaut 50)",
   "en": "1 to 200 (default: 50)"
  },

@@ -4,6 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/thekrauss/kubemanager/internal/auth/sso"
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
@@ -11,11 +18,6 @@ import (
 	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/iam/sts"
@@ -81,6 +83,8 @@ type App struct {
 	ClusterAgents       *iam.ClusterAgents
 	STS                 *sts.Service
 	OrgPolicies         *iam.OrgPolicyService
+	// SSO : connexion d'entreprise des organisations (nil sans authentification betorun).
+	SSO *sso.Store
 	// GitHub : connexion GitHub (Client nil : désactivée).
 	GitHub *githubSvc.Service
 	// WorkloadDeployer : mise à jour d'un conteneur à la fin d'un build (worker).
@@ -187,6 +191,11 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// Usage réel des disques : alertes à 80 et 100 %, arrêt du conteneur à 120 %.
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
 		go a.diskUsageService().Run(ctx, diskusage.DefaultEvery)
+	}
+
+	// Sauvegarde nocturne des services qui en ont (MariaDB).
+	if b := a.addonBackupService(); b.Backups != nil {
+		go b.RunBackups(ctx, addons.BackupEvery)
 	}
 
 	// « Me prévenir » : e-mail quand un service annoncé ouvre (ADR 0013).

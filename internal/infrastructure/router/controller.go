@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
+	"github.com/thekrauss/kubemanager/internal/modules/alerts"
 	controller "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authRepos "github.com/thekrauss/kubemanager/internal/modules/auth/repository"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
@@ -10,6 +11,7 @@ import (
 	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
 	"github.com/thekrauss/kubemanager/internal/modules/github"
@@ -70,6 +72,10 @@ type ControllerContainer struct {
 	Addons *addons.Controller
 	// DiskUsage : usage réel des disques des projets.
 	DiskUsage *diskusage.Controller
+	// DiskResize : agrandissement des disques par copie.
+	DiskResize *diskresize.Controller
+	// Alerts : préférences d'e-mail et désabonnement.
+	Alerts *alerts.Controller
 	// Billing : facturation (coût estimé, grille de prix).
 	Billing *billing.Controller
 	// DomainSales : revente de noms de domaine.
@@ -92,6 +98,8 @@ func AddAllRoutes(a *App) {
 	addCopilotRoutes(a)
 	addDatabaseRoutes(a)
 	addAddonRoutes(a)
+	addDiskResizeRoutes(a)
+	addAlertPreferenceRoutes(a)
 	addBillingRoutes(a)
 	addDomainSalesRoutes(a)
 }

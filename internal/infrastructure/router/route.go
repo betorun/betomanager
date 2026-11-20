@@ -125,6 +125,8 @@ func addAuthRoutes(app *App) {
 	IdentityGroup.AddRoute("/mfa/totp", http.MethodDelete, "Désactiver le second facteur (vérification récente exigée)", Authenticated(), tonic.Handler(a.DisableTOTP, http.StatusNoContent))
 	IdentityGroup.AddRoute("/social/providers", http.MethodGet, "Fournisseurs de connexion configurés (Google, GitHub)", Public(), tonic.Handler(a.SocialProviders, http.StatusOK))
 	IdentityGroup.AddRoute("/social/:provider/authorize", http.MethodGet, "Connexion Google/GitHub : page du fournisseur (state, PKCE, nonce gardés côté serveur)", Public(), tonic.Handler(a.SocialAuthorize, http.StatusOK))
+	IdentityGroup.AddRoute("/login/sso", http.MethodPost, "Connexion d'entreprise : page du fournisseur de l'organisation qui a prouvé le domaine de l'adresse", Public(), tonic.Handler(a.SSOStart, http.StatusOK))
+	IdentityGroup.AddRoute("/login/sso/callback", http.MethodPost, "Connexion d'entreprise : code du fournisseur contre une session (ou second facteur demandé)", Public(), tonic.Handler(a.SSOCallback, http.StatusOK))
 	IdentityGroup.AddRoute("/social/:provider/callback", http.MethodPost, "Connexion Google/GitHub : code du fournisseur contre une session (ou second facteur demandé)", Public(), tonic.Handler(a.SocialCallback, http.StatusOK))
 	IdentityGroup.AddRoute("/identities", http.MethodGet, "Comptes Google/GitHub liés", Authenticated(), tonic.Handler(a.ListIdentities, http.StatusOK))
 	IdentityGroup.AddRoute("/identities/:provider", http.MethodDelete, "Délier un compte Google/GitHub (il doit rester un moyen de connexion)", Authenticated(), tonic.Handler(a.UnlinkIdentity, http.StatusNoContent))
@@ -133,6 +135,18 @@ func addAuthRoutes(app *App) {
 	IdentityGroup.AddRoute("/cli/token", http.MethodPost, "CLI : échanger le code contre une session (preuve PKCE)", Public(), tonic.Handler(a.CLIToken, http.StatusOK))
 	IdentityGroup.AddRoute("/device", http.MethodGet, "Code d'appareil : origine de la demande (IP, appareil), affichée avant validation", Authenticated(), tonic.Handler(a.DeviceInfo, http.StatusOK))
 	IdentityGroup.AddRoute("/device/approve", http.MethodPost, "Code d'appareil : valider ou refuser la demande (second facteur récent exigé s'il est actif)", Authenticated(), tonic.Handler(a.ApproveDevice, http.StatusNoContent))
+	// Passkeys (WebAuthn) : options d'abord (cérémonie gardée côté serveur), puis réponse du navigateur.
+	IdentityGroup.AddRoute("/login/passkey/options", http.MethodPost, "Connexion par passkey : options pour le navigateur (sans e-mail)", Public(), tonic.Handler(a.PasskeyLoginOptions, http.StatusOK))
+	IdentityGroup.AddRoute("/login/passkey", http.MethodPost, "Connexion par passkey : session ouverte (vaut second facteur)", Public(), tonic.Handler(a.PasskeyLogin, http.StatusOK))
+	IdentityGroup.AddRoute("/login/mfa/passkey/options", http.MethodPost, "Connexion : options pour vérifier le second facteur avec une passkey", Public(), tonic.Handler(a.PasskeyMFAOptions, http.StatusOK))
+	IdentityGroup.AddRoute("/login/mfa/passkey", http.MethodPost, "Connexion : second facteur vérifié avec une passkey", Public(), tonic.Handler(a.PasskeyMFA, http.StatusOK))
+	IdentityGroup.AddRoute("/session/verify/passkey/options", http.MethodPost, "Confirmer son identité avec une passkey : options pour le navigateur", Authenticated(), tonic.Handler(a.PasskeyStepUpOptions, http.StatusOK))
+	IdentityGroup.AddRoute("/session/verify/passkey", http.MethodPost, "Confirmer son identité avec une passkey avant une action sensible", Authenticated(), tonic.Handler(a.PasskeyStepUp, http.StatusOK))
+	IdentityGroup.AddRoute("/passkeys", http.MethodGet, "Passkeys du compte", Authenticated(), tonic.Handler(a.ListPasskeys, http.StatusOK))
+	IdentityGroup.AddRoute("/passkeys/options", http.MethodPost, "Ajouter une passkey : options pour le navigateur (vérification récente exigée si un second facteur existe)", Authenticated(), tonic.Handler(a.PasskeyRegistrationOptions, http.StatusOK))
+	IdentityGroup.AddRoute("/passkeys", http.MethodPost, "Ajouter une passkey : réponse du navigateur (codes de secours remis pour la première)", Authenticated(), tonic.Handler(a.RegisterPasskey, http.StatusCreated))
+	IdentityGroup.AddRoute("/passkeys/:id", http.MethodPatch, "Renommer une passkey", Authenticated(), tonic.Handler(a.RenamePasskey, http.StatusNoContent))
+	IdentityGroup.AddRoute("/passkeys/:id", http.MethodDelete, "Retirer une passkey (vérification récente exigée)", Authenticated(), tonic.Handler(a.RemovePasskey, http.StatusNoContent))
 	IdentityGroup.AddRoute("/mfa/recovery-codes", http.MethodPost, "Nouveaux codes de secours (vérification récente exigée)", Authenticated(), tonic.Handler(a.RegenerateRecoveryCodes, http.StatusOK))
 }
 
@@ -196,14 +210,14 @@ func addProjectRoutes(app *App) {
 	adminProjects := RootGroup.NewGroup("/admin/projects", "Admin — limites de ressources des projets").Internal()
 	adminProjects.AddRoute("/:id/limits", http.MethodPatch,
 		"Changer les limites CPU, mémoire et stockage d'un projet (base puis quota Kubernetes)",
-		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetProjectLimits, http.StatusOK))
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource).Staff(security.StaffProject("id")), tonic.Handler(r.SetProjectLimits, http.StatusOK))
 	adminProjects.AddRoute("/:id/max-addons", http.MethodPatch,
 		"Changer le nombre maximal de services additionnels d'un projet (Redis…)",
-		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetProjectMaxAddons, http.StatusOK))
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource).Staff(security.StaffProject("id")), tonic.Handler(r.SetProjectMaxAddons, http.StatusOK))
 	adminOrgs := RootGroup.NewGroup("/admin/organizations", "Admin — plafonds des organisations").Internal()
 	adminOrgs.AddRoute("/:id/limits", http.MethodPatch,
 		"Changer le nombre maximal de projets d'une organisation",
-		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.SetOrganizationLimits, http.StatusOK))
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource).Staff(security.StaffOrganization("id")), tonic.Handler(r.SetOrganizationLimits, http.StatusOK))
 
 	// Création dans l'organisation personnelle de l'appelant, qui en devient owner.
 	ProjectGroup.AddRoute("", http.MethodPost, "Créer un projet", Authenticated(), tonic.Handler(r.CreateProject, http.StatusCreated))
@@ -262,7 +276,7 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("/:id/domains/:domainID/verify", http.MethodPost, "Vérifier la preuve de propriété et router le domaine (enregistrement TXT)", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.VerifyDomain, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "verify_workload_domain", Write: true, Risk: tools.RiskLow})
 	WorkloadGroup.AddRoute("/:id/domains/:domainID", http.MethodDelete, "Retirer un domaine et sa route", on(iam.WorkloadDomainsUpdate), tonic.Handler(r.RemoveDomain, http.StatusNoContent))
-	WorkloadGroup.AddRoute("/:id/variables", http.MethodGet, "Variables et secrets du conteneur (la valeur d'un secret n'est jamais renvoyée)", on(iam.WorkloadVariablesList), tonic.Handler(r.ListVariables, http.StatusOK)).
+	WorkloadGroup.AddRoute("/:id/variables", http.MethodGet, "Variables et secrets du conteneur (la valeur d'un secret n'est jamais renvoyée)", on(iam.WorkloadVariablesList).DataRead(), tonic.Handler(r.ListVariables, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "list_workload_variables", Hint: "Secret values are never returned."})
 	WorkloadGroup.AddRoute("/:id/variables", http.MethodPatch, "Créer, modifier ou supprimer des variables et des secrets (nouveau déploiement si une valeur change)", on(iam.WorkloadVariablesUpdate), tonic.Handler(r.PatchVariables, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "update_workload_variables", Write: true, Risk: tools.RiskMedium, Omit: []string{"secrets"},
@@ -288,7 +302,7 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("/:id/metrics", http.MethodGet, "Consommation CPU et mémoire en direct, et ressources réservées", on(iam.WorkloadMetrics), tonic.Handler(r.GetWorkloadMetrics, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "get_workload_metrics"})
 	// Logs : streaming direct sur c.Writer (pas tonic — on contrôle la réponse).
-	WorkloadGroup.AddRoute("/:id/logs", http.MethodGet, "Journaux du conteneur, en flux (HTTP chunked)", on(iam.WorkloadLogsRead), wrapRawHandler(r.GetWorkloadLogs)).
+	WorkloadGroup.AddRoute("/:id/logs", http.MethodGet, "Journaux du conteneur, en flux (HTTP chunked)", on(iam.WorkloadLogsRead).DataRead(), wrapRawHandler(r.GetWorkloadLogs)).
 		Documented(RawDoc{Input: workloadsCtrl.LogsRequest{}, Produces: MIMETextStream}).
 		ForCopilot(CopilotTool{Name: "get_workload_logs", Fixed: map[string]string{"follow": "false"}, Max: map[string]int{"tail": 300}, Hint: "Read once (not streamed): returns the last lines as plain text, at most 300."})
 }
@@ -374,7 +388,7 @@ func addBuildRoutes(app *App) {
 			}})
 	b.AddRoute("/:buildID", http.MethodGet, "Détails d'un build", g.Perm(iam.BuildsGet, build), tonic.Handler(r.Get, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "get_build"})
-	b.AddRoute("/:buildID/logs", http.MethodGet, "Journal du build, en flux (?follow=true jusqu'à la fin)", g.Perm(iam.BuildsGet, build), wrapRawHandler(r.Logs)).
+	b.AddRoute("/:buildID/logs", http.MethodGet, "Journal du build, en flux (?follow=true jusqu'à la fin)", g.Perm(iam.BuildsGet, build).DataRead(), wrapRawHandler(r.Logs)).
 		Documented(RawDoc{Input: buildsDomain.LogsRequest{}, Produces: MIMETextStream}).
 		ForCopilot(CopilotTool{Name: "get_build_logs", Fixed: map[string]string{"follow": "false"}, Hint: "Returns the build log as plain text; for a long log only the end is kept."})
 	b.AddRoute("/:buildID/cancel", http.MethodPost, "Annuler un build en cours", g.Perm(iam.BuildsCancel, build), tonic.Handler(r.Cancel, http.StatusNoContent)).
@@ -496,6 +510,16 @@ func addIAMRoutes(app *App) {
 		g.Perm(iam.OrganizationsGet, security.OrganizationParam("id")), tonic.Handler(r.GetOrgSecurityPolicy, http.StatusOK))
 	orgs.AddRoute("/securityPolicy", http.MethodPut, "Modifier la politique de sécurité (confirmation récente du second facteur requise)",
 		g.Perm(iam.OrganizationsUpdate, security.OrganizationParam("id")), tonic.Handler(r.SetOrgSecurityPolicy, http.StatusOK))
+
+	// Connexion d'entreprise (iam.md §9.2) : fournisseur OpenID Connect et domaines prouvés.
+	orgRead := g.Perm(iam.OrganizationsGet, security.OrganizationParam("id"))
+	orgWrite := g.Perm(iam.OrganizationsUpdate, security.OrganizationParam("id"))
+	orgs.AddRoute("/sso", http.MethodGet, "Connexion d'entreprise : fournisseur, domaines et adresse de retour (jamais le secret)", orgRead, tonic.Handler(r.GetOrgSSO, http.StatusOK))
+	orgs.AddRoute("/sso", http.MethodPut, "Configurer la connexion d'entreprise (OpenID Connect) ; l'activer vérifie le fournisseur", orgWrite, tonic.Handler(r.SetOrgSSO, http.StatusOK))
+	orgs.AddRoute("/sso", http.MethodDelete, "Retirer la connexion d'entreprise (les domaines prouvés restent)", orgWrite, tonic.Handler(r.DeleteOrgSSO, http.StatusNoContent))
+	orgs.AddRoute("/sso/domains", http.MethodPost, "Revendiquer un domaine : enregistrement TXT à poser", orgWrite, tonic.Handler(r.AddOrgDomain, http.StatusCreated))
+	orgs.AddRoute("/sso/domains/:domain/verify", http.MethodPost, "Vérifier l'enregistrement TXT d'un domaine", orgWrite, tonic.Handler(r.VerifyOrgDomain, http.StatusOK))
+	orgs.AddRoute("/sso/domains/:domain", http.MethodDelete, "Retirer un domaine", orgWrite, tonic.Handler(r.RemoveOrgDomain, http.StatusNoContent))
 
 	// Politiques de refus (iam.md §14) : organisation, puis projet.
 	orgDeny := security.OrganizationParam("id")
@@ -630,19 +654,20 @@ func addBillingRoutes(app *App) {
 	accounts := RootGroup.NewGroup("/admin/billing", "Admin — comptes de facturation").Internal()
 	adminView := g.Perm(iam.PlatformBillingAccountsGet, security.PlatformResource)
 	adminEdit := g.Perm(iam.PlatformBillingAccountsUpdate, security.PlatformResource)
+	orgTarget := security.StaffOrganization("id")
 	accounts.AddRoute("/organizations", http.MethodGet, "Rechercher une organisation (nom, e-mail du propriétaire, projet)", adminView, tonic.Handler(r.AdminOrgs, http.StatusOK))
-	accounts.AddRoute("/organizations/:id", http.MethodGet, "Fiche d'une organisation : projets, solde, coût du mois, mouvements, recharges", adminView, tonic.Handler(r.AdminOrg, http.StatusOK))
-	accounts.AddRoute("/organizations/:id/credits", http.MethodPost, "Offrir un crédit (consommé avant l'argent, avec une date d'expiration)", adminEdit, tonic.Handler(r.AdminCredit, http.StatusOK))
-	accounts.AddRoute("/organizations/:id/adjustments", http.MethodPost, "Corriger l'argent d'un client (positif : crédité, négatif : débité), avec un motif", adminEdit, tonic.Handler(r.AdminAdjust, http.StatusOK))
-	accounts.AddRoute("/organizations/:id/charging", http.MethodPut, "Activer ou suspendre la facturation réelle (crédit d'essai à la première activation)", adminEdit, tonic.Handler(r.AdminCharging, http.StatusOK))
-	accounts.AddRoute("/organizations/:id/plan", http.MethodPut, "Attribuer un plan à une organisation (y compris non public)", adminEdit, tonic.Handler(r.AdminChangePlan, http.StatusOK))
+	accounts.AddRoute("/organizations/:id", http.MethodGet, "Fiche d'une organisation : projets, solde, coût du mois, mouvements, recharges", adminView.Staff(orgTarget), tonic.Handler(r.AdminOrg, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/credits", http.MethodPost, "Offrir un crédit (consommé avant l'argent, avec une date d'expiration)", adminEdit.Staff(orgTarget), tonic.Handler(r.AdminCredit, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/adjustments", http.MethodPost, "Corriger l'argent d'un client (positif : crédité, négatif : débité), avec un motif", adminEdit.Staff(orgTarget), tonic.Handler(r.AdminAdjust, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/charging", http.MethodPut, "Activer ou suspendre la facturation réelle (crédit d'essai à la première activation)", adminEdit.Staff(orgTarget), tonic.Handler(r.AdminCharging, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/plan", http.MethodPut, "Attribuer un plan à une organisation (y compris non public)", adminEdit.Staff(orgTarget), tonic.Handler(r.AdminChangePlan, http.StatusOK))
 	accounts.AddRoute("/plans", http.MethodGet, "Tous les plans, toutes monnaies", g.Perm(iam.PlatformBillingCatalogsGet, security.PlatformResource), tonic.Handler(r.AdminPlans, http.StatusOK))
 	accounts.AddRoute("/plans/:planID", http.MethodPut, "Créer ou modifier un plan (limites par projet, abonnement par monnaie)",
 		g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource), tonic.Handler(r.AdminSavePlan, http.StatusOK))
 	accounts.AddRoute("/projects/:id/limits-override", http.MethodDelete, "Retirer l'exception de limites d'un projet : il revient aux limites de son plan",
-		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource), tonic.Handler(r.AdminClearOverride, http.StatusOK))
-	accounts.AddRoute("/organizations/:id/postpaid", http.MethodPut, "Passer une organisation en postpayé (plafond de crédit, échéance) ou au prépayé", adminEdit, tonic.Handler(r.AdminPostpaid, http.StatusOK))
-	accounts.AddRoute("/organizations/:id/payments", http.MethodPost, "Enregistrer un virement reçu (réduit la dette, solde les factures les plus anciennes)", adminEdit, tonic.Handler(r.AdminPayment, http.StatusOK))
+		g.Perm(iam.PlatformProjectsSetLimits, security.PlatformResource).Staff(security.StaffProject("id")), tonic.Handler(r.AdminClearOverride, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/postpaid", http.MethodPut, "Passer une organisation en postpayé (plafond de crédit, échéance) ou au prépayé", adminEdit.Staff(orgTarget), tonic.Handler(r.AdminPostpaid, http.StatusOK))
+	accounts.AddRoute("/organizations/:id/payments", http.MethodPost, "Enregistrer un virement reçu (réduit la dette, solde les factures les plus anciennes)", adminEdit.Staff(orgTarget), tonic.Handler(r.AdminPayment, http.StatusOK))
 	accounts.AddRoute("/revenue", http.MethodGet, "Recettes par jour et par monnaie, recharges en attente ou ratées", adminView, tonic.Handler(r.AdminRevenue, http.StatusOK))
 
 	// Grilles de prix : équipe de la plateforme seulement. Une modification

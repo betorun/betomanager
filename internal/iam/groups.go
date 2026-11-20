@@ -89,6 +89,8 @@ type GroupService struct {
 	Engine *Engine
 	// Notify : e-mail à la personne ajoutée ou retirée (nil : aucun).
 	Notify MembershipNotifier
+	// Members : domaines autorisés de l'organisation (nil : aucun contrôle).
+	Members MemberGuard
 }
 
 func (s *GroupService) Create(ctx context.Context, caller Principal, orgID uuid.UUID, groupID, displayName, description string) (*Group, error) {
@@ -232,6 +234,11 @@ func (s *GroupService) AddMember(ctx context.Context, caller Principal, orgID, i
 	}
 	if err := s.checkNoEscalation(ctx, caller, g); err != nil {
 		return nil, err
+	}
+	if s.Members != nil {
+		if err := s.Members.CheckMembers(ctx, OrganizationName(orgID), []Principal{resolved}); err != nil {
+			return nil, err
+		}
 	}
 	res := s.DB.WithContext(ctx).Exec(`INSERT INTO iam_group_members (group_id, principal, created_by)
 		VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, g.ID, string(resolved), string(caller))

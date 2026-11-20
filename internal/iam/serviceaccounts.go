@@ -168,6 +168,10 @@ var accountIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
 type ServiceAccountService struct {
 	DB     *gorm.DB
 	Engine *Engine
+	// KeyPolicy : politique d'organisation sur les clés (nil : aucune).
+	KeyPolicy interface {
+		KeyCreationDisabled(ctx context.Context, r ResourceName) (bool, error)
+	}
 	Pepper []byte
 	// TokenURI : endpoint du STS, recopié dans les fichiers de clé.
 	TokenURI string
@@ -291,6 +295,9 @@ func (s *ServiceAccountService) CreateKey(ctx context.Context, caller Principal,
 	}
 	if !d.Allowed {
 		return nil, ErrActAsRequired
+	}
+	if err := s.checkKeyPolicy(ctx, sa.Resource); err != nil {
+		return nil, err
 	}
 	key, err := s.issueKey(ctx, s.DB, sa.ID, string(caller), req)
 	if err == nil && s.OnKeyCreated != nil && sa.ClusterID == nil {
@@ -447,4 +454,19 @@ func (s *ServiceAccountService) touchUsage(keyID, ip string) {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgerr.UniqueViolation
+}
+
+// checkKeyPolicy : refuse une nouvelle clé si l'organisation l'interdit.
+func (s *ServiceAccountService) checkKeyPolicy(ctx context.Context, r ResourceName) error {
+	if s.KeyPolicy == nil {
+		return nil
+	}
+	disabled, err := s.KeyPolicy.KeyCreationDisabled(ctx, r)
+	if err != nil {
+		return err
+	}
+	if disabled {
+		return ErrKeyCreationDisabled
+	}
+	return nil
 }

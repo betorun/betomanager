@@ -175,7 +175,6 @@ func (a *App) initKeycloak() error {
 		Realm:        cfg.AdminRealm,
 		ClientID:     cfg.AdminClientID,
 		ClientSecret: cfg.AdminClientSecret,
-		WebClientID:  cfg.WebClientID,
 		AuthClientID: cfg.AuthClientID, AuthClientSecret: cfg.AuthClientSecret,
 		Timeout: cfg.HTTPTimeout,
 	}, cfg.IssuerURL)
@@ -311,6 +310,8 @@ func (a *App) initSecurity() error {
 	// Double authentification des personnes (iam.md §9) : step-up sur les
 	// actions sensibles, iam.requireMfa par organisation.
 	a.OrgPolicies = iam.NewOrgPolicyService(a.DB, a.IAM, len(a.Config.IAM.MFAACRValues) > 0)
+	a.ServiceAccounts.KeyPolicy = a.OrgPolicies
+	a.Security.Middleware.SetDataAccessPolicy(a.OrgPolicies)
 	a.Security.Middleware.SetMFA(security.MFAConfig{ACRValues: a.Config.IAM.MFAACRValues,
 		MaxAge: a.stepUpMaxAge(), Policy: a.OrgPolicies})
 	if len(a.Config.IAM.MFAACRValues) == 0 {

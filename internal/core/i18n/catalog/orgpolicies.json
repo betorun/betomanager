@@ -1,0 +1,30 @@
+[
+ {
+  "fr": "Nom de domaine invalide",
+  "en": "invalid domain name"
+ },
+ {
+  "fr": "Trop de domaines autorisés (20 au plus)",
+  "en": "too many allowed domains (20 at most)"
+ },
+ {
+  "fr": "L'organisation n'accepte que des membres de ses propres domaines",
+  "en": "the organization only allows members from its own domains"
+ },
+ {
+  "fr": "L'organisation n'accepte que des membres de ses propres domaines : l'accès public est refusé",
+  "en": "the organization only allows members from its own domains: public access is refused"
+ },
+ {
+  "fr": "L'organisation n'autorise plus de nouvelle clé de compte de service : utilisez la fédération d'identité",
+  "en": "the organization does not allow new service account keys: use workload identity federation instead"
+ },
+ {
+  "fr": "Un motif de 10 à 300 caractères est exigé pour accéder aux données d'un client",
+  "en": "a justification of 10 to 300 characters is required to access customer data"
+ },
+ {
+  "fr": "Référence de ressource invalide",
+  "en": "invalid resource reference"
+ }
+]

@@ -55,9 +55,13 @@ func (h *Controller) Session(c *gin.Context) (*SessionResponse, error) {
 
 // ── Politique de sécurité d'une organisation ─────────────────────────────
 
+// SetOrgSecurityPolicyRequest : seuls les champs présents changent.
 type SetOrgSecurityPolicyRequest struct {
-	OrgID      string `path:"id" binding:"required"`
-	RequireMFA bool   `json:"require_mfa" description:"Exiger la double authentification de toute personne qui agit sur l'organisation et ses projets"`
+	OrgID                string    `path:"id" binding:"required"`
+	RequireMFA           *bool     `json:"require_mfa,omitempty" description:"Exiger la double authentification de toute personne qui agit sur l'organisation et ses projets"`
+	AllowedMemberDomains *[]string `json:"allowed_member_domains,omitempty" description:"Seules les personnes de ces domaines peuvent recevoir un accès (liste vide : tout le monde). Les accès déjà donnés restent."`
+	DisableKeyCreation   *bool     `json:"disable_key_creation,omitempty" description:"Interdire les nouvelles clés de compte de service (la fédération d'identité reste possible)"`
+	DataAccessLogs       *bool     `json:"data_access_logs,omitempty" description:"Inscrire au journal d'audit les lectures de données (logs, variables, identifiants)"`
 }
 
 func (h *Controller) GetOrgSecurityPolicy(c *gin.Context, in *OrgPath) (*iam.OrgSecurityPolicy, error) {
@@ -77,5 +81,6 @@ func (h *Controller) SetOrgSecurityPolicy(c *gin.Context, in *SetOrgSecurityPoli
 	if err != nil {
 		return nil, err
 	}
-	return h.OrgPolicies.SetRequireMFA(c.Request.Context(), p, id[0], in.RequireMFA)
+	return h.OrgPolicies.Update(c.Request.Context(), p, id[0], iam.OrgPolicyUpdate{RequireMFA: in.RequireMFA,
+		AllowedMemberDomains: in.AllowedMemberDomains, DisableKeyCreation: in.DisableKeyCreation, DataAccessLogs: in.DataAccessLogs})
 }

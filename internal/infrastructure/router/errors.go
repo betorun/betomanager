@@ -2,9 +2,11 @@ package router
 
 import (
 	"errors"
+	"net/http"
+
+	"github.com/thekrauss/kubemanager/internal/auth/sso"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
@@ -78,6 +80,12 @@ var sentinelErrors = []sentinelMapping{
 	{identitySvc.ErrInvalidPKCE, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{identitySvc.ErrDeviceCodeUnknown, http.StatusNotFound, "DEVICE_CODE_UNKNOWN", false},
 	{auth.ErrInvalidCode, http.StatusBadRequest, "INVALID_CODE", false},
+	{auth.ErrPasskeyInvalid, http.StatusUnauthorized, "PASSKEY_INVALID", false},
+	{auth.ErrPasskeyUnavailable, http.StatusServiceUnavailable, "PASSKEYS_UNAVAILABLE", false},
+	{auth.ErrPasskeyNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{auth.ErrPasskeyLimit, http.StatusConflict, "PASSKEY_LIMIT", false},
+	{auth.ErrPasskeyName, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{identitySvc.ErrCeremonyExpired, http.StatusUnauthorized, "PASSKEY_EXPIRED", false},
 	{workloadsDomain.ErrDomainNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{workloadsDomain.ErrDomainExists, http.StatusConflict, "CONFLICT", false},
 	{workloadsDomain.ErrDomainClaimed, http.StatusConflict, "DOMAIN_CLAIMED", false},
@@ -105,6 +113,7 @@ var sentinelErrors = []sentinelMapping{
 	{workloadsDomain.ErrSingleInstance, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrInvalidWaitFor, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrManaged, http.StatusConflict, "MANAGED_BY_SERVICE", false},
+	{workloadsDomain.ErrDiskResizeRoute, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrInvalidTimeZone, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrMaxDuration, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrStartupTimeout, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
@@ -210,6 +219,26 @@ var sentinelErrors = []sentinelMapping{
 	{iam.ErrDenyPolicyLockout, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{iam.ErrInvalidDenyPermission, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{iam.ErrMFANotConfigured, http.StatusConflict, "FAILED_PRECONDITION", false},
+	{iam.ErrInvalidDomain, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
+	{sso.ErrNoSSO, http.StatusNotFound, "SSO_NOT_CONFIGURED", false},
+	{sso.ErrNotConfigured, http.StatusNotFound, "SSO_NOT_CONFIGURED", false},
+	{sso.ErrSSORequired, http.StatusForbidden, "SSO_REQUIRED", false},
+	{sso.ErrEmailDomain, http.StatusForbidden, "SSO_EMAIL_DOMAIN", false},
+	{sso.ErrProviderRefused, http.StatusUnauthorized, "SSO_REFUSED", false},
+	{sso.ErrDiscovery, http.StatusBadRequest, "SSO_DISCOVERY_FAILED", false},
+	{sso.ErrInvalidIssuer, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{sso.ErrClientID, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{sso.ErrClientSecret, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{sso.ErrJITRole, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{sso.ErrEnforceUntested, http.StatusConflict, "FAILED_PRECONDITION", false},
+	{sso.ErrDomainTaken, http.StatusConflict, "ALREADY_EXISTS", false},
+	{sso.ErrDomainUnproven, http.StatusConflict, "FAILED_PRECONDITION", false},
+	{sso.ErrDomainNotFound, http.StatusNotFound, "NOT_FOUND", false},
+	{sso.ErrTooManyDomains, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{iam.ErrTooManyDomains, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{iam.ErrPublicMemberNotAllowed, http.StatusForbidden, "ORG_POLICY_VIOLATION", false},
+	{iam.ErrMemberDomainNotAllowed, http.StatusForbidden, "ORG_POLICY_VIOLATION", true},
+	{iam.ErrKeyCreationDisabled, http.StatusForbidden, "ORG_POLICY_VIOLATION", false},
 	{iam.ErrInvalidIssuer, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{iam.ErrInvalidSubjectPattern, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{iam.ErrSubjectTooBroad, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},

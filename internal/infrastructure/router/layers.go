@@ -31,7 +31,7 @@ import (
 func (a *App) initDomainLayers() error {
 	a.Logger.Info("Initializing domain layers...")
 
-	policies := &iam.PolicyService{DB: a.DB, Engine: a.IAM, Notify: a.membershipNotifier()}
+	policies := &iam.PolicyService{DB: a.DB, Engine: a.IAM, Notify: a.membershipNotifier(), Members: a.OrgPolicies}
 	rbacService := authSvc.NewRBACService(a.Repos.Auth, a.Logger)
 	rbacService.Policies = policies
 	apiKeyService := authSvc.NewAPIKeyService(
@@ -79,18 +79,15 @@ func (a *App) initDomainLayers() error {
 	var authController *identityCtrl.AuthController
 	if a.Keycloak != nil {
 		deps := identitySvc.Deps{
-			Keycloak:            a.Keycloak,
-			Users:               a.Repos.Auth,
-			Projects:            projectService,
-			ProjectMembers:      a.Repos.Auth,
-			OIDCClientID:        a.Config.Keycloak.ClientID,
-			ActionEmailClientID: a.Config.Keycloak.ClientID,
-			FrontendBaseURL:     a.Config.Frontend.BaseURL,
-			SocialRedirectURI:   a.Config.Keycloak.SocialRedirectURI,
-			Cache:               a.AuthCache,
-			StateStore:          a.Cache, // Redis : cross-instance OK (fix H9)
-			StepUpACR:           firstOrEmpty(a.Config.IAM.MFAACRValues),
-			CLIClientID:         a.Config.Keycloak.CLIClientID,
+			Keycloak:          a.Keycloak,
+			Users:             a.Repos.Auth,
+			Projects:          projectService,
+			ProjectMembers:    a.Repos.Auth,
+			OIDCClientID:      a.Config.Keycloak.ClientID,
+			FrontendBaseURL:   a.Config.Frontend.BaseURL,
+			SocialRedirectURI: a.Config.Keycloak.SocialRedirectURI,
+			Cache:             a.AuthCache,
+			StateStore:        a.Cache, // Redis : cross-instance OK (fix H9)
 		}
 		if err := a.authDeps(&deps); err != nil {
 			return err
@@ -211,22 +208,18 @@ func (a *App) initDomainLayers() error {
 		Databases:   a.newDatabasesController(),
 		Addons:      a.newAddonsController(),
 		DiskUsage:   a.newDiskUsageController(),
+		DiskResize:  a.newDiskResizeController(),
+		Alerts:      a.newAlertsController(),
 	}
 
 	a.Logger.Info("Domain layers successfully initialized.")
 	return nil
 }
 
-func firstOrEmpty(list []string) string {
-	if len(list) == 0 {
-		return ""
-	}
-	return list[0]
-}
-
 func (a *App) newIAMController(policies *iam.PolicyService) *iamapi.Controller {
 	ctrl := iamapi.NewController(policies, a.IAM, a.ServiceAccounts, a.ClusterAgents, a.STS)
 	ctrl.OrgPolicies = a.OrgPolicies
+	ctrl.SSO = a.SSO
 	ctrl.MFA = iamapi.MFASettings{ACRValues: a.Config.IAM.MFAACRValues, MaxAge: a.stepUpMaxAge()}
 	return ctrl
 }

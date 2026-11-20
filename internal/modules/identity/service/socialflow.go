@@ -192,6 +192,9 @@ func (s *service) resolveSocialUser(ctx context.Context, p *social.Profile) (uui
 
 // completeLogin : session ouverte, ou second facteur demandé s'il est actif.
 func (s *service) completeLogin(ctx context.Context, userID uuid.UUID, subject string, amr []string, kind string, cl Client) (*identitytypes.AuthResponse, error) {
+	if err := s.checkSSORequired(ctx, userID, amr); err != nil {
+		return nil, err
+	}
 	hasFactor, err := s.factors.HasFactor(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -205,7 +208,7 @@ func (s *service) completeLogin(ctx context.Context, userID uuid.UUID, subject s
 		if err := s.stateStore.SetValue(ctx, "auth:mfa:"+challenge, string(raw), mfaChallengeTTL); err != nil {
 			return nil, ErrAuthUnavailable
 		}
-		return &identitytypes.AuthResponse{Status: identitytypes.AuthStatusMFARequired, Challenge: challenge}, nil
+		return &identitytypes.AuthResponse{Status: identitytypes.AuthStatusMFARequired, Challenge: challenge, Methods: s.mfaMethods(ctx, userID)}, nil
 	}
 	t, err := s.sessions.Create(ctx, auth.NewSession{UserID: userID, Kind: kind, AMR: amr, IP: cl.IP, UserAgent: cl.UserAgent})
 	if err != nil {

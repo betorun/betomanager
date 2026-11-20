@@ -32,6 +32,8 @@ type GlobalConfig struct {
 	Frontend    FrontendConfig `mapstructure:"frontend"`
 	// Social : connexion avec Google / GitHub (applications OAuth de betorun).
 	Social       SocialConfig       `mapstructure:"social"`
+	// SSO : connexion d'entreprise par organisation (iam.md §9.2).
+	SSO SSOConfig `mapstructure:"sso"`
 	Roles        RolesConfig        `mapstructure:"roles"`
 	Kubernetes   KubernetesConfig   `mapstructure:"kubernetes"`
 	Vps          Vps                `mapstructure:"vps"`
@@ -396,26 +398,24 @@ type AuditConfig struct {
 }
 
 type KeycloakConfig struct {
-	Enabled           bool          `mapstructure:"enabled"`
-	IssuerURL         string        `mapstructure:"issuer_url"`
-	JWKSURL           string        `mapstructure:"jwks_url"`
-	Audience          string        `mapstructure:"audience"`
-	ClientID          string        `mapstructure:"client_id"`
-	ClientSecret      string        `mapstructure:"client_secret"`
-	Realm             string        `mapstructure:"realm"`
-	AdminBaseURL      string        `mapstructure:"admin_base_url"`
-	AdminRealm        string        `mapstructure:"admin_realm"`
-	AdminClientID     string        `mapstructure:"admin_client_id"`
-	AdminClientSecret string        `mapstructure:"admin_client_secret"`
-	StrictAudience    bool          `mapstructure:"strict_audience"`
+	Enabled           bool   `mapstructure:"enabled"`
+	IssuerURL         string `mapstructure:"issuer_url"`
+	JWKSURL           string `mapstructure:"jwks_url"`
+	Audience          string `mapstructure:"audience"`
+	ClientID          string `mapstructure:"client_id"`
+	ClientSecret      string `mapstructure:"client_secret"`
+	Realm             string `mapstructure:"realm"`
+	AdminBaseURL      string `mapstructure:"admin_base_url"`
+	AdminRealm        string `mapstructure:"admin_realm"`
+	AdminClientID     string `mapstructure:"admin_client_id"`
+	AdminClientSecret string `mapstructure:"admin_client_secret"`
+	StrictAudience    bool   `mapstructure:"strict_audience"`
+	// AcceptUserTokens : accepter un jeton Keycloak en Bearer. Faux par
+	// défaut : les humains n'utilisent que des sessions betorun
+	// (docs/architecture/auth.md §11). Vrai seulement pour les tests locaux.
+	AcceptUserTokens  bool          `mapstructure:"accept_user_tokens"`
 	HTTPTimeout       time.Duration `mapstructure:"http_timeout"`
 	SocialRedirectURI string        `mapstructure:"social_redirect_uri"`
-	// WebClientID : client public Keycloak (PKCE S256) utilisé pour les flux
-	// Authorization Code (login hébergé + social). Vide = client admin.
-	WebClientID string `mapstructure:"web_client_id"`
-	// CLIClientID : client Keycloak public de la CLI, avec « OAuth 2.0 Device
-	// Authorization Grant » activé. Vide : connexion de la CLI désactivée.
-	CLIClientID string `mapstructure:"cli_client_id"`
 	// AuthClientID / AuthClientSecret : client confidentiel réservé au
 	// backend, qui vérifie les mots de passe (docs/architecture/auth.md §5).
 	// Jamais exposé : le navigateur et la CLI ne parlent qu'à l'API betorun.
@@ -586,6 +586,13 @@ type Vps struct {
 type SocialConfig struct {
 	Google SocialProviderConfig `mapstructure:"google"`
 	GitHub SocialProviderConfig `mapstructure:"github"`
+}
+
+// SSOConfig : fournisseurs d'identité des organisations.
+type SSOConfig struct {
+	// AllowInsecureIssuers : accepter http et les adresses internes
+	// (Keycloak local). Jamais en production : protection SSRF.
+	AllowInsecureIssuers bool `mapstructure:"allow_insecure_issuers"`
 }
 
 type SocialProviderConfig struct {

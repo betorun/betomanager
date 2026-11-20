@@ -137,6 +137,9 @@ func (s *ServiceAccountService) CreateSAKey(ctx context.Context, caller Principa
 	if !d.Allowed {
 		return nil, ErrActAsRequired
 	}
+	if err := s.checkKeyPolicy(ctx, sa.Resource); err != nil {
+		return nil, err
+	}
 	return s.createSAKey(ctx, s.DB, sa.ID, string(caller), req, keyFileMeta{ProjectID: projectID.String()})
 }
 

@@ -60,6 +60,32 @@ type PolicyService struct {
 	Engine *Engine
 	// Notify : e-mail aux personnes dont les accès changent (nil : aucun).
 	Notify MembershipNotifier
+	// Members : politiques d'organisation sur les nouveaux membres (nil : aucune).
+	Members MemberGuard
+}
+
+// MemberGuard : contrôle des nouveaux membres d'une ressource (domaines
+// autorisés de l'organisation, iam.md §13).
+type MemberGuard interface {
+	CheckMembers(ctx context.Context, r ResourceName, added []Principal) error
+}
+
+// addedPrincipals : membres de next absents de la policy courante.
+func addedPrincipals(current *Policy, next []Binding) []Principal {
+	had := map[Principal]bool{}
+	for _, pb := range current.Bindings {
+		for _, m := range pb.Members {
+			had[m] = true
+		}
+	}
+	var out []Principal
+	for _, b := range next {
+		if !had[b.Principal] {
+			had[b.Principal] = true
+			out = append(out, b.Principal)
+		}
+	}
+	return out
 }
 
 // GetPolicyPermission : permission pour lire la policy de r.
@@ -138,6 +164,11 @@ func (s *PolicyService) Set(ctx context.Context, caller Principal, r ResourceNam
 		}
 		if err := s.checkNoEscalation(ctx, caller, r, current, bindings); err != nil {
 			return err
+		}
+		if s.Members != nil {
+			if err := s.Members.CheckMembers(ctx, r, addedPrincipals(current, bindings)); err != nil {
+				return err
+			}
 		}
 		if needsOwner(r) && !hasUserOwner(bindings) {
 			return ErrLastOwner

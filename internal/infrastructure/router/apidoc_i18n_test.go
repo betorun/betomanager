@@ -11,8 +11,10 @@ import (
 	"testing"
 
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
+	"github.com/thekrauss/kubemanager/internal/modules/alerts"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
@@ -76,6 +78,8 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Databases:   &databases.Controller{},
 				Addons:      &addons.Controller{},
 				DiskUsage:   &diskusage.Controller{},
+				DiskResize:  &diskresize.Controller{},
+				Alerts:      &alerts.Controller{},
 			},
 		}
 		docFizz = fizz.NewFromEngine(gin.New())

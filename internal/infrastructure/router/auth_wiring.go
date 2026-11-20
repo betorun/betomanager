@@ -2,9 +2,12 @@ package router
 
 import (
 	"fmt"
+	"net"
+	"strings"
 
 	"github.com/thekrauss/kubemanager/internal/auth"
 	"github.com/thekrauss/kubemanager/internal/auth/social"
+	"github.com/thekrauss/kubemanager/internal/auth/sso"
 	"github.com/thekrauss/kubemanager/internal/core/configs"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
 )
@@ -22,12 +25,24 @@ func (a *App) authDeps(deps *identitySvc.Deps) error {
 	}
 	deps.Sessions = &auth.Sessions{DB: a.DB, Minter: a.STS}
 	deps.Factors = &auth.Factors{DB: a.DB, Sealer: sealer, Pepper: []byte(a.Config.IAM.APIKeyPepper)}
+	deps.Factors.Passkeys = &auth.Passkeys{DB: a.DB}
+	if wa, err := auth.NewWebAuthn(deps.FrontendBaseURL); err == nil {
+		deps.Factors.Passkeys.WebAuthn = wa
+	} else {
+		a.Logger.Warnw("auth: passkeys disabled (console address missing or invalid)", "error", err)
+	}
 	deps.EmailTokens = &auth.EmailTokens{DB: a.DB}
 	deps.Limiter = a.Cache
 	deps.Logger = a.Logger
 	deps.Identities = &auth.Identities{DB: a.DB}
 	deps.Devices = &auth.Devices{DB: a.DB}
 	deps.SocialProviders = socialProviders(a.Config.Social)
+	if a.Config.SSO.AllowInsecureIssuers {
+		a.Logger.Warnw("sso: insecure identity providers allowed (http, private addresses) — local development only")
+	}
+	a.SSO = &sso.Store{DB: a.DB, Sealer: sealer, OIDC: sso.NewOIDC(a.Config.SSO.AllowInsecureIssuers),
+		Resolver: net.DefaultResolver, RedirectURI: strings.TrimRight(deps.FrontendBaseURL, "/") + "/auth/sso/callback"}
+	deps.SSO = a.SSO
 
 	sender, err := a.mailSender()
 	if err != nil {

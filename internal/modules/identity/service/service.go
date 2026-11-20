@@ -12,6 +12,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/auth"
 	"github.com/thekrauss/kubemanager/internal/auth/social"
+	"github.com/thekrauss/kubemanager/internal/auth/sso"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/mail"
 
 	"github.com/thekrauss/kubemanager/internal/core/cache"
@@ -67,8 +68,6 @@ type Service interface {
 	BootstrapStatus(ctx context.Context, principal BootstrapPrincipal) (*identitytypes.BootstrapStatusResponse, error)
 
 	// Auth classique
-	Logout(ctx context.Context, refreshToken string) error
-	RefreshToken(ctx context.Context, refreshToken string) (*keycloakadmin.TokenPair, error)
 
 	// Connexion de la CLI (docs/architecture/auth.md §9).
 	CLIAuthorizeURL(ctx context.Context, q identitytypes.CLIAuthorizeQuery) (*identitytypes.URLResponse, error)
@@ -83,6 +82,9 @@ type Service interface {
 	SocialProviders() []string
 	SocialAuthorizeURL(ctx context.Context, provider string) (*identitytypes.URLResponse, error)
 	SocialCallback(ctx context.Context, provider string, in identitytypes.SocialCallbackRequest, cl Client) (*identitytypes.AuthResponse, error)
+	SSOStart(ctx context.Context, in identitytypes.SSOStartRequest, cl Client) (*identitytypes.URLResponse, error)
+	SSOCallback(ctx context.Context, in identitytypes.SSOCallbackRequest, cl Client) (*identitytypes.AuthResponse, error)
+	SSORedirectURI() string
 	ListIdentities(ctx context.Context, userID uuid.UUID) ([]auth.LinkedIdentity, error)
 	UnlinkIdentity(ctx context.Context, userID, sessionID uuid.UUID, subject, provider string) error
 
@@ -101,6 +103,19 @@ type Service interface {
 	ConfirmTOTP(ctx context.Context, userID, sessionID uuid.UUID, code string) (*identitytypes.RecoveryCodesResponse, error)
 	DisableTOTP(ctx context.Context, userID, sessionID uuid.UUID) error
 	RegenerateRecoveryCodes(ctx context.Context, userID, sessionID uuid.UUID) (*identitytypes.RecoveryCodesResponse, error)
+
+	// Passkeys (WebAuthn).
+	ListPasskeys(ctx context.Context, userID uuid.UUID) ([]auth.Passkey, error)
+	BeginPasskeyRegistration(ctx context.Context, userID, sessionID uuid.UUID) (*identitytypes.PasskeyOptions, error)
+	FinishPasskeyRegistration(ctx context.Context, userID, sessionID uuid.UUID, in identitytypes.PasskeyRegisterRequest) (*identitytypes.PasskeyRegistered, error)
+	RenamePasskey(ctx context.Context, userID, id uuid.UUID, name string) error
+	RemovePasskey(ctx context.Context, userID, sessionID, id uuid.UUID) error
+	BeginPasskeyLogin(ctx context.Context, cl Client) (*identitytypes.PasskeyOptions, error)
+	FinishPasskeyLogin(ctx context.Context, in identitytypes.PasskeyLoginRequest, cl Client) (*identitytypes.AuthResponse, error)
+	BeginPasskeyMFA(ctx context.Context, challenge string) (*identitytypes.PasskeyOptions, error)
+	FinishPasskeyMFA(ctx context.Context, in identitytypes.PasskeyMFARequest, cl Client) (*identitytypes.AuthResponse, error)
+	BeginPasskeyStepUp(ctx context.Context, userID, sessionID uuid.UUID) (*identitytypes.PasskeyOptions, error)
+	FinishPasskeyStepUp(ctx context.Context, userID, sessionID uuid.UUID, in identitytypes.PasskeyStepUpRequest) (*identitytypes.AuthResponse, error)
 
 	RegisterAccount(ctx context.Context, req identitytypes.RegisterRequest, cl Client) (*identitytypes.RegisterResponse, error)
 	VerifyEmail(ctx context.Context, token string) error
@@ -124,18 +139,15 @@ type StateStore interface {
 }
 
 type Deps struct {
-	Keycloak            keycloakadmin.KeycloakClient
-	Users               authrepos.AuthRepository
-	Projects            projectsSvc.IProjectService
-	ProjectMembers      authrepos.AuthRepository
-	OIDCClientID        string
-	ActionEmailClientID string // client_id public pour les liens de reset/verify email
-	FrontendBaseURL     string
-	SocialRedirectURI   string          // redirect URI par défaut pour les flux sociaux
-	Cache               cache.AuthCache // legacy — conservé pour compat (non utilisé pour state)
-	StateStore          StateStore      // store distribué du state CSRF (fix H9 : Redis)
-	StepUpACR           string          // acr_values demandé pour un step-up (ex. "gold") ; vide : MFA non configuré
-	CLIClientID         string          // client Keycloak public de la CLI (flux device) ; vide : désactivé
+	Keycloak          keycloakadmin.KeycloakClient
+	Users             authrepos.AuthRepository
+	Projects          projectsSvc.IProjectService
+	ProjectMembers    authrepos.AuthRepository
+	OIDCClientID      string
+	FrontendBaseURL   string
+	SocialRedirectURI string          // redirect URI par défaut pour les flux sociaux
+	Cache             cache.AuthCache // legacy — conservé pour compat (non utilisé pour state)
+	StateStore        StateStore      // store distribué du state CSRF (fix H9 : Redis)
 
 	// Authentification gérée par betorun (docs/architecture/auth.md).
 	Sessions    *auth.Sessions
@@ -149,55 +161,53 @@ type Deps struct {
 	Identities      *auth.Identities
 	// Devices : appareils connus (e-mail « nouvelle connexion ») ; nil : pas d'e-mail.
 	Devices *auth.Devices
+	// SSO : connexion d'entreprise par organisation (nil : indisponible).
+	SSO *sso.Store
 }
 
 type service struct {
-	keycloak            keycloakadmin.KeycloakClient
-	users               authrepos.AuthRepository
-	projects            projectsSvc.IProjectService
-	projectMembers      authrepos.AuthRepository
-	oidcClientID        string
-	actionEmailClientID string
-	frontendBaseURL     string
-	socialRedirectURI   string
-	cache               cache.AuthCache
-	stateStore          StateStore
-	stepUpACR           string
-	cliClientID         string
-	sessions            *auth.Sessions
-	factors             *auth.Factors
-	emailTokens         *auth.EmailTokens
-	mailer              mail.Sender
-	limiter             Limiter
-	logger              *zap.SugaredLogger
-	socialProviders     map[string]social.Provider
-	identities          *auth.Identities
-	devices             *auth.Devices
+	keycloak          keycloakadmin.KeycloakClient
+	users             authrepos.AuthRepository
+	projects          projectsSvc.IProjectService
+	projectMembers    authrepos.AuthRepository
+	oidcClientID      string
+	frontendBaseURL   string
+	socialRedirectURI string
+	cache             cache.AuthCache
+	stateStore        StateStore
+	sessions          *auth.Sessions
+	factors           *auth.Factors
+	emailTokens       *auth.EmailTokens
+	mailer            mail.Sender
+	limiter           Limiter
+	logger            *zap.SugaredLogger
+	socialProviders   map[string]social.Provider
+	identities        *auth.Identities
+	devices           *auth.Devices
+	sso               *sso.Store
 }
 
 func NewService(deps Deps) Service {
 	return &service{
-		keycloak:            deps.Keycloak,
-		users:               deps.Users,
-		projects:            deps.Projects,
-		projectMembers:      deps.ProjectMembers,
-		oidcClientID:        strings.TrimSpace(deps.OIDCClientID),
-		actionEmailClientID: strings.TrimSpace(deps.ActionEmailClientID),
-		frontendBaseURL:     strings.TrimSpace(deps.FrontendBaseURL),
-		socialRedirectURI:   strings.TrimSpace(deps.SocialRedirectURI),
-		cache:               deps.Cache,
-		stateStore:          deps.StateStore,
-		stepUpACR:           strings.TrimSpace(deps.StepUpACR),
-		cliClientID:         strings.TrimSpace(deps.CLIClientID),
-		sessions:            deps.Sessions,
-		factors:             deps.Factors,
-		emailTokens:         deps.EmailTokens,
-		mailer:              deps.Mailer,
-		limiter:             deps.Limiter,
-		logger:              deps.Logger,
-		socialProviders:     deps.SocialProviders,
-		identities:          deps.Identities,
-		devices:             deps.Devices,
+		keycloak:          deps.Keycloak,
+		users:             deps.Users,
+		projects:          deps.Projects,
+		projectMembers:    deps.ProjectMembers,
+		oidcClientID:      strings.TrimSpace(deps.OIDCClientID),
+		frontendBaseURL:   strings.TrimSpace(deps.FrontendBaseURL),
+		socialRedirectURI: strings.TrimSpace(deps.SocialRedirectURI),
+		cache:             deps.Cache,
+		stateStore:        deps.StateStore,
+		sessions:          deps.Sessions,
+		factors:           deps.Factors,
+		emailTokens:       deps.EmailTokens,
+		mailer:            deps.Mailer,
+		limiter:           deps.Limiter,
+		logger:            deps.Logger,
+		socialProviders:   deps.SocialProviders,
+		identities:        deps.Identities,
+		devices:           deps.Devices,
+		sso:               deps.SSO,
 	}
 }
 

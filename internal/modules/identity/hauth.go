@@ -179,6 +179,14 @@ func (a *AuthController) SocialCallback(c *gin.Context, in *identitytypes.Social
 	return a.service.SocialCallback(c.Request.Context(), in.Provider, *in, clientOf(c))
 }
 
+func (a *AuthController) SSOStart(c *gin.Context, in *identitytypes.SSOStartRequest) (*identitytypes.URLResponse, error) {
+	return a.service.SSOStart(c.Request.Context(), *in, clientOf(c))
+}
+
+func (a *AuthController) SSOCallback(c *gin.Context, in *identitytypes.SSOCallbackRequest) (*identitytypes.AuthResponse, error) {
+	return a.service.SSOCallback(c.Request.Context(), *in, clientOf(c))
+}
+
 func (a *AuthController) ListIdentities(c *gin.Context) ([]auth.LinkedIdentity, error) {
 	user, _, err := session(c)
 	if err != nil {
@@ -193,4 +201,94 @@ func (a *AuthController) UnlinkIdentity(c *gin.Context, in *identitytypes.Social
 		return err
 	}
 	return a.service.UnlinkIdentity(c.Request.Context(), user, sid, c.GetString("userID"), in.Provider)
+}
+
+// ── Passkeys (WebAuthn) ──
+
+func (a *AuthController) ListPasskeys(c *gin.Context) ([]auth.Passkey, error) {
+	user, _, err := session(c)
+	if err != nil {
+		return nil, err
+	}
+	return a.service.ListPasskeys(c.Request.Context(), user)
+}
+
+func (a *AuthController) PasskeyRegistrationOptions(c *gin.Context) (*identitytypes.PasskeyOptions, error) {
+	user, sid, err := session(c)
+	if err != nil {
+		return nil, err
+	}
+	return a.service.BeginPasskeyRegistration(c.Request.Context(), user, sid)
+}
+
+func (a *AuthController) RegisterPasskey(c *gin.Context, in *identitytypes.PasskeyRegisterRequest) (*identitytypes.PasskeyRegistered, error) {
+	user, sid, err := session(c)
+	if err != nil {
+		return nil, err
+	}
+	return a.service.FinishPasskeyRegistration(c.Request.Context(), user, sid, *in)
+}
+
+func passkeyID(raw string) (uuid.UUID, error) {
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, auth.ErrPasskeyNotFound
+	}
+	return id, nil
+}
+
+func (a *AuthController) RenamePasskey(c *gin.Context, in *identitytypes.PasskeyRenameRequest) error {
+	user, _, err := session(c)
+	if err != nil {
+		return err
+	}
+	id, err := passkeyID(in.ID)
+	if err != nil {
+		return err
+	}
+	return a.service.RenamePasskey(c.Request.Context(), user, id, in.Name)
+}
+
+func (a *AuthController) RemovePasskey(c *gin.Context, in *identitytypes.PasskeyPath) error {
+	user, sid, err := session(c)
+	if err != nil {
+		return err
+	}
+	id, err := passkeyID(in.ID)
+	if err != nil {
+		return err
+	}
+	return a.service.RemovePasskey(c.Request.Context(), user, sid, id)
+}
+
+func (a *AuthController) PasskeyLoginOptions(c *gin.Context, _ *identitytypes.PasskeyLoginOptionsRequest) (*identitytypes.PasskeyOptions, error) {
+	return a.service.BeginPasskeyLogin(c.Request.Context(), clientOf(c))
+}
+
+func (a *AuthController) PasskeyLogin(c *gin.Context, in *identitytypes.PasskeyLoginRequest) (*identitytypes.AuthResponse, error) {
+	return a.service.FinishPasskeyLogin(c.Request.Context(), *in, clientOf(c))
+}
+
+func (a *AuthController) PasskeyMFAOptions(c *gin.Context, in *identitytypes.PasskeyMFAOptionsRequest) (*identitytypes.PasskeyOptions, error) {
+	return a.service.BeginPasskeyMFA(c.Request.Context(), in.Challenge)
+}
+
+func (a *AuthController) PasskeyMFA(c *gin.Context, in *identitytypes.PasskeyMFARequest) (*identitytypes.AuthResponse, error) {
+	return a.service.FinishPasskeyMFA(c.Request.Context(), *in, clientOf(c))
+}
+
+func (a *AuthController) PasskeyStepUpOptions(c *gin.Context) (*identitytypes.PasskeyOptions, error) {
+	user, sid, err := session(c)
+	if err != nil {
+		return nil, err
+	}
+	return a.service.BeginPasskeyStepUp(c.Request.Context(), user, sid)
+}
+
+func (a *AuthController) PasskeyStepUp(c *gin.Context, in *identitytypes.PasskeyStepUpRequest) (*identitytypes.AuthResponse, error) {
+	user, sid, err := session(c)
+	if err != nil {
+		return nil, err
+	}
+	return a.service.FinishPasskeyStepUp(c.Request.Context(), user, sid, *in)
 }
