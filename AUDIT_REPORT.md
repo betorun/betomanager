@@ -5,7 +5,7 @@ Go 1.27.4, module `github.com/thekrauss/kubemanager`.
 
 ## 1. Résumé
 
-1. 27 commits, un par correction : 17 corrections (`fix`), 1 ajout (`Spawner`), 2 renforcements de tests, 7 nettoyages (style, code mort, lint). Les 5 derniers ont été faits le 2026-11-20 au matin, à la demande, après la nuit.
+1. 33 commits, un par correction : 21 corrections (`fix`), 1 ajout (`Spawner`), 2 renforcements de tests, 9 nettoyages (style, code mort, lint, dépendances). Les 11 derniers ont été faits le 2026-11-20 au matin, à la demande, après la nuit.
 2. Concurrence : panique « send on closed channel » dans le pool de workers quand `Submit` croise `Shutdown` (corrigé, test `-race`).
 3. Concurrence : l'accumulateur d'usage pouvait lancer des centaines de flushs simultanés sous charge (334 mesurés) ; il n'en lance plus qu'un.
 4. Arrêt propre : les tâches de fond (synchro IAM, rotation STS, purges, boucles du worker) tournaient sur `context.Background()` et n'étaient jamais arrêtées ; elles ont maintenant un cycle de vie (annulation, attente bornée, `recover`).
@@ -13,7 +13,7 @@ Go 1.27.4, module `github.com/thekrauss/kubemanager`.
 6. Ressources : envoi SMTP sourd à l'annulation, goroutine bloquée à vie dans l'upload multipart de la CLI (gênant pour le serveur MCP), table `lastUsed` des clés API sans purge.
 7. Sécurité et robustesse : la garde de facturation `CanRun` s'ouvrait si la base renvoyait une erreur ; elle reste maintenant fermée. `publicJWK` paniquait sur une clé hors P-256 et lisait les champs X/Y dépréciés.
 8. Idiomes : `errors.Is` remplace `==` sur cinq sentinelles. Retours d'erreur toujours nuls supprimés, code mort retiré, gofmt appliqué.
-9. Outils : golangci-lint passe de 222 constats à 0, et staticcheck de 21 à 0, grâce à `.golangci.yml`, versionné et commenté. govulncheck : aucun appel vulnérable.
+9. Outils : golangci-lint passe de 222 constats à 0 (noctx activé en plus), et staticcheck de 21 à 0, grâce à `.golangci.yml`, versionné et commenté. govulncheck : plus aucune vulnérabilité, modules compris (x/crypto v0.59.0).
 10. goleak est actif sur les 15 paquets qui lancent des goroutines, tous propres. `go test -race -count=1 ./...` : 79 paquets OK, 0 échec ; build, vet, gofmt, staticcheck, golangci-lint et govulncheck au vert.
 
 ## 2. Constats
@@ -49,8 +49,14 @@ Gravité : **haute** (panique, garde de sécurité, fuite en production), **moye
 | internal/modules/alerts/alerts.go:100 | goroutine non suivie à l'arrêt | basse | corrigé | `cd5f1f5` |
 | internal/modules/addons/backup.go:237 | goroutine non suivie ; sauvegarde « en cours » pendant 7 jours après un arrêt | moyenne | corrigé | `31e7d51` |
 | internal/modules/diskresize/resize.go:222 | goroutine non suivie à l'arrêt | basse | corrigé (suivie, pas annulée) | `0206d34` |
-| identity/service/security_notice.go:28 | e-mail de sécurité non suivi à l'arrêt | basse | ouvert (voir §4) | — |
-| iam/serviceaccounts.go:443, middleware/apikey_auth.go:52, security/middleware.go:176 | écritures `last_used_at` non suivies (≤ 5 s) | basse | laissé tel quel | — |
+| identity/service/security_notice.go:28 | e-mail de sécurité non suivi à l'arrêt | basse | corrigé | `30b5884` |
+| iam/serviceaccounts.go:443 | écriture `last_used_at` non suivie | basse | corrigé | `5346d68` |
+| middleware/apikey_auth.go | middlewares jamais branchés (APIKeyAuth, RequireAPIKeyScope) | basse | supprimé | `30b0459` |
+| security/middleware.go:176 | `go func()` de secours sans pool | — | sans objet (pool toujours fourni en production) | — |
+| internal/cli/auth.go:220 | processus zombie (lanceur de navigateur sans `Wait`) | basse | corrigé | `310145d` |
+| internal/cli/browserlogin.go:48 | noctx (`net.Listen`) | basse | corrigé | `310145d` |
+| go.mod (golang.org/x/crypto) | GO-2026-5932 (module requis, non appelé) | basse | corrigé (v0.59.0) | `08067d2` |
+| internal/core/cache/factory.go, redis.go, fallback.go | cache d'auth Redis jamais branché | — | décision à prendre (§3) | — |
 | internal/core/cache/redis.go:37 | contextcheck | — | faux positif (garde `ctx == nil`) | — |
 | internal/iam/sts/federation_e2e_test.go:210 | bodyclose | — | faux positif (la requête doit échouer) | — |
 | boucles avec `time.After` (router, temporal…) | fuite de timer supposée | — | sans objet depuis Go 1.23 | — |
@@ -79,6 +85,8 @@ Gravité : **haute** (panique, garde de sécurité, fuite en production), **moye
     - double wrap `%w: %v` (social.go:193, authflow.go:131, diskresize/resize.go:305) ;
     - comparaison de sentinelle dans errors.go:330.
 11. **Nouveau constructeur `NewRistrettoAuthCacheWithSize`** pour les tests : le cache de production (1e7 compteurs, 1 Gio) met environ 1 s à se fermer sous `-race`.
+12. **Cache d'authentification Redis (`core/cache` : factory.go, redis.go, fallback.go) jamais branché** : l'application n'utilise que ristretto, local au processus. Je ne l'ai pas supprimé, car avec plusieurs instances de l'API il faudra une liste noire des JTI partagée. Deux options : le brancher, ou le supprimer. C'est un choix produit.
+13. **contextcheck non activé** : en production, tous ses constats sont des détachements voulus (`Spawner`, arrêt, pool de workers). L'activer obligerait à un `nolint` par ligne, sans rien gagner.
 
 ## 4. Problèmes non résolus
 
@@ -89,12 +97,15 @@ Les trois goroutines non suivies de la première version de ce rapport (alertes,
 - **sauvegarde manuelle** : annulée à l'arrêt, elle enregistre « interrompue » pendant que la base est encore ouverte. Après un arrêt brutal, la liste affiche « interrompue » au lieu de « en cours » pour toute copie démarrée depuis plus d'une heure (`backupStale`).
 - **redimensionnement de disque** : suivi mais jamais annulé, car couper une copie ou un échange de disque serait pire. Si l'arrêt dure plus que le délai, la reprise existante prend le relais. En le relisant, j'ai trouvé et corrigé un défaut plus grave, présent avant l'audit : une étape pouvait s'exécuter sans que sa phase soit enregistrée, et la reprise supprimait alors le disque temporaire qui portait les données (`32781ed`).
 
-Restent ouverts :
-- **E-mail de sécurité** (`identity/service/security_notice.go:28`) : il part encore dans une goroutine non suivie, si bien qu'un arrêt peut le perdre. À brancher sur le `Spawner` comme les alertes.
-- **Écritures `last_used_at`** (trois endroits, 5 s au plus) : non suivies. Perdre une mise à jour à l'arrêt est sans conséquence.
-- **noctx (81 constats, presque tous dans des tests)** et **contextcheck (10, des faux positifs pour la plupart)** : non traités. Ces linters ne font pas partie de la configuration par défaut.
-- **govulncheck** : GO-2026-5932 (`golang.org/x/crypto/openpgp`) se trouve dans un module requis, mais n'est appelé nulle part. À surveiller lors de la prochaine montée de x/crypto.
-- **Mesure de référence** : `go test -race` tournait encore quand j'ai commencé à modifier le pool de workers. La référence reste valable : elle a été prise sur un worktree séparé.
+Repris ensuite, à la demande, et clos :
+- **e-mail de sécurité** et **`last_used_at`** : passent maintenant par le `Spawner`. Le middleware `APIKeyAuth`, qui avait son propre `go func()`, n'était branché nulle part : je l'ai supprimé.
+- **noctx** : les 4 cas de la CLI sont corrigés, dont un vrai défaut (processus zombie) ; le linter est activé hors tests.
+- **contextcheck** : revu, et pas activé (§3).
+- **govulncheck** : x/crypto monté en v0.59.0, plus aucune vulnérabilité.
+
+Plus rien d'ouvert, à part les décisions du §3 (surtout `CanRun` et le cache Redis) et le sort de la branche (push ou fusion dans `dev`).
+
+Note : `go test -race` tournait encore quand j'ai commencé à modifier le pool de workers. La référence reste valable : elle a été prise sur un worktree séparé.
 
 ## 5. Recommandations d'architecture
 
@@ -110,7 +121,7 @@ Restent ouverts :
 ```sh
 cd ~/betorun/betorunapi
 git switch audit/nuit-2026-11-20
-git log --oneline dev..HEAD          # 27 commits + rapport
+git log --oneline dev..HEAD          # 33 commits + rapport
 
 # Machine à ~4 Go libres : limiter le parallélisme
 export GOMAXPROCS=3 GOFLAGS=-p=3 GOMEMLIMIT=3GiB
