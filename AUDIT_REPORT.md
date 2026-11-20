@@ -5,7 +5,7 @@ Go 1.27.4, module `github.com/thekrauss/kubemanager`.
 
 ## 1. Résumé
 
-1. 22 commits, un par correction : 13 corrections (`fix`), 2 renforcements de tests, 7 nettoyages (style, code mort, lint).
+1. 27 commits, un par correction : 17 corrections (`fix`), 1 ajout (`Spawner`), 2 renforcements de tests, 7 nettoyages (style, code mort, lint). Les 5 derniers ont été faits le 2026-11-20 au matin, à la demande, après la nuit.
 2. Concurrence : panique « send on closed channel » dans le pool de workers quand `Submit` croise `Shutdown` (corrigé, test `-race`).
 3. Concurrence : l'accumulateur d'usage pouvait lancer des centaines de flushs simultanés sous charge (334 mesurés) ; il n'en lance plus qu'un.
 4. Arrêt propre : les tâches de fond (synchro IAM, rotation STS, purges, boucles du worker) tournaient sur `context.Background()` et n'étaient jamais arrêtées ; elles ont maintenant un cycle de vie (annulation, attente bornée, `recover`).
@@ -14,7 +14,7 @@ Go 1.27.4, module `github.com/thekrauss/kubemanager`.
 7. Sécurité et robustesse : la garde de facturation `CanRun` s'ouvrait si la base renvoyait une erreur ; elle reste maintenant fermée. `publicJWK` paniquait sur une clé hors P-256 et lisait les champs X/Y dépréciés.
 8. Idiomes : `errors.Is` remplace `==` sur cinq sentinelles. Retours d'erreur toujours nuls supprimés, code mort retiré, gofmt appliqué.
 9. Outils : golangci-lint passe de 222 constats à 0, et staticcheck de 21 à 0, grâce à `.golangci.yml`, versionné et commenté. govulncheck : aucun appel vulnérable.
-10. goleak est actif sur les 15 paquets qui lancent des goroutines, tous propres. `go test -race -count=1 ./...` : 78 paquets OK, 0 échec ; build, vet, gofmt, staticcheck, golangci-lint et govulncheck au vert.
+10. goleak est actif sur les 15 paquets qui lancent des goroutines, tous propres. `go test -race -count=1 ./...` : 79 paquets OK, 0 échec ; build, vet, gofmt, staticcheck, golangci-lint et govulncheck au vert.
 
 ## 2. Constats
 
@@ -44,9 +44,13 @@ Gravité : **haute** (panique, garde de sécurité, fuite en production), **moye
 | cli/builds.go, cli/databases.go, keycloak/directory.go, github test | staticcheck QF/ST1023 | basse | corrigé | `78dcd52` |
 | internal/modules/billing/domain/plans.go:173, projects/service/limits.go:87 | S1016 | basse | conservé exprès (voir §3) | `78dcd52` |
 | 15 paquets (`leak_test.go`) | tests (goleak) | — | ajouté | `00f6aea` |
-| internal/modules/alerts/alerts.go:100 | goroutine non suivie à l'arrêt | basse | non corrigé (voir §4) | — |
-| internal/modules/addons/backup.go:237 | goroutine non suivie à l'arrêt | basse | non corrigé (voir §4) | — |
-| internal/modules/diskresize/resize.go:222 | goroutine non suivie à l'arrêt | basse | non corrigé (voir §4) | — |
+| internal/modules/diskresize/resize.go (`phase`) | perte de données possible (étape exécutée sans phase enregistrée, puis reprise destructrice) | haute | corrigé | `32781ed` |
+| internal/core/background/background.go | goroutines des modules non suivies à l'arrêt | moyenne | `Spawner` ajouté | `5c48a26` |
+| internal/modules/alerts/alerts.go:100 | goroutine non suivie à l'arrêt | basse | corrigé | `cd5f1f5` |
+| internal/modules/addons/backup.go:237 | goroutine non suivie ; sauvegarde « en cours » pendant 7 jours après un arrêt | moyenne | corrigé | `31e7d51` |
+| internal/modules/diskresize/resize.go:222 | goroutine non suivie à l'arrêt | basse | corrigé (suivie, pas annulée) | `0206d34` |
+| identity/service/security_notice.go:28 | e-mail de sécurité non suivi à l'arrêt | basse | ouvert (voir §4) | — |
+| iam/serviceaccounts.go:443, middleware/apikey_auth.go:52, security/middleware.go:176 | écritures `last_used_at` non suivies (≤ 5 s) | basse | laissé tel quel | — |
 | internal/core/cache/redis.go:37 | contextcheck | — | faux positif (garde `ctx == nil`) | — |
 | internal/iam/sts/federation_e2e_test.go:210 | bodyclose | — | faux positif (la requête doit échouer) | — |
 | boucles avec `time.After` (router, temporal…) | fuite de timer supposée | — | sans objet depuis Go 1.23 | — |
@@ -78,22 +82,23 @@ Gravité : **haute** (panique, garde de sécurité, fuite en production), **moye
 
 ## 4. Problèmes non résolus
 
-Aucune correction n'a été annulée : aucune n'a demandé trois tentatives. Restent ouverts, en connaissance de cause :
+Aucune correction n'a été annulée : aucune n'a demandé trois tentatives.
 
-- **Goroutines non suivies à l'arrêt** :
-  - `alerts.Notifier.run` (alerts.go:100) ;
-  - la sauvegarde manuelle (addons/backup.go:237) ;
-  - le redimensionnement de disque (diskresize/resize.go:222).
+Les trois goroutines non suivies de la première version de ce rapport (alertes, sauvegarde manuelle, redimensionnement) sont maintenant traitées. Je les ai reprises le matin, à la demande. Choix retenus :
+- **alertes** : l'envoi est suivi par l'arrêt mais pas annulé ; il se termine dans le délai d'arrêt.
+- **sauvegarde manuelle** : annulée à l'arrêt, elle enregistre « interrompue » pendant que la base est encore ouverte. Après un arrêt brutal, la liste affiche « interrompue » au lieu de « en cours » pour toute copie démarrée depuis plus d'une heure (`backupStale`).
+- **redimensionnement de disque** : suivi mais jamais annulé, car couper une copie ou un échange de disque serait pire. Si l'arrêt dure plus que le délai, la reprise existante prend le relais. En le relisant, j'ai trouvé et corrigé un défaut plus grave, présent avant l'audit : une étape pouvait s'exécuter sans que sa phase soit enregistrée, et la reprise supprimait alors le disque temporaire qui portait les données (`32781ed`).
 
-  Toutes partent de `context.WithoutCancel`, exprès pour survivre à la requête HTTP. Les deux premières sont bornées par un délai (`sendTimeout`, `backupTimeout` + 1 min). La troisième a sa propre logique de reprise. Pour les rattacher proprement, il faudrait injecter le cycle de vie de l'App dans ces modules (§5).
-- **Sauvegarde manuelle interrompue par un arrêt** : je n'ai pas vérifié ce que devient son statut « running » au redémarrage. À contrôler côté reprise.
+Restent ouverts :
+- **E-mail de sécurité** (`identity/service/security_notice.go:28`) : il part encore dans une goroutine non suivie, si bien qu'un arrêt peut le perdre. À brancher sur le `Spawner` comme les alertes.
+- **Écritures `last_used_at`** (trois endroits, 5 s au plus) : non suivies. Perdre une mise à jour à l'arrêt est sans conséquence.
 - **noctx (81 constats, presque tous dans des tests)** et **contextcheck (10, des faux positifs pour la plupart)** : non traités. Ces linters ne font pas partie de la configuration par défaut.
-- **govulncheck** : GO-2026-5932 (`golang.org/x/crypto/openpgp`) se trouve dans un module requis, mais n'est appelé nulle part. Aucune action urgente ; à surveiller lors de la prochaine montée de x/crypto.
-- **Mesure de référence** : `go test -race` tournait encore quand j'ai commencé à modifier le pool de workers. La référence de 78 paquets OK reste valable : elle a été prise sur un worktree séparé (`dev` à `d5c6813`).
+- **govulncheck** : GO-2026-5932 (`golang.org/x/crypto/openpgp`) se trouve dans un module requis, mais n'est appelé nulle part. À surveiller lors de la prochaine montée de x/crypto.
+- **Mesure de référence** : `go test -race` tournait encore quand j'ai commencé à modifier le pool de workers. La référence reste valable : elle a été prise sur un worktree séparé.
 
 ## 5. Recommandations d'architecture
 
-1. **Un seul « spawner » injecté.** `App.goBackground` existe maintenant. Il faudrait le passer aux modules (une interface `Spawn(name, fn)`) au lieu de laisser chaque module lancer ses `go func()`. L'arrêt couvrirait alors aussi alerts, addons et diskresize.
+1. **`background.Spawner` partout.** L'interface existe et sert déjà aux alertes, aux addons et à diskresize. Tout nouveau travail en arrière-plan devrait passer par elle ; on pourrait l'imposer par une règle de lint (forbidigo sur `go func` hors `internal/core`).
 2. **Un registre de fermeture.** `shutdownInfra` ferme les ressources à la main, dans un ordre implicite. Une liste `closers` alimentée à l'initialisation (dans l'ordre inverse) éviterait les oublis du type Redis, base et cache.
 3. **Plus de client global partagé.** Le paquet `beto-shared/pkg/redis` expose un `Client` global : c'est ce qui rendait le `Close` silencieusement inutile. Le dépôt n'utilise plus ce paquet ; il faudrait l'interdire (depguard) pour ne pas y revenir.
 4. **Cache d'authentification surdimensionné.** 1e7 compteurs et 1 Gio de coût maximal pour des claims et des validations de clés. À rendre configurable et à dimensionner selon la charge réelle.
@@ -105,7 +110,7 @@ Aucune correction n'a été annulée : aucune n'a demandé trois tentatives. Res
 ```sh
 cd ~/betorun/betorunapi
 git switch audit/nuit-2026-11-20
-git log --oneline dev..HEAD          # 22 commits + ce rapport
+git log --oneline dev..HEAD          # 27 commits + rapport
 
 # Machine à ~4 Go libres : limiter le parallélisme
 export GOMAXPROCS=3 GOFLAGS=-p=3 GOMEMLIMIT=3GiB
@@ -122,4 +127,6 @@ go test -race -count=1 -run 'TestSubmitDuringShutdown|TestAccumulator_Backpressu
   ./internal/core/workerpool ./internal/modules/auth/service ./internal/infrastructure/router \
   ./internal/iam/sts ./internal/iam ./internal/cli/api
 go test -race -count=1 ./internal/modules/billing/service ./internal/infrastructure/mail
+go test -race -count=1 -run 'TestSpawner|TestNotifier_Background|TestBackup_(Shutdown|Stale)|TestResize_(Unrecorded|SpawnerTracks)' \
+  ./internal/infrastructure/router ./internal/modules/alerts ./internal/modules/addons ./internal/modules/diskresize
 ```
