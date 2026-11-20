@@ -85,7 +85,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 		docFizz = fizz.NewFromEngine(gin.New())
 		configureGenerator(docFizz)
 		AddAllRoutes(app)
-		require.NoError(t, RegisterRoutes(docFizz))
+		RegisterRoutes(docFizz)
 	})
 	require.Empty(t, docFizz.Errors(), "génération du spec")
 	return docFizz

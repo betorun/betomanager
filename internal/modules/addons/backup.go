@@ -238,7 +238,7 @@ func (s *Service) StartBackup(ctx context.Context, projectID, id uuid.UUID, acto
 		defer unlock()
 		bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), backupTimeout+time.Minute)
 		defer cancel()
-		s.runBackup(bg, t, b)
+		_ = s.runBackup(bg, t, b) // erreur déjà journalisée et enregistrée sur la sauvegarde
 	}()
 	return b, nil
 }

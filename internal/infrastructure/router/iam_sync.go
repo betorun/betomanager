@@ -32,7 +32,11 @@ func (a *App) startIAMSync(ctx context.Context) {
 
 	sub := a.Redis.Subscribe(ctx, iamInvalidateChannel)
 	a.goWith(ctx, "iam-sync", func(ctx context.Context) {
-		defer sub.Close()
+		defer func() {
+			if err := sub.Close(); err != nil {
+				a.Logger.Warnw("iam invalidation unsubscribe failed", "error", err)
+			}
+		}()
 		consumeInvalidations(ctx, sub.Channel(), origin, a.IAM.Invalidate)
 	})
 }

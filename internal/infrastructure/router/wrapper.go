@@ -84,7 +84,7 @@ func (g *RouteGroup) AddRoute(path string, method string, desc string, access Ac
 	return r
 }
 
-func RegisterSchema(router *fizz.Fizz, title, desc string, l *logrus.Entry) error {
+func RegisterSchema(router *fizz.Fizz, title, desc string, l *logrus.Entry) {
 	info := &openapi.Info{
 		Title:       title,
 		Description: desc,
@@ -128,7 +128,6 @@ func RegisterSchema(router *fizz.Fizz, title, desc string, l *logrus.Entry) erro
 	l.Infof("OpenAPI JSON: %s", openAPIPath)
 	l.Infof("Swagger UI: /swagger/")
 	l.Infof("Documentation: /docs → console")
-	return nil
 }
 
 // configureGenerator : sécurité et types du spec.
@@ -142,12 +141,11 @@ func configureGenerator(router *fizz.Fizz) {
 	_ = router.Generator().OverrideDataType(reflect.TypeOf(&uuid.UUID{}), "string", "uuid")
 }
 
-func RegisterRoutes(app *fizz.Fizz) error {
+func RegisterRoutes(app *fizz.Fizz) {
 	for _, g := range AllGroups {
 		registerGroup(app.Group(g.Path, g.tag.name, g.tag.description), g, g.Path, g.internal)
 	}
 	documentRawRoutes(app.Generator(), AllGroups)
-	return nil
 }
 
 func registerGroup(fg *fizz.RouterGroup, group *RouteGroup, absPath string, internal bool) {

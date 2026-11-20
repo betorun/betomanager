@@ -196,7 +196,7 @@ func (a *App) startHTTPServer() {
 
 	f := fizz.NewFromEngine(engine)
 
-	_ = RegisterSchema(f, apiTitle, apiDescription, logrus.NewEntry(logrus.StandardLogger()))
+	RegisterSchema(f, apiTitle, apiDescription, logrus.NewEntry(logrus.StandardLogger()))
 
 	AddAllRoutes(a)
 
