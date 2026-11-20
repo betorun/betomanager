@@ -5,7 +5,7 @@
 // jeton délégué en lecture (sts.MethodDelegated, portée read), et répond en
 // flux (SSE). Voir docs/adr/0008 (couche llm) et le plan du Copilot.
 //
-//	POST /copilot/chat                     message → flux d'événements
+//	POST /copilot/chat                     message (+ fichiers joints) → flux d'événements
 //	GET  /copilot/status                   le Copilot est-il disponible ?
 //	DELETE /copilot/conversations/:id      oublier une conversation
 package copilot
@@ -138,11 +138,12 @@ type PageContext struct {
 	SiteID     string `json:"site_id"`
 }
 
-// ChatRequest : un message.
+// ChatRequest : un message, et ses fichiers joints (voir attachments.go).
 type ChatRequest struct {
-	Message        string      `json:"message"`
-	ConversationID string      `json:"conversation_id"`
-	Page           PageContext `json:"page"`
+	Message        string       `json:"message"`
+	ConversationID string       `json:"conversation_id"`
+	Page           PageContext  `json:"page"`
+	Attachments    []Attachment `json:"attachments"`
 }
 
 const maxMessageRunes = 4000
@@ -185,13 +186,30 @@ func (h *Controller) Chat(c *gin.Context) {
 		return
 	}
 	var in ChatRequest
-	if err := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)).Decode(&in); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, maxChatBody)).Decode(&in); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			jsonError(c, http.StatusRequestEntityTooLarge, codeAttachmentsTooLarge, "attached files must total 128 KB at most")
+			return
+		}
 		jsonError(c, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
 		return
 	}
 	in.Message = strings.TrimSpace(in.Message)
+	if in.Message == "" && len(in.Attachments) > 0 {
+		in.Message = "(attached files)"
+	}
 	if in.Message == "" || len([]rune(in.Message)) > maxMessageRunes {
 		jsonError(c, http.StatusBadRequest, "INVALID_REQUEST", "the message must contain 1 to 4000 characters")
+		return
+	}
+	if err := checkAttachments(in.Attachments); err != nil {
+		var ae *attachmentError
+		status := http.StatusBadRequest
+		if errors.As(err, &ae) && ae.code == codeAttachmentsTooLarge {
+			status = http.StatusRequestEntityTooLarge
+		}
+		jsonError(c, status, ae.code, ae.message)
 		return
 	}
 	convID := in.ConversationID
@@ -241,7 +259,7 @@ func (h *Controller) Chat(c *gin.Context) {
 	turn := agent.Turn{
 		System:  agent.Prompt(s.now(), agent.Language(c.GetHeader("Accept-Language")), "", page),
 		History: store.History(stored),
-		Message: in.Message,
+		Message: withAttachments(in.Message, in.Attachments),
 		// Budget par personne et par jour (llm.Budget) : pas encore par organisation.
 		Caller: llm.Caller{OrgID: "user:" + user.String(), UserID: user.String(), TurnID: uuid.NewString()},
 	}
@@ -256,7 +274,7 @@ func (h *Controller) Chat(c *gin.Context) {
 	}
 	if res.Answer != "" {
 		// Contexte détaché : la personne a pu fermer l'onglet, l'échange a eu lieu.
-		if err := s.Store.Append(context.WithoutCancel(ctx), user.String(), convID, in.Message, res.Answer); err != nil {
+		if err := s.Store.Append(context.WithoutCancel(ctx), user.String(), convID, historyNote(in.Message, in.Attachments), res.Answer); err != nil {
 			s.Logger.Warnw("copilot: history not saved", "error", err)
 		}
 	}

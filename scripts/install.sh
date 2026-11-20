@@ -1,19 +1,19 @@
 #!/bin/sh
 # Installe la CLI betorun (Linux, macOS).
 #
-#   curl -fsSL https://raw.githubusercontent.com/thekrauss/kubemanager/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/betorun/betomanager/main/scripts/install.sh | sh
 #
 # Variables :
 #   BETORUN_VERSION      version (ex. v0.1.0) ; défaut : la dernière publiée
 #   BETORUN_INSTALL_DIR  dossier d'installation ; défaut : /usr/local/bin si
 #                        accessible en écriture, sinon ~/.local/bin
-#   BETORUN_REPO         dépôt GitHub (défaut thekrauss/kubemanager)
+#   BETORUN_REPO         dépôt GitHub (défaut betorun/betomanager)
 #   BETORUN_DOWNLOAD_URL base de téléchargement (miroir) ; défaut : GitHub Releases
 #
 # La somme SHA-256 du binaire est vérifiée avant installation.
 set -eu
 
-REPO="${BETORUN_REPO:-thekrauss/kubemanager}"
+REPO="${BETORUN_REPO:-betorun/betomanager}"
 VERSION="${BETORUN_VERSION:-}"
 
 say() { printf '%s\n' "$*"; }

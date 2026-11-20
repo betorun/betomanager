@@ -20,7 +20,7 @@ import (
 const (
 	issuerGitHub = "https://token.actions.githubusercontent.com"
 	issuerGitLab = "https://gitlab.com"
-	installCmd   = "curl -fsSL https://raw.githubusercontent.com/thekrauss/kubemanager/main/scripts/install.sh | sh"
+	installCmd   = "curl -fsSL https://raw.githubusercontent.com/betorun/betomanager/main/scripts/install.sh | sh"
 )
 
 func jsonIndent(v any) []byte {
