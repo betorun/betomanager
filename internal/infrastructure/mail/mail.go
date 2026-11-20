@@ -27,6 +27,8 @@ type Message struct {
 	Subject string
 	Text    string
 	HTML    string
+	// Unsubscribe : URL de désabonnement en un clic (RFC 8058) ; vide : aucune.
+	Unsubscribe string
 }
 
 // Sender : envoi d'un email.
@@ -140,6 +142,10 @@ func (s *SMTP) compose(to *mail.Address, m Message) ([]byte, error) {
 	header("Subject", mime.QEncoding.Encode("utf-8", m.Subject))
 	header("Date", time.Now().UTC().Format(time.RFC1123Z))
 	header("Message-ID", fmt.Sprintf("<%s@%s>", boundary[:24], domainOf(s.from.Address)))
+	if m.Unsubscribe != "" && !strings.ContainsAny(m.Unsubscribe, "\r\n<>") {
+		header("List-Unsubscribe", "<"+m.Unsubscribe+">")
+		header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+	}
 	header("MIME-Version", "1.0")
 	header("Content-Type", `multipart/alternative; boundary="`+boundary+`"`)
 	b.WriteString("\r\n")

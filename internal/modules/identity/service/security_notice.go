@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +31,17 @@ func (s *service) securityMail(ctx context.Context, userID uuid.UUID, kind email
 		user, err := s.users.GetUserByID(ctx, userID)
 		if err != nil || user == nil || user.Email == "" {
 			return
+		}
+		// Langue choisie par la personne, sinon celle de la requête.
+		switch user.Locale {
+		case "en":
+			ctx = i18n.With(ctx, i18n.EN)
+		case "fr":
+			ctx = i18n.With(ctx, i18n.FR)
+		}
+		// L'heure est écrite dans la langue retenue.
+		if at, err := time.Parse(time.RFC3339, vars["At"]); err == nil {
+			vars["When"] = whenText(ctx, at)
 		}
 		msg, err := renderEmailWith(ctx, kind, user.Email, user.FullName, link, vars)
 		if err == nil {
@@ -75,7 +87,7 @@ func (s *service) noticeLogin(ctx context.Context, userID uuid.UUID, kind, metho
 	if label == "" {
 		_, label = auth.DescribeDevice(kind, cl.UserAgent)
 	}
-	vars := map[string]string{"Device": label, "IP": ipText(cl.IP), "When": whenText(ctx, time.Now())}
+	vars := map[string]string{"Device": label, "IP": ipText(cl.IP), "At": time.Now().UTC().Format(time.RFC3339)}
 	link := s.consoleLink(pageSecurity, "")
 	switch {
 	case method == auth.MethodRecovery:
@@ -93,6 +105,9 @@ func providerTitle(provider string) string {
 		return "Google"
 	case "github":
 		return "GitHub"
+	}
+	if strings.HasPrefix(provider, "sso:") {
+		return "SSO"
 	}
 	return provider
 }

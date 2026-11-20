@@ -31,8 +31,8 @@ func (m *membershipMails) person(ctx context.Context, p iam.Principal) (alerts.R
 		return alerts.Recipient{}, false
 	}
 	var r alerts.Recipient
-	row := m.app.DB.WithContext(ctx).Raw(`SELECT email, full_name FROM users WHERE id = ? AND deleted_at IS NULL`, id).Row()
-	if err := row.Scan(&r.Email, &r.FullName); err != nil || r.Email == "" {
+	row := m.app.DB.WithContext(ctx).Raw(`SELECT id, email, full_name, locale FROM users WHERE id = ? AND deleted_at IS NULL`, id).Row()
+	if err := row.Scan(&r.ID, &r.Email, &r.FullName, &r.Locale); err != nil || r.Email == "" {
 		return alerts.Recipient{}, false
 	}
 	return r, true

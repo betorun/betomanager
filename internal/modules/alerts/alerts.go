@@ -52,6 +52,18 @@ type Notifier struct {
 	Logger     *zap.SugaredLogger
 	// Sync : envoi dans l'appel (tests) ; sinon en arrière-plan.
 	Sync bool
+	// UnsubscribeKey : signe les liens de désabonnement (vide : pas de lien).
+	UnsubscribeKey []byte
+	// APIURL : URL publique de l'API (…/kmanager/v1), pour le désabonnement
+	// en un clic des messageries ; vide : lien de la console seulement.
+	APIURL string
+	// Webhooks : envoi des alertes de projet vers Slack ou un JSON signé (nil : aucun).
+	Webhooks WebhookSender
+}
+
+// WebhookSender : WebhookService.
+type WebhookSender interface {
+	Send(ctx context.Context, project uuid.UUID, kind string, subject uuid.UUID, projectName, link string, texts map[i18n.Locale][2]string)
 }
 
 // WorkloadIncident : conteneur passé dans un statut d'incident (CRASHLOOP,
@@ -121,8 +133,17 @@ func (n *Notifier) deliver(ctx context.Context, project, subject uuid.UUID, kind
 		return
 	}
 	link := strings.TrimRight(n.ConsoleURL, "/") + page
+	if n.Webhooks != nil {
+		n.Webhooks.Send(ctx, project, kind, subject, projectName, link, webhookTexts(copies, projectName, name))
+	}
+	category := categoryOf(kind)
+	if category != "" {
+		recipients = n.withoutMuted(ctx, recipients, category)
+	}
 	for _, r := range recipients {
-		msg, err := render(ctx, copies, r, projectName, name, link)
+		unsub, oneClick := n.unsubscribeLinks(r.ID, category)
+		msg, err := renderFull(ctx, copies, r, projectName, name, link, outro, unsub)
+		msg.Unsubscribe = oneClick
 		if err == nil {
 			err = n.Mail.Send(ctx, msg)
 		}
@@ -257,6 +278,10 @@ var textLayout = texttemplate.Must(texttemplate.New("text").Parse(`{{.Title}}
 {{.Button}} : {{.Link}}
 
 {{.Outro}}
+{{- if .Unsubscribe}}
+
+{{.UnsubscribeText}} : {{.Unsubscribe}}
+{{- end}}
 
 — betorun
 `))
@@ -271,11 +296,15 @@ var htmlLayout = htmltemplate.Must(htmltemplate.New("html").Parse(`<!doctype htm
 <tr><td style="font-size:15px;line-height:1.5;padding-bottom:24px">{{.Body}}</td></tr>
 <tr><td style="padding-bottom:24px"><a href="{{.Link}}" style="display:inline-block;background:#7A1F3D;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:600">{{.Button}}</a></td></tr>
 <tr><td style="font-size:13px;line-height:1.5;color:#6b6461">{{.Outro}}</td></tr>
+{{- if .Unsubscribe}}
+<tr><td style="font-size:13px;line-height:1.5;color:#6b6461;padding-top:12px"><a href="{{.Unsubscribe}}" style="color:#6b6461">{{.UnsubscribeText}}</a></td></tr>
+{{- end}}
 </table></td></tr></table></body></html>`))
 
 var (
-	greeting = map[i18n.Locale]string{i18n.FR: "Bonjour %s,", i18n.EN: "Hello %s,"}
-	outro    = map[i18n.Locale]string{
+	greeting        = map[i18n.Locale]string{i18n.FR: "Bonjour %s,", i18n.EN: "Hello %s,"}
+	unsubscribeText = map[i18n.Locale]string{i18n.FR: "Ne plus recevoir ce type d'alertes", i18n.EN: "Stop receiving this kind of alert"}
+	outro           = map[i18n.Locale]string{
 		i18n.FR: "Vous recevez cet email parce que vous êtes propriétaire ou éditeur de ce projet. Au plus une alerte de ce type par période de quelques heures.",
 		i18n.EN: "You receive this email because you are an owner or editor of this project. At most one alert of this kind every few hours.",
 	}
@@ -289,7 +318,20 @@ func render(ctx context.Context, copies map[i18n.Locale]alertCopy, to Recipient,
 // renderWith : render avec une phrase de fin choisie (ex. alertes d'organisation).
 func renderWith(ctx context.Context, copies map[i18n.Locale]alertCopy, to Recipient, project, name, link string,
 	outro map[i18n.Locale]string) (mail.Message, error) {
+	return renderFull(ctx, copies, to, project, name, link, outro, "")
+}
+
+// renderFull : langue du destinataire s'il l'a choisie, sinon celle de ctx ;
+// unsub : lien de désabonnement (vide : aucun).
+func renderFull(ctx context.Context, copies map[i18n.Locale]alertCopy, to Recipient, project, name, link string,
+	outro map[i18n.Locale]string, unsub string) (mail.Message, error) {
 	lang := i18n.From(ctx)
+	switch to.Locale {
+	case "en":
+		lang = i18n.EN
+	case "fr":
+		lang = i18n.FR
+	}
 	if lang != i18n.EN {
 		lang = i18n.FR
 	}
@@ -308,7 +350,8 @@ func renderWith(ctx context.Context, copies map[i18n.Locale]alertCopy, to Recipi
 		who, _, _ = strings.Cut(to.Email, "@")
 	}
 	data := map[string]string{"Lang": string(lang), "Title": c.Title, "Greeting": fmt.Sprintf(greeting[lang], who),
-		"Body": body, "Button": c.Button, "Link": link, "Outro": outro[lang]}
+		"Body": body, "Button": c.Button, "Link": link, "Outro": outro[lang],
+		"Unsubscribe": unsub, "UnsubscribeText": unsubscribeText[lang]}
 	var text, html bytes.Buffer
 	if err := textLayout.Execute(&text, data); err != nil {
 		return mail.Message{}, err

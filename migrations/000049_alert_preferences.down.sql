@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS alert_mutes;
+ALTER TABLE users DROP COLUMN IF EXISTS locale;

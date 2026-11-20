@@ -1,0 +1,42 @@
+[
+ {
+  "fr": "Ce lien de désabonnement n'est pas valide",
+  "en": "this unsubscribe link is invalid"
+ },
+ {
+  "fr": "Catégorie d'alertes inconnue",
+  "en": "unknown alert category"
+ },
+ {
+  "fr": "Langue non prise en charge (fr ou en)",
+  "en": "unsupported language"
+ },
+ {
+  "fr": "Les webhooks d'alertes ne sont pas disponibles",
+  "en": "alert webhooks are not available"
+ },
+ {
+  "fr": "Appel d'une adresse privée refusé",
+  "en": "refusing to call a private address"
+ },
+ {
+  "fr": "L'adresse du webhook doit être une URL https:// publique",
+  "en": "the webhook address must be a public https:// URL"
+ },
+ {
+  "fr": "Ce projet a déjà le nombre maximal de webhooks",
+  "en": "this project already has the maximum number of webhooks"
+ },
+ {
+  "fr": "Le nom du webhook doit faire de 1 à 60 caractères",
+  "en": "webhook name must be 1 to 60 characters"
+ },
+ {
+  "fr": "Webhook introuvable",
+  "en": "webhook not found"
+ },
+ {
+  "fr": "Le type de webhook doit être slack ou json",
+  "en": "webhook type must be slack or json"
+ }
+]

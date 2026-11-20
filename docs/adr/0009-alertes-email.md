@@ -44,7 +44,9 @@ main.
 - `migrations/000024_alert_deliveries.*`
 - `internal/modules/workloads/service/recover.go`, `repository/incidents.go`
 
-## Plus tard
+## Suite (2026-11-20)
 
-Préférences d'alerte par utilisateur (désinscription), webhook/Slack, langue
-préférée enregistrée sur le compte.
+Fait : langue préférée enregistrée sur le compte (`users.locale`), coupure
+par catégorie et par personne avec lien de désabonnement en un clic
+(`List-Unsubscribe`), webhooks Slack ou JSON signé par projet. Détails dans
+[docs/modules/alerts.md](../modules/alerts.md).

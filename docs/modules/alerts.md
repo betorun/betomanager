@@ -4,7 +4,7 @@
 
 ## Modèle
 
-Le module n'expose aucune route HTTP : c'est un `Notifier` appelé par d'autres modules, et un `Store` en base.
+Le cœur est un `Notifier` appelé par d'autres modules, et un `Store` en base. Les routes HTTP du module servent aux préférences, au désabonnement et aux webhooks (voir plus bas).
 
 - **Table** `alert_deliveries (subject_id, kind, sent_at)`, clé primaire `(subject_id, kind)` (migration 000024). Une ligne par sujet et par type d'alerte ; elle sert uniquement à limiter la fréquence, y compris entre plusieurs instances de l'API et après un redémarrage.
 - **Types** (`kind`) :
@@ -32,7 +32,23 @@ Tout autre statut est ignoré sans bruit, notamment `SUPERSEDED` et `TOO_MANY_BU
 
 Contenu : titre, salutation (nom complet, sinon partie locale de l'email), corps fixe reprenant le **nom du projet** et le **nom du conteneur**, bouton vers `<frontend.url>/workloads/<id>` ou `<frontend.url>/builds/<id>`, mention « vous recevez cet email parce que vous êtes propriétaire ou éditeur ». Les noms sont insérés par `text/template` puis échappés par `html/template` dans la version HTML.
 
-Langue : celle du contexte (`i18n.From(ctx)`), anglais si `EN`, français sinon.
+Langue : celle enregistrée sur le compte du destinataire (`users.locale`, mise à jour par la console à chaque changement de langue) ; à défaut celle du contexte (`i18n.From(ctx)`), anglais si `EN`, français sinon.
+
+## Préférences, désabonnement
+
+- **Catégories** coupables par personne : `containers` (incidents de conteneur), `builds`, `disk`, `api_keys` (`categoryOf`). Table `alert_mutes (user_id, category)` (migration 000049). Les e-mails de sécurité du compte, de changement d'accès et de facturation ne se coupent pas.
+- **Routes** : `GET`/`PATCH /identity/me/preferences` (`{locale, alerts: {catégorie: bool}}`) ; `POST /alerts/unsubscribe` (public, jeton en paramètre ou dans le corps).
+- **Lien de désabonnement** dans chaque alerte d'une catégorie : jeton HMAC-SHA256 (clé dérivée du poivre des clés API, 16 octets) sur `<user>.<catégorie>`, sans expiration. Pied de l'e-mail vers la page console `/unsubscribe?token=…` ; en-têtes `List-Unsubscribe` + `List-Unsubscribe-Post: List-Unsubscribe=One-Click` vers `<builds.public_api_url>/alerts/unsubscribe?token=…` (RFC 8058, un clic dans le client de messagerie).
+- Le filtre `Store.Muted` s'applique après la réservation : une personne qui a tout coupé ne débloque pas l'envoi pour les autres.
+
+## Webhooks (Slack, JSON signé)
+
+- Table `alert_webhooks` (migration 000050), **5 par projet** au plus. L'adresse est chiffrée (`auth.Sealer`, clé `iam.sts_key_encryption_key`) ; seul un indice (`hooks.slack.com/…/abcd`) est rendu.
+- **Routes** : `GET /projects/:id/alert-webhooks` (lecture du projet), `POST`, `POST /:webhookID/test`, `DELETE /:webhookID` (modification du projet).
+- **Slack** : `{"text": "*titre*\ntexte\n<lien|projet>"}`, caractères `& < >` échappés.
+- **JSON** : `{type, project_id, project, subject_id, title, text, link, sent_at}` ; en-têtes `X-Betorun-Timestamp` et `X-Betorun-Signature: sha256=<hmac(timestamp + "." + corps)>` avec le secret `whsec_…` montré une seule fois à la création.
+- **Sécurité** : `https` seulement, pas d'identifiants dans l'adresse ; le client HTTP refuse à la connexion les adresses privées, de bouclage, locales, CGNAT et multicast (y compris après résolution DNS), ne suit pas les redirections, délai de 10 s. Dernier statut et date d'envoi gardés pour la console.
+- Les webhooks reçoivent toutes les alertes du projet (pas de préférence par catégorie), dans la langue choisie à la création.
 
 ## Accès et clés API
 
@@ -56,11 +72,11 @@ Aucun réglage propre aux alertes (périodes, nombre de destinataires) : ce sont
 
 ## Pièges
 
-- **Pas de désinscription** ni de préférence par utilisateur : tout propriétaire ou éditeur actif du projet reçoit les alertes (jusqu'à 20).
+- **Désabonnement par catégorie et par personne**, pour tous ses projets à la fois (pas par projet).
 - **Destinataires** : propriétaires et éditeurs du projet, directs ou membres d'un groupe lié au projet ; une liaison expirée (condition) est ignorée ; dédoublonnés par email, 20 au plus. Les rôles hérités de l'organisation ne sont pas lus.
 - **Build : limitation par projet**. Deux conteneurs qui échouent leur build dans l'heure ne produisent qu'une alerte, qui pointe vers le premier build.
 - **Réservation avant envoi** : si le SMTP échoue après `Claim`, la période est consommée ; l'alerte n'est pas renvoyée avant 6 h (ou 1 h).
-- **Langue** : les déclencheurs viennent d'événements du cluster ou du worker, sans langue de requête ; en pratique l'email est le plus souvent en français. La langue enregistrée sur le compte n'est pas utilisée.
+- **Langue** : un compte qui n'a jamais ouvert la console depuis l'ajout de `users.locale` n'a pas de langue : l'e-mail suit alors le contexte (souvent le français).
 - **Jamais de message brut** : ne pas ajouter au texte le message du pod, la raison Kubernetes ou un extrait de journal (chemins, variables, secrets possibles).
 - Une erreur de lecture (`Claim`, destinataires, nom du projet) est seulement journalisée : l'alerte est perdue, l'appelant n'en sait rien.
 
@@ -68,6 +84,9 @@ Aucun réglage propre aux alertes (périodes, nombre de destinataires) : ce sont
 
 - [alerts.go](../../internal/modules/alerts/alerts.go) — `Notifier`, types, périodes, textes FR/EN, gabarits.
 - [store.go](../../internal/modules/alerts/store.go) — réservation atomique, destinataires, nom du projet.
+- [preferences.go](../../internal/modules/alerts/preferences.go) — catégories, préférences, jetons de désabonnement.
+- [webhooks.go](../../internal/modules/alerts/webhooks.go) — webhooks, signature, garde contre les adresses privées.
+- [controller.go](../../internal/modules/alerts/controller.go) — routes HTTP.
 - [alerts_wiring.go](../../internal/infrastructure/router/alerts_wiring.go) — construction et conditions d'activation.
 - [clusters/service.go](../../internal/modules/clusters/service.go), [workloads/service/recover.go](../../internal/modules/workloads/service/recover.go), [builds/activities/activities.go](../../internal/modules/builds/activities/activities.go) — appelants.
 - [000024_alert_deliveries.up.sql](../../migrations/000024_alert_deliveries.up.sql) — table de limitation.

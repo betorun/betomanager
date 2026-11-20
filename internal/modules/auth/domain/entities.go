@@ -44,6 +44,8 @@ type User struct {
 	AvatarURL      string    `gorm:"type:varchar(512)"`
 	Country        string    `gorm:"type:char(2)"`
 	PhoneNumber    *string   `gorm:"type:varchar(20)"`
+	// Locale : langue des e-mails envoyés hors requête ("fr", "en", "" : non choisie).
+	Locale string `gorm:"type:varchar(5);not null;default:''"`
 
 	Role RoleType `gorm:"type:text;not null;default:'USER'"`
 

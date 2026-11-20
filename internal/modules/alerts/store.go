@@ -15,8 +15,11 @@ import (
 
 // Recipient : destinataire d'une alerte.
 type Recipient struct {
+	ID       uuid.UUID
 	Email    string
 	FullName string
+	// Locale : langue choisie par la personne ("" : celle de la requête).
+	Locale string
 }
 
 // Store : limitation de fréquence et destinataires.
@@ -33,6 +36,8 @@ type Store interface {
 	OrgRecipients(ctx context.Context, org uuid.UUID) ([]Recipient, error)
 	// OrgName : nom affiché de l'organisation.
 	OrgName(ctx context.Context, org uuid.UUID) (string, error)
+	// Muted : parmi ces personnes, celles qui ont coupé cette catégorie.
+	Muted(ctx context.Context, category string, users []uuid.UUID) (map[uuid.UUID]bool, error)
 }
 
 // maxRecipients : au-delà, les autres ne sont pas prévenus.
@@ -61,8 +66,10 @@ func (s *gormStore) Recipients(ctx context.Context, project uuid.UUID) ([]Recipi
 	// Ceux qui peuvent réparer : propriétaires et éditeurs. Les liaisons
 	// conditionnelles (expiration) sont filtrées ici, une à une.
 	var rows []struct {
+		ID        uuid.UUID
 		Email     string
 		FullName  string
+		Locale    string
 		Condition []byte
 	}
 	user := iam.KindUser + iam.PrincipalSeparator
@@ -77,7 +84,7 @@ func (s *gormStore) Recipients(ctx context.Context, project uuid.UUID) ([]Recipi
 			SELECT m.principal, b.condition FROM b
 			JOIN iam_group_members m ON b.principal = ? || m.group_id::text
 		)
-		SELECT u.email, u.full_name, p.condition FROM p
+		SELECT u.id, u.email, u.full_name, u.locale, p.condition FROM p
 		JOIN users u ON p.principal = ? || u.id::text
 		WHERE u.deleted_at IS NULL AND u.is_active
 		ORDER BY u.email`,
@@ -104,7 +111,7 @@ func (s *gormStore) Recipients(ctx context.Context, project uuid.UUID) ([]Recipi
 			continue
 		}
 		seen[r.Email] = true
-		out = append(out, Recipient{Email: r.Email, FullName: r.FullName})
+		out = append(out, Recipient{ID: r.ID, Email: r.Email, FullName: r.FullName, Locale: r.Locale})
 	}
 	return out, nil
 }
@@ -118,7 +125,7 @@ func (s *gormStore) ProjectName(ctx context.Context, project uuid.UUID) (string,
 func (s *gormStore) OrgRecipients(ctx context.Context, org uuid.UUID) ([]Recipient, error) {
 	var out []Recipient
 	err := s.db.WithContext(ctx).Raw(`
-		SELECT u.email, u.full_name FROM iam_bindings b
+		SELECT u.id, u.email, u.full_name, u.locale FROM iam_bindings b
 		JOIN users u ON b.principal = ? || u.id::text
 		WHERE b.resource_name = ? AND b.role = ? AND u.deleted_at IS NULL AND u.is_active
 		ORDER BY u.email LIMIT ?`,
@@ -131,4 +138,18 @@ func (s *gormStore) OrgName(ctx context.Context, org uuid.UUID) (string, error) 
 	var name string
 	err := s.db.WithContext(ctx).Raw(`SELECT display_name FROM organizations WHERE id = ?`, org).Scan(&name).Error
 	return name, err
+}
+
+func (s *gormStore) Muted(ctx context.Context, category string, users []uuid.UUID) (map[uuid.UUID]bool, error) {
+	out := map[uuid.UUID]bool{}
+	if len(users) == 0 {
+		return out, nil
+	}
+	var ids []uuid.UUID
+	err := s.db.WithContext(ctx).Raw(`SELECT user_id FROM alert_mutes WHERE category = ? AND user_id IN ?`, category, users).
+		Scan(&ids).Error
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, err
 }

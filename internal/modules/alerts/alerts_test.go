@@ -21,6 +21,11 @@ type fakeStore struct {
 	mu      sync.Mutex
 	claimed map[string]bool
 	owners  []Recipient
+	muted   map[string]map[uuid.UUID]bool // catégorie → personnes
+}
+
+func (f *fakeStore) Muted(_ context.Context, category string, _ []uuid.UUID) (map[uuid.UUID]bool, error) {
+	return f.muted[category], nil
 }
 
 func (f *fakeStore) Claim(_ context.Context, subject uuid.UUID, kind string, _ time.Duration) (bool, error) {
