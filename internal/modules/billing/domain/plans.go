@@ -168,7 +168,10 @@ func PlanFromUpdate(u PlanUpdate) (Plan, error) {
 
 // Admin : vue d'administration.
 func (p Plan) Admin() AdminPlan {
-	return AdminPlan{ID: p.ID, Name: p.Name, Position: p.Position, Public: p.Public, CPULimit: p.CPULimit,
+	// Champ par champ exprès : une conversion AdminPlan(p) suivrait sans bruit
+	// tout champ ajouté à Plan, exposé alors à l'administration.
+	//lint:ignore S1016 projection explicite voulue (voir ci-dessus)
+	return AdminPlan{ID: p.ID, Name: p.Name, Position: p.Position, Public: p.Public, CPULimit: p.CPULimit, //nolint:staticcheck // S1016 voulu
 		MemoryLimit: p.MemoryLimit, StorageLimit: p.StorageLimit, Fees: p.Fees}
 }
 

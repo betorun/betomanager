@@ -82,8 +82,10 @@ func (s *ProjectService) SetLimits(ctx context.Context, projectID string, in typ
 		return nil, err
 	}
 	return &typesproject.ProjectLimitsResponse{
-		ProjectID:  projectID,
-		Limits:     typesproject.UsageDTO{CPU: next.CPU, Memory: next.Memory, Storage: next.Storage},
+		ProjectID: projectID,
+		// Champ par champ exprès : le DTO de l'API ne suit pas le domaine.
+		//lint:ignore S1016 projection explicite voulue
+		Limits:     typesproject.UsageDTO{CPU: next.CPU, Memory: next.Memory, Storage: next.Storage}, //nolint:staticcheck // S1016 voulu
 		WorkflowID: handle.WorkflowID,
 	}, nil
 }

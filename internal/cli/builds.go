@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +58,7 @@ func runBuild(cmd *cobra.Command, cl *api.Client, project, name string, src buil
 	if err != nil {
 		return nil, err
 	}
-	var logs io.Writer = cmd.OutOrStdout()
+	logs := cmd.OutOrStdout()
 	if flagJSON {
 		logs = cmd.ErrOrStderr() // la sortie standard reste du JSON valide
 	}

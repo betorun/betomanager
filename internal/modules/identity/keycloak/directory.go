@@ -145,16 +145,16 @@ func (c *Client) SetPassword(ctx context.Context, subject, password string) erro
 	if err != nil {
 		return err
 	}
-	switch {
-	case status == http.StatusNoContent || status == http.StatusOK:
+	switch status {
+	case http.StatusNoContent, http.StatusOK:
 		return nil
-	case status == http.StatusBadRequest:
+	case http.StatusBadRequest:
 		var e struct {
 			Error string `json:"error"`
 		}
 		_ = json.Unmarshal(body, &e)
 		return fmt.Errorf("%w: %s", ErrPasswordRejected, e.Error)
-	case status == http.StatusNotFound:
+	case http.StatusNotFound:
 		return ErrUserNotFound
 	}
 	return fmt.Errorf("set password failed with status %d", status)

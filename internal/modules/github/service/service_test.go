@@ -146,7 +146,7 @@ func githubWith(installations string) http.Handler {
 		case "/user/installations":
 			_, _ = w.Write([]byte(installations))
 		case "/user/installations/1/repositories":
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"total_count":%d}`, *visibleRepos)))
+			_, _ = fmt.Fprintf(w, `{"total_count":%d}`, *visibleRepos)
 		case "/app/installations/1/access_tokens":
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"token":"ghs_x"}`))

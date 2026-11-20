@@ -57,9 +57,10 @@ func newDatabasesList() *cobra.Command {
 			t := p.Table(i18n.T("wl.col.name"), i18n.T("wl.col.status"), i18n.T("db.col.size"))
 			for _, d := range list {
 				tone := ui.ToneProgress
-				if d.Status == databasesdomain.StatusReady {
+				switch d.Status {
+				case databasesdomain.StatusReady:
 					tone = ui.ToneOK
-				} else if d.Status == databasesdomain.StatusFailed {
+				case databasesdomain.StatusFailed:
 					tone = ui.ToneError
 				}
 				t.Row(p.Bold(d.Name), p.Status(tone, d.Status), d.StorageSize)
