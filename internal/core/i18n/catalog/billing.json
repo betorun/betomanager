@@ -96,6 +96,10 @@
   "en": "billing: this organization's balance is used up, or the project reached its budget: top up (or raise the budget) to start containers again"
  },
  {
+  "fr": "Projet inconnu de la facturation",
+  "en": "billing: unknown project"
+ },
+ {
   "fr": "Document introuvable",
   "en": "document not found"
  },
