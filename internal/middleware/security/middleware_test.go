@@ -87,8 +87,9 @@ func (f *fakeAuthRepo) IsTokenRevoked(ctx context.Context, tokenHash string) (bo
 
 func newTestManager(t *testing.T, repo repository.AuthRepository) (*MiddlewareManager, authcache.AuthCache) {
 	t.Helper()
-	ac, err := authcache.NewRistrettoAuthCache()
+	ac, err := authcache.NewRistrettoAuthCacheWithSize(1e4, 1<<20)
 	require.NoError(t, err)
+	t.Cleanup(ac.Close)
 
 	logger := zap.NewNop().Sugar()
 	cfg := &configs.GlobalConfig{}

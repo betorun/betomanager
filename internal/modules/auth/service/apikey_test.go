@@ -58,8 +58,9 @@ func TestRevokeKey_PropagatesToCache(t *testing.T) {
 			},
 		},
 	}
-	cache, err := authcache.NewRistrettoAuthCache()
+	cache, err := authcache.NewRistrettoAuthCacheWithSize(1e4, 1<<20)
 	require.NoError(t, err)
+	t.Cleanup(cache.Close)
 
 	svc := NewAPIKeyService(repo, WithCache(cache))
 
@@ -100,7 +101,8 @@ func TestRevokeKey_CrossUser_NotFound(t *testing.T) {
 			},
 		},
 	}
-	cache, _ := authcache.NewRistrettoAuthCache()
+	cache, _ := authcache.NewRistrettoAuthCacheWithSize(1e4, 1<<20)
+	t.Cleanup(cache.Close)
 	svc := NewAPIKeyService(repo, WithCache(cache))
 
 	// Attacker tente de révoquer la clé du owner.
@@ -116,7 +118,8 @@ func TestRevokeKey_CrossUser_NotFound(t *testing.T) {
 func TestRevokeKey_UnknownKey_NotFound(t *testing.T) {
 	ctx := context.Background()
 	repo := &fakeAuthRepo{keysByID: map[uuid.UUID]*domain.APIKey{}}
-	cache, _ := authcache.NewRistrettoAuthCache()
+	cache, _ := authcache.NewRistrettoAuthCacheWithSize(1e4, 1<<20)
+	t.Cleanup(cache.Close)
 	svc := NewAPIKeyService(repo, WithCache(cache))
 
 	err := svc.RevokeKey(ctx, uuid.New().String(), uuid.New().String())
