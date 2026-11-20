@@ -38,7 +38,8 @@ func (a *App) alertNotifier() *alerts.Notifier {
 		return nil
 	}
 	n := &alerts.Notifier{Store: alerts.NewStore(a.DB), Mail: sender, ConsoleURL: a.Config.Frontend.BaseURL,
-		Logger: a.Logger.With("component", "alerts"), UnsubscribeKey: a.unsubscribeKey(), APIURL: a.Config.Builds.PublicAPIURL}
+		Logger: a.Logger.With("component", "alerts"), UnsubscribeKey: a.unsubscribeKey(), APIURL: a.Config.Builds.PublicAPIURL,
+		Spawner: a.spawner()}
 	if w := a.alertWebhooks(); w != nil { // pas d'interface non nulle autour d'un nil
 		n.Webhooks = w
 	}

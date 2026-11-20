@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/thekrauss/kubemanager/internal/core/background"
 	"github.com/thekrauss/kubemanager/internal/core/i18n"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/mail"
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
@@ -52,6 +53,10 @@ type Notifier struct {
 	Logger     *zap.SugaredLogger
 	// Sync : envoi dans l'appel (tests) ; sinon en arrière-plan.
 	Sync bool
+	// Spawner : tâches de fond suivies par l'arrêt de l'application (nil :
+	// goroutine simple). Un envoi en cours n'est pas annulé à l'arrêt : il
+	// finit dans le délai accordé (sendTimeout au plus).
+	Spawner background.Spawner
 	// UnsubscribeKey : signe les liens de désabonnement (vide : pas de lien).
 	UnsubscribeKey []byte
 	// APIURL : URL publique de l'API (…/kmanager/v1), pour le désabonnement
@@ -104,10 +109,10 @@ func (n *Notifier) run(ctx context.Context, f func(context.Context)) {
 		f(ctx)
 		return
 	}
-	go func() {
+	background.Go(n.Spawner, "alert", func(context.Context) {
 		defer cancel()
 		f(ctx)
-	}()
+	})
 }
 
 func (n *Notifier) deliver(ctx context.Context, project, subject uuid.UUID, kind string, every time.Duration,
