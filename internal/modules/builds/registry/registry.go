@@ -123,6 +123,18 @@ func (c Credentials) SnapshotSignature(taskID uuid.UUID, expires int64) string {
 	return c.sign("db-snapshot", taskID.String(), strconv.FormatInt(expires, 10))
 }
 
+// AddonBackupSignature : URL d'une sauvegarde de service, pour son Job.
+// Direction : « up » (envoi de la copie) ou « down » (lecture pour une
+// restauration) ; une URL d'envoi ne sert pas à lire, et inversement.
+func (c Credentials) AddonBackupSignature(taskID uuid.UUID, direction string, expires int64) string {
+	return c.sign("addon-backup-"+direction, taskID.String(), strconv.FormatInt(expires, 10))
+}
+
+// VerifyAddonBackup : URL de sauvegarde de service encore valable.
+func (c Credentials) VerifyAddonBackup(taskID uuid.UUID, direction string, expires int64, sig string, now time.Time) bool {
+	return now.Unix() <= expires && hmac.Equal([]byte(c.AddonBackupSignature(taskID, direction, expires)), []byte(sig))
+}
+
 // VerifySnapshot : URL d'envoi de copie encore valable.
 func (c Credentials) VerifySnapshot(taskID uuid.UUID, expires int64, sig string, now time.Time) bool {
 	return now.Unix() <= expires && hmac.Equal([]byte(c.SnapshotSignature(taskID, expires)), []byte(sig))

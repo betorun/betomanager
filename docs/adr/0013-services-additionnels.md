@@ -258,11 +258,14 @@ l'ouvrir.
   (`local-path`) ne sait pas agrandir un disque ; pas d'agrandissement en V1.
   Piste retenue pour plus tard : migration par copie (nouveau disque, arrêt de
   quelques secondes, copie, redémarrage), ou un stockage extensible.
+  **Réalisé le 2026-11-20** par copie : module [diskresize](../modules/diskresize.md),
+  pour les conteneurs et les porteurs des services (tailles du modèle).
 - **Usage réel des disques (décision 2026-11-19)** : `local-path` ne plafonne
   pas non plus la taille demandée. Le module [diskusage](../modules/diskusage.md)
   mesure chaque disque toutes les heures : alerte à 80 % et 100 %, conteneur
-  arrêté à 120 % (données gardées, délai de grâce de 6 h après relance). Les
-  bases sont mesurées et alertées, jamais arrêtées automatiquement.
+  arrêté à 120 % (données gardées, délai de grâce de 6 h après relance). Depuis
+  le 2026-11-20, les bases sont arrêtées de la même façon (hibernation,
+  relance depuis la console).
 - **CLI** : `betorun addons` (alias `services`) : `catalog`, `list`,
   `create <service> <nom>` (`--mode`, `--size`, `--disk`, `--version`,
   `--attach` répétable, attente du démarrage), `attach`, `upgrade`
@@ -270,8 +273,22 @@ l'ouvrir.
   double authentification), `notify` (« Me prévenir », `--off`). Outils MCP de
   la CLI : `list_addons`, `create_addon` (`attach_to`), `attach_addon`.
   Types propres à la CLI : aucune dépendance au module serveur.
-- **Reste** : agrandissement du disque (voir la décision ci-dessus), nouveaux
-  modèles (MariaDB, Meilisearch).
+- **Reste** : rien pour cette section (agrandissement par copie fait le 2026-11-20).
+
+## MariaDB et Meilisearch (2026-11-20)
+
+- **Ouverts** dans le catalogue ; retirés de `domain.Announced` : les
+  demandes « Me prévenir » reçoivent leur e-mail au passage suivant du worker.
+- **MariaDB** lancée directement sous son utilisateur (`999`), comme prévu
+  plus haut ; root limité au socket local. **Sauvegarde nocturne** faite avant
+  l'ouverture, comme le demandait la section 5 : `mariadb-dump` compressé vers
+  le stockage d'objets, 7 copies, restauration depuis la console (copie de
+  l'état courant d'abord). Détails dans [addons](../modules/addons.md).
+- **Meilisearch** : une seule version proposée (les montées mineures
+  demandent une migration des données) ; clé maîtresse remise dans une
+  seconde variable (`MEILISEARCH_KEY`), l'adresse sans identifiants.
+- Essais faits sous Docker avec les réglages du cluster (non root,
+  capacités retirées) ; pas encore d'essai sur le cluster de production.
 
 ## Questions ouvertes
 

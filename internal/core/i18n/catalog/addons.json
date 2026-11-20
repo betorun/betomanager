@@ -58,5 +58,37 @@
  {
   "fr": "Seul un compte utilisateur peut demander à être prévenu",
   "en": "only a user account can ask to be notified"
+ },
+ {
+  "fr": "La tâche de sauvegarde n'a pas fini à temps",
+  "en": "the backup task did not finish in time"
+ },
+ {
+  "fr": "Ce service n'a pas de sauvegardes",
+  "en": "this service has no backups"
+ },
+ {
+  "fr": "Les sauvegardes ne sont pas disponibles sur cette plateforme",
+  "en": "backups are not available on this platform"
+ },
+ {
+  "fr": "Une sauvegarde ou une restauration de ce service est déjà en cours",
+  "en": "a backup or a restore of this service is already running"
+ },
+ {
+  "fr": "Sauvegarde introuvable",
+  "en": "backup not found"
+ },
+ {
+  "fr": "Seule une sauvegarde réussie peut être restaurée",
+  "en": "only a completed backup can be restored"
+ },
+ {
+  "fr": "La sauvegarde est trop volumineuse",
+  "en": "the backup is too large"
+ },
+ {
+  "fr": "La confirmation ne correspond pas au nom du service",
+  "en": "the confirmation does not match the service name"
  }
 ]

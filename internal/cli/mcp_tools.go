@@ -158,21 +158,22 @@ func (e mcpEnv) toolList() []mcp.Tool {
 			InputSchema: schema(`"database":{"type":"string","description":"Source database ID or name"},"name":{"type":"string","description":"Name of the new database"},`+projectProp+
 				`,"target_time":{"type":"string","description":"Instant to restore, RFC 3339 (default: latest)"}`, "database", "name"),
 			Annotations: mcp.Annotations{Title: "Restore a database", OpenWorldHint: true}, Handler: e.restoreDatabase},
-		{Name: "list_addons", Description: "Additional services of a project (Redis via Valkey…), with their state, address and attached containers.",
+		{Name: "list_addons", Description: "Additional services of a project (Redis via Valkey, MariaDB, Meilisearch), with their state, address and attached containers.",
 			InputSchema: schema(projectProp), Annotations: readOnly("List services"), Handler: e.listAddons},
-		{Name: "create_addon", Title: "Add a service (Redis via Valkey)",
-			Description: "Add a catalog service to the project (template redis = Valkey, compatible with Redis clients), reachable only from its containers, " +
-				"wait until it runs, and optionally attach it to a container: its connection URL becomes the SECRET variable REDIS_URL and the container is redeployed. " +
-				"Mode persistent (default, disk; task queues, sessions) or cache (no disk, data lost on restart). The password never appears in the result.",
-			InputSchema: schema(`"template":{"type":"string","enum":["redis"],"description":"Catalog service (default redis)"},`+
+		{Name: "create_addon", Title: "Add a service (Redis via Valkey, MariaDB, Meilisearch)",
+			Description: "Add a catalog service to the project, reachable only from its containers: redis = Valkey (compatible with Redis clients), " +
+				"mariadb (compatible with MySQL clients, database and user app), meilisearch (search engine). Wait until it runs, and optionally attach it to a container: " +
+				"its connection URL becomes a SECRET variable (REDIS_URL, DATABASE_URL for mariadb, MEILISEARCH_URL plus the key in MEILISEARCH_KEY) and the container is redeployed. " +
+				"Redis only: mode persistent (default, disk; task queues, sessions) or cache (no disk, data lost on restart); the others are always persistent. The password never appears in the result.",
+			InputSchema: schema(`"template":{"type":"string","enum":["redis","mariadb","meilisearch"],"description":"Catalog service (default redis)"},`+
 				`"name":{"type":"string","description":"Service name, also its address in the project: 3-30 lowercase letters, digits, hyphens"},`+projectProp+
 				`,"mode":{"type":"string","enum":["persistent","cache"],"description":"Usage (default persistent)"}`+
 				`,"size":{"type":"string","enum":["mini","small","medium"],"description":"Size (default small)"}`+
-				`,"disk":{"type":"string","enum":["1Gi","2Gi","5Gi"],"description":"Disk in persistent mode (default 1Gi)"}`+
+				`,"disk":{"type":"string","enum":["1Gi","2Gi","5Gi","10Gi"],"description":"Disk in persistent mode (default 1Gi; 10Gi: mariadb and meilisearch only)"}`+
 				`,"version":{"type":"string","description":"Version (default: the recommended one)"}`+
 				`,"attach_to":{"type":"string","description":"Container ID or name to attach it to (optional)"}`, "name"),
 			Annotations: mcp.Annotations{Title: "Add a service", OpenWorldHint: true}, Handler: e.createAddon},
-		{Name: "attach_addon", Description: "Give a container access to a service: sets its connection URL (password included) as a SECRET variable (REDIS_URL by default for redis) and redeploys the container.",
+		{Name: "attach_addon", Description: "Give a container access to a service: sets its connection URL (password included) as a SECRET variable (by default REDIS_URL for redis, DATABASE_URL for mariadb; meilisearch: MEILISEARCH_URL and the key in MEILISEARCH_KEY) and redeploys the container.",
 			InputSchema: schema(`"addon":{"type":"string","description":"Service ID or name"},"workload":{"type":"string","description":"Container ID or name"},`+projectProp+
 				`,"variable":{"type":"string","description":"Variable name (default depends on the service, e.g. REDIS_URL)"}`, "addon", "workload"),
 			Annotations: mcp.Annotations{Title: "Attach a service", IdempotentHint: true, OpenWorldHint: true}, Handler: e.attachAddon},

@@ -61,8 +61,9 @@ func (e mcpEnv) attachAddonTo(ctx context.Context, m *mcpCtx, a *cliAddon, workl
 		return "", fmt.Errorf("container %q runs a service: it cannot receive another one", w.Name)
 	}
 	var res struct {
-		Variable string `json:"variable"`
-		Redeploy bool   `json:"redeploy"`
+		Variable    string `json:"variable"`
+		KeyVariable string `json:"key_variable"`
+		Redeploy    bool   `json:"redeploy"`
 	}
 	body := map[string]string{"workload_id": w.ID.String()}
 	if variable != "" {
@@ -72,6 +73,9 @@ func (e mcpEnv) attachAddonTo(ctx context.Context, m *mcpCtx, a *cliAddon, workl
 		return "", err
 	}
 	msg := fmt.Sprintf("Service %q attached to container %q as the secret variable %s.", a.Name, w.Name, res.Variable)
+	if res.KeyVariable != "" {
+		msg = fmt.Sprintf("Service %q attached to container %q: address in the secret variable %s, key in %s.", a.Name, w.Name, res.Variable, res.KeyVariable)
+	}
 	if res.Redeploy {
 		msg += " The container is being redeployed; it waits for the service to answer before starting."
 	}

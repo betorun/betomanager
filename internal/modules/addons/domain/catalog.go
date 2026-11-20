@@ -2,6 +2,7 @@ package domain
 
 import (
 	"strconv"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -17,7 +18,8 @@ type Version struct {
 	Major int    `json:"major"`
 }
 
-// Mode : usage proposé (redis : persistant ou cache seulement).
+// Mode : usage proposé (redis : persistant ou cache seulement ; les autres :
+// persistant seulement).
 type Mode struct {
 	ID string `json:"id"`
 	// Persistent : un disque garde les données entre deux redémarrages.
@@ -54,9 +56,11 @@ func SizeByID(id string) (Size, bool) {
 
 // Process : ce que le conteneur porteur exécute.
 type Process struct {
-	Command []string
+	Command []string // vide : celle de l'image
 	// Health : sonde de vivacité (commande) ; le port est vérifié en plus.
 	Health []string
+	// Env : variables non secrètes du conteneur porteur.
+	Env map[string]string
 }
 
 // Template : un logiciel du catalogue.
@@ -68,9 +72,11 @@ type Template struct {
 	Logo  string `json:"logo"`
 	// Category : rangement du catalogue (databases, cache, search).
 	Category string `json:"category"`
-	Port     int    `json:"port"`
-	Scheme   string `json:"scheme"`
-	User     string `json:"-"`
+	// Compatible : protocole repris (« MySQL »), vide sinon.
+	Compatible string `json:"compatible,omitempty"`
+	Port       int    `json:"port"`
+	Scheme     string `json:"scheme"`
+	User       string `json:"-"`
 	// Variable : variable posée par défaut sur les conteneurs branchés.
 	Variable    string    `json:"variable"`
 	Versions    []Version `json:"versions"` // la recommandée d'abord
@@ -80,6 +86,19 @@ type Template struct {
 	RunAsUser   int64     `json:"-"`
 	process     func(mode Mode, memoryBytes int64) Process
 	Recommended string `json:"recommended_version"`
+	// PasswordAliases : autres variables secrètes du conteneur porteur qui
+	// reçoivent le mot de passe (celles que lit l'image).
+	PasswordAliases []string `json:"-"`
+	// Path : chemin ajouté à l'adresse de connexion (« /app »).
+	Path string `json:"-"`
+	// Backup : sauvegarde nocturne (nil : aucune ; voir backup.go).
+	Backup *BackupCommands `json:"-"`
+	// Backups : vrai si le service est sauvegardé chaque nuit.
+	Backups bool `json:"backups"`
+	// KeySuffix : non vide, l'adresse est remise sans identifiants et le mot
+	// de passe va dans une seconde variable (MEILISEARCH_URL →
+	// MEILISEARCH_KEY : voir KeyVariable).
+	KeySuffix string `json:"key_suffix,omitempty"`
 }
 
 // Redis : Valkey (licence BSD), compatible avec les clients Redis. La carte
@@ -123,8 +142,94 @@ var Redis = Template{
 	},
 }
 
+// MariaDB : compatible MySQL. Base « app », utilisateur « app » ; root
+// n'est joignable que par le socket local du conteneur.
+var MariaDB = Template{
+	ID:          "mariadb",
+	Title:       "MariaDB",
+	Logo:        "mariadb",
+	Category:    "databases",
+	Compatible:  "MySQL",
+	Port:        3306,
+	Scheme:      "mysql",
+	User:        "app",
+	Path:        "/app",
+	Variable:    "DATABASE_URL",
+	Recommended: "11.8",
+	Versions: []Version{
+		{ID: "11.8", Image: "mariadb:11.8.9", Major: 11},
+		{ID: "11.4", Image: "mariadb:11.4.13", Major: 11},
+	},
+	Modes:           []Mode{{ID: "persistent", Persistent: true}},
+	Disks:           []string{"1Gi", "2Gi", "5Gi", "10Gi"},
+	DiskPath:        "/var/lib/mysql",
+	RunAsUser:       999, // utilisateur « mysql » de l'image
+	PasswordAliases: []string{"MARIADB_PASSWORD", "MARIADB_ROOT_PASSWORD"},
+	Backups:         true,
+	Backup: &BackupCommands{
+		// Le client lit MYSQL_PWD : le mot de passe ne passe pas en argument.
+		PasswordEnv: "MYSQL_PWD",
+		Wait:        `i=0; until mariadb-admin ping -h "$ADDON_HOST" --silent; do i=$((i+1)); [ "$i" -ge 60 ] && break; sleep 1; done`,
+		// Base « app » entière, cohérente (une transaction), recréée à la restauration.
+		Dump: `mariadb-dump -h "$ADDON_HOST" -u app --single-transaction --routines --triggers --events ` +
+			`--add-drop-database --databases app | gzip -c > "$BACKUP_FILE"`,
+		Restore: `gunzip -c "$BACKUP_FILE" | mariadb -h "$ADDON_HOST" -u app`,
+	},
+	process: func(_ Mode, memoryBytes int64) Process {
+		// Cache InnoDB ≈ la moitié de la limite : le reste pour les
+		// connexions et les tris, sans être tué faute de mémoire.
+		return Process{
+			Command: []string{"docker-entrypoint.sh", "mariadbd",
+				"--innodb-buffer-pool-size=" + strconv.FormatInt(memoryBytes/2, 10),
+				"--max-connections=100", "--skip-name-resolve", "--performance-schema=OFF"},
+			// ping répond même sans identifiants : aucun mot de passe en argument.
+			Health: []string{"mariadb-admin", "ping", "-h", "127.0.0.1", "--silent"},
+			Env: map[string]string{
+				"MARIADB_DATABASE": "app", "MARIADB_USER": "app",
+				// Montée de version : mariadb-upgrade au démarrage.
+				"MARIADB_AUTO_UPGRADE": "1",
+				"MARIADB_ROOT_HOST":    "localhost",
+			},
+		}
+	},
+}
+
+// Meilisearch : moteur de recherche. La clé maîtresse est le mot de passe ;
+// les conteneurs branchés reçoivent l'adresse et la clé séparément.
+var Meilisearch = Template{
+	ID:          "meilisearch",
+	Title:       "Meilisearch",
+	Logo:        "meilisearch",
+	Category:    "search",
+	Port:        7700,
+	Scheme:      "http",
+	Variable:    "MEILISEARCH_URL",
+	KeySuffix:   "_KEY",
+	Recommended: "1.57",
+	// Une seule version : passer d'une version mineure à l'autre demande une
+	// migration des données (pas encore automatisée).
+	Versions:        []Version{{ID: "1.57", Image: "getmeili/meilisearch:v1.57.0", Major: 1}},
+	Modes:           []Mode{{ID: "persistent", Persistent: true}},
+	Disks:           []string{"1Gi", "2Gi", "5Gi", "10Gi"},
+	DiskPath:        "/meili_data",
+	RunAsUser:       1000,
+	PasswordAliases: []string{"MEILI_MASTER_KEY"},
+	process: func(_ Mode, memoryBytes int64) Process {
+		return Process{
+			Health: []string{"curl", "-sf", "http://127.0.0.1:7700/health"},
+			Env: map[string]string{
+				"MEILI_ENV": "production", "MEILI_NO_ANALYTICS": "true",
+				"MEILI_DB_PATH": "/meili_data/data.ms", "MEILI_HTTP_ADDR": "0.0.0.0:7700",
+				// Indexation ≈ 60 % de la limite, sur deux fils au plus.
+				"MEILI_MAX_INDEXING_MEMORY":  strconv.FormatInt(memoryBytes*6/10, 10),
+				"MEILI_MAX_INDEXING_THREADS": "2",
+			},
+		}
+	},
+}
+
 // Catalog : modèles ouverts, dans l'ordre d'affichage.
-var Catalog = []Template{Redis}
+var Catalog = []Template{Redis, MariaDB, Meilisearch}
 
 // Upcoming : service annoncé « Bientôt » ; on peut demander à être prévenu.
 // Quand il entre dans Catalog, il sort d'ici et les demandes reçoivent un
@@ -139,10 +244,7 @@ type Upcoming struct {
 }
 
 // Announced : services annoncés, dans l'ordre d'affichage.
-var Announced = []Upcoming{
-	{ID: "mariadb", Title: "MariaDB", Logo: "mariadb", Category: "databases", Compatible: "MySQL"},
-	{ID: "meilisearch", Title: "Meilisearch", Logo: "meilisearch", Category: "search"},
-}
+var Announced = []Upcoming{}
 
 // UpcomingByID : service annoncé (pas encore ouvert).
 func UpcomingByID(id string) (Upcoming, bool) {
@@ -210,9 +312,31 @@ func (t Template) Process(mode Mode, size Size) Process {
 }
 
 // URI : adresse de connexion remise aux conteneurs branchés (mot de passe
-// compris : hexadécimal, rien à échapper).
+// compris : hexadécimal, rien à échapper). Avec KeySuffix : sans identifiants.
 func (t Template) URI(host, password string) string {
-	return t.Scheme + "://" + t.User + ":" + password + "@" + host + ":" + strconv.Itoa(t.Port)
+	if t.KeySuffix != "" {
+		return t.Scheme + "://" + host + ":" + strconv.Itoa(t.Port) + t.Path
+	}
+	return t.Scheme + "://" + t.User + ":" + password + "@" + host + ":" + strconv.Itoa(t.Port) + t.Path
+}
+
+// KeyVariable : variable qui reçoit le mot de passe à côté de l'adresse
+// (MEILISEARCH_URL → MEILISEARCH_KEY, SEARCH → SEARCH_KEY) ; vide si le mot
+// de passe est dans l'adresse.
+func (t Template) KeyVariable(variable string) string {
+	if t.KeySuffix == "" {
+		return ""
+	}
+	return strings.TrimSuffix(variable, "_URL") + t.KeySuffix
+}
+
+// Connection : variables posées sur un conteneur branché.
+func (t Template) Connection(variable, host, password string) map[string]string {
+	out := map[string]string{variable: t.URI(host, password)}
+	if k := t.KeyVariable(variable); k != "" {
+		out[k] = password
+	}
+	return out
 }
 
 // Newer : version cible plus récente que la courante (jamais de retour en

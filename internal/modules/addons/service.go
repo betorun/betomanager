@@ -50,6 +50,7 @@ type Carrier struct {
 	Disk      string
 	DiskPath  string
 	RunAsUser int64
+	Env       map[string]string
 	Secrets   map[string]string
 	Caller    string
 	// ManagedBy : marque du conteneur (« addon/redis/<id> ») : ses actions
@@ -74,7 +75,8 @@ type Workloads interface {
 	NameOf(ctx context.Context, id uuid.UUID) (string, error)
 	// Secret : valeur d'une variable secrète (mot de passe du service).
 	Secret(ctx context.Context, id uuid.UUID, name string) (string, error)
-	SetSecret(ctx context.Context, id uuid.UUID, name, value string) (redeploy bool, err error)
+	// SetSecrets : variables secrètes posées ensemble (un seul redéploiement).
+	SetSecrets(ctx context.Context, id uuid.UUID, values map[string]string) (redeploy bool, err error)
 	// WaitFor : le conteneur attendra host:port avant de démarrer.
 	WaitFor(ctx context.Context, id uuid.UUID, target string) error
 }
@@ -87,7 +89,9 @@ type Service struct {
 	// Waitlists / Announcer : « Me prévenir » des services annoncés.
 	Waitlists WaitlistStore
 	Announcer Announcer
-	Logger    *zap.SugaredLogger
+	// Backups : sauvegardes des services qui en ont (nil : indisponibles).
+	Backups *BackupConfig
+	Logger  *zap.SugaredLogger
 }
 
 func (s *Service) available() error {
@@ -176,9 +180,12 @@ func (s *Service) Create(ctx context.Context, projectID uuid.UUID, in domain.Cre
 		ProjectID: projectID, Name: name, Image: version.Image, Port: t.Port,
 		Command: proc.Command, Health: proc.Health,
 		CPURequest: size.CPURequest, CPULimit: size.CPULimit, Memory: size.Memory,
-		DiskPath: t.DiskPath, RunAsUser: t.RunAsUser,
+		DiskPath: t.DiskPath, RunAsUser: t.RunAsUser, Env: proc.Env,
 		Secrets: map[string]string{domain.PasswordVariable: password},
 		Caller:  creator,
+	}
+	for _, alias := range t.PasswordAliases {
+		c.Secrets[alias] = password
 	}
 	if mode.Persistent {
 		c.Disk = disk
@@ -301,6 +308,7 @@ func (s *Service) Delete(ctx context.Context, projectID, id uuid.UUID) (*domain.
 	if err := s.Repo.Delete(ctx, a.ID); err != nil {
 		return nil, err
 	}
+	s.dropBackups(context.WithoutCancel(ctx), a.ID)
 	still := attached[a.ID]
 	if still == nil {
 		still = []domain.Attachment{}
@@ -327,7 +335,8 @@ func (s *Service) Attach(ctx context.Context, projectID, id, workloadID uuid.UUI
 	if variable == "" {
 		variable = t.Variable
 	}
-	if !domain.ValidVariable(variable) {
+	keyVariable := t.KeyVariable(variable)
+	if !domain.ValidVariable(variable) || (keyVariable != "" && !domain.ValidVariable(keyVariable)) {
 		return nil, domain.ErrInvalidVariable
 	}
 	if workloadID == a.WorkloadID {
@@ -345,12 +354,12 @@ func (s *Service) Attach(ctx context.Context, projectID, id, workloadID uuid.UUI
 	if err := s.Workloads.WaitFor(ctx, workloadID, a.Name+":"+strconv.Itoa(t.Port)); err != nil {
 		s.warn("addon: wait-for not set", "workload", workloadID, "error", err)
 	}
-	redeploy, err := s.Workloads.SetSecret(ctx, workloadID, variable, t.URI(a.Name, password))
+	redeploy, err := s.Workloads.SetSecrets(ctx, workloadID, t.Connection(variable, a.Name, password))
 	if err != nil {
 		return nil, err
 	}
 	s.recordAttachment(ctx, a.ID, workloadID, variable)
-	return &domain.AttachResponse{WorkloadID: workloadID.String(), Variable: variable, Redeploy: redeploy}, nil
+	return &domain.AttachResponse{WorkloadID: workloadID.String(), Variable: variable, KeyVariable: keyVariable, Redeploy: redeploy}, nil
 }
 
 // recordAttachment : un échec n'annule pas le branchement (déjà posé) ; la
@@ -409,7 +418,7 @@ func (s *Service) view(a domain.Addon, st CarrierState, attached []domain.Attach
 }
 
 // newPassword : 32 octets aléatoires en hexadécimal (rien à échapper dans
-// une adresse redis://).
+// une adresse redis:// ou mysql://).
 func newPassword() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

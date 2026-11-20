@@ -80,6 +80,7 @@ type fakeWorkloads struct {
 	images   map[uuid.UUID]string
 	names    map[string]bool
 	waits    map[uuid.UUID][]string
+	running  bool // porteurs en marche
 }
 
 func (w *fakeWorkloads) Deploy(_ context.Context, c Carrier) (uuid.UUID, error) {
@@ -98,6 +99,13 @@ func (w *fakeWorkloads) SetImage(_ context.Context, id uuid.UUID, image string) 
 	return nil
 }
 func (w *fakeWorkloads) States(context.Context, uuid.UUID) (map[uuid.UUID]CarrierState, error) {
+	if w.running {
+		out := map[uuid.UUID]CarrierState{}
+		for _, id := range w.ids {
+			out[id] = CarrierState{Status: utils.WorkloadRunning}
+		}
+		return out, nil
+	}
 	return map[uuid.UUID]CarrierState{}, nil
 }
 func (w *fakeWorkloads) NameTaken(_ context.Context, _ uuid.UUID, name string) (bool, error) {
@@ -120,11 +128,13 @@ func (w *fakeWorkloads) WaitFor(_ context.Context, id uuid.UUID, target string) 
 	w.waits[id] = append(w.waits[id], target)
 	return nil
 }
-func (w *fakeWorkloads) SetSecret(_ context.Context, id uuid.UUID, name, value string) (bool, error) {
+func (w *fakeWorkloads) SetSecrets(_ context.Context, id uuid.UUID, values map[string]string) (bool, error) {
 	if w.secrets[id] == nil {
 		w.secrets[id] = map[string]string{}
 	}
-	w.secrets[id][name] = value
+	for k, v := range values {
+		w.secrets[id][k] = v
+	}
 	return true, nil
 }
 
@@ -297,4 +307,75 @@ func TestDelete_ReportsStillAttached(t *testing.T) {
 	assert.Len(t, res.StillAttached, 1)
 	assert.Equal(t, []uuid.UUID{wl.ids["cache"]}, wl.deleted)
 	assert.Empty(t, repo.rows)
+}
+
+func TestCreateAndAttach_MariaDB(t *testing.T) {
+	s, _, wl, project := newTestService(t, 0)
+	v, err := s.Create(context.Background(), project, domain.CreateAddonRequest{Template: "mariadb", Name: "shop-db"}, "")
+	require.NoError(t, err)
+	c := wl.deployed[0]
+	assert.Equal(t, "mariadb:11.8.9", c.Image)
+	assert.Equal(t, "1Gi", c.Disk, "persistant par défaut, premier disque")
+	assert.Equal(t, "/var/lib/mysql", c.DiskPath)
+	assert.Equal(t, int64(999), c.RunAsUser)
+	pwd := c.Secrets[domain.PasswordVariable]
+	require.Len(t, pwd, 64)
+	assert.Equal(t, pwd, c.Secrets["MARIADB_PASSWORD"])
+	assert.Equal(t, pwd, c.Secrets["MARIADB_ROOT_PASSWORD"])
+	assert.Equal(t, "app", c.Env["MARIADB_USER"])
+	assert.Equal(t, "localhost", c.Env["MARIADB_ROOT_HOST"], "root seulement par le socket local")
+	assert.Contains(t, c.Command, "--innodb-buffer-pool-size=268435456", "moitié des 512 Mi de la taille small")
+	for _, part := range append(append([]string{}, c.Command...), c.Health...) {
+		assert.NotContains(t, part, pwd, "jamais de mot de passe en argument")
+	}
+	for k, val := range c.Env {
+		assert.NotContains(t, val, pwd, "mot de passe dans une variable non secrète : %s", k)
+	}
+	_, err = s.Create(context.Background(), project, domain.CreateAddonRequest{Template: "mariadb", Name: "cache-db", Mode: "cache"}, "")
+	assert.ErrorIs(t, err, domain.ErrInvalidMode, "MariaDB : persistant seulement")
+
+	api := uuid.New()
+	res, err := s.Attach(context.Background(), project, uuid.MustParse(v.ID), api, "")
+	require.NoError(t, err)
+	assert.Equal(t, "DATABASE_URL", res.Variable)
+	assert.Empty(t, res.KeyVariable)
+	assert.Equal(t, "mysql://app:"+pwd+"@shop-db:3306/app", wl.secrets[api]["DATABASE_URL"])
+}
+
+func TestCreateAndAttach_MeilisearchKeyInSecondVariable(t *testing.T) {
+	s, _, wl, project := newTestService(t, 0)
+	v, err := s.Create(context.Background(), project, domain.CreateAddonRequest{Template: "meilisearch", Name: "search", Size: "medium"}, "")
+	require.NoError(t, err)
+	c := wl.deployed[0]
+	assert.Empty(t, c.Command, "commande de l'image")
+	pwd := c.Secrets[domain.PasswordVariable]
+	assert.Equal(t, pwd, c.Secrets["MEILI_MASTER_KEY"])
+	assert.Equal(t, "production", c.Env["MEILI_ENV"])
+	assert.Equal(t, "644245094", c.Env["MEILI_MAX_INDEXING_MEMORY"], "60 % de 1 Gi")
+
+	api := uuid.New()
+	res, err := s.Attach(context.Background(), project, uuid.MustParse(v.ID), api, "")
+	require.NoError(t, err)
+	assert.Equal(t, "MEILISEARCH_URL", res.Variable)
+	assert.Equal(t, "MEILISEARCH_KEY", res.KeyVariable)
+	assert.Equal(t, "http://search:7700", wl.secrets[api]["MEILISEARCH_URL"], "adresse sans identifiants")
+	assert.Equal(t, pwd, wl.secrets[api]["MEILISEARCH_KEY"])
+
+	other := uuid.New()
+	res, err = s.Attach(context.Background(), project, uuid.MustParse(v.ID), other, "SEARCH")
+	require.NoError(t, err)
+	assert.Equal(t, "SEARCH_KEY", res.KeyVariable)
+	assert.Equal(t, pwd, wl.secrets[other]["SEARCH_KEY"])
+}
+
+func TestCatalog_ImagesArePinned(t *testing.T) {
+	for _, tpl := range domain.Catalog {
+		require.NotEmpty(t, tpl.Versions, tpl.ID)
+		assert.Equal(t, tpl.Recommended, tpl.Versions[0].ID, "%s : la recommandée d'abord", tpl.ID)
+		for _, ver := range tpl.Versions {
+			assert.Regexp(t, `:v?\d+\.\d+\.\d+$`, ver.Image, "%s : image figée", tpl.ID)
+		}
+		_, announced := domain.UpcomingByID(tpl.ID)
+		assert.False(t, announced, "%s : ouvert et encore annoncé", tpl.ID)
+	}
 }

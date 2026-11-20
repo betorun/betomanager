@@ -95,12 +95,12 @@ type AddonPath struct {
 
 type CreateAddonRequest struct {
 	ProjectID string `path:"id" binding:"required" description:"ID du projet"`
-	Template  string `json:"template" binding:"required" description:"Modèle du catalogue (ex. redis)"`
+	Template  string `json:"template" binding:"required" description:"Modèle du catalogue : redis, mariadb ou meilisearch"`
 	Name      string `json:"name" binding:"required" description:"Nom du service, aussi son adresse dans le projet (3 à 30 caractères : minuscules, chiffres, tirets)"`
 	Version   string `json:"version" description:"Version (défaut : la recommandée)"`
-	Mode      string `json:"mode" description:"Usage (redis : persistent, par défaut, ou cache)"`
+	Mode      string `json:"mode" description:"Usage (redis : persistent, par défaut, ou cache ; les autres : persistent seulement)"`
 	Size      string `json:"size" description:"Taille : mini, small (défaut) ou medium"`
-	Disk      string `json:"disk" description:"Disque en mode persistant : 1Gi (défaut), 2Gi ou 5Gi"`
+	Disk      string `json:"disk" description:"Disque en mode persistant : 1Gi (défaut), 2Gi ou 5Gi ; 10Gi aussi pour mariadb et meilisearch"`
 }
 
 type UpgradeRequest struct {
@@ -113,7 +113,7 @@ type AttachRequest struct {
 	ProjectID  string `path:"id" binding:"required" description:"ID du projet"`
 	AddonID    string `path:"addonID" binding:"required" description:"ID du service"`
 	WorkloadID string `json:"workload_id" binding:"required" description:"ID du conteneur qui utilisera le service"`
-	Variable   string `json:"variable" description:"Variable qui reçoit l'adresse de connexion (défaut selon le service, ex. REDIS_URL)"`
+	Variable   string `json:"variable" description:"Variable qui reçoit l'adresse de connexion (défaut selon le service : REDIS_URL, DATABASE_URL, MEILISEARCH_URL ; la clé Meilisearch va dans la variable en _KEY)"`
 }
 
 // AttachResponse : le service est branché ; le conteneur est redéployé avec
@@ -121,7 +121,9 @@ type AttachRequest struct {
 type AttachResponse struct {
 	WorkloadID string `json:"workload_id"`
 	Variable   string `json:"variable"`
-	Redeploy   bool   `json:"redeploy"`
+	// KeyVariable : seconde variable qui reçoit la clé (Meilisearch).
+	KeyVariable string `json:"key_variable,omitempty"`
+	Redeploy    bool   `json:"redeploy"`
 }
 
 // AddonView : un service, sans secret. Host n'est joignable que depuis les

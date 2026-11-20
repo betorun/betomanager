@@ -103,6 +103,7 @@ func newAddons() *cobra.Command {
 			"betorun addons create redis files-taches --attach api --attach worker\n" +
 			"# " + i18n.T("ex.addon.cache") + "\n" +
 			"betorun addons create redis cache --mode cache --size mini\n" +
+			"betorun addons create mariadb boutique-db --attach api\n" +
 			"betorun addons attach cache web"}
 	c.AddCommand(newAddonsCatalog(), newAddonsList(), newAddonsCreate(), newAddonsAttach(), newAddonsUpgrade(),
 		newAddonsDelete(), newAddonsNotify())
@@ -305,11 +306,12 @@ func newAddonsCreate() *cobra.Command {
 			}
 			p.Success(i18n.T("addon.create.started", a.Name, a.Title, a.Version))
 			for _, w := range targets {
-				if err := attachAddon(ctx, cl, project, &a, w, ""); err != nil {
+				msg, err := attachAddon(ctx, cl, project, &a, w, "")
+				if err != nil {
 					p.Fail(i18n.T("addon.attach.failed", w.Name, describe(err)))
 					continue
 				}
-				p.Success(i18n.T("addon.attach.ok", a.Variable, w.Name))
+				p.Success(msg)
 			}
 			if noWait {
 				if done, err := wantJSON(cmd, a); done {
@@ -370,13 +372,24 @@ func waitAddon(cmd *cobra.Command, cl *api.Client, project, id, name string) (*c
 	}
 }
 
-func attachAddon(ctx context.Context, cl *api.Client, project string, a *cliAddon, w *api.Workload, variable string) error {
+// attachAddon : branche le service ; renvoie le message de réussite (la
+// variable, et celle de la clé pour Meilisearch).
+func attachAddon(ctx context.Context, cl *api.Client, project string, a *cliAddon, w *api.Workload, variable string) (string, error) {
 	body := map[string]string{"workload_id": w.ID.String()}
 	if variable != "" {
 		body["variable"] = variable
 	}
-	var out map[string]any
-	return cl.Do(ctx, http.MethodPost, addonsPath(project)+"/"+url.PathEscape(a.ID)+"/attach", body, &out)
+	var out struct {
+		Variable    string `json:"variable"`
+		KeyVariable string `json:"key_variable"`
+	}
+	if err := cl.Do(ctx, http.MethodPost, addonsPath(project)+"/"+url.PathEscape(a.ID)+"/attach", body, &out); err != nil {
+		return "", err
+	}
+	if out.KeyVariable != "" {
+		return i18n.T("addon.attach.ok_key", out.Variable, out.KeyVariable, w.Name), nil
+	}
+	return i18n.T("addon.attach.ok", out.Variable, w.Name), nil
 }
 
 func newAddonsAttach() *cobra.Command {
@@ -401,13 +414,11 @@ func newAddonsAttach() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if variable == "" {
-				variable = a.Variable
-			}
-			if err := attachAddon(ctx, cl, project, a, w, variable); err != nil {
+			msg, err := attachAddon(ctx, cl, project, a, w, variable)
+			if err != nil {
 				return err
 			}
-			printer(cmd).Success(i18n.T("addon.attach.ok", variable, w.Name))
+			printer(cmd).Success(msg)
 			return nil
 		},
 	}
