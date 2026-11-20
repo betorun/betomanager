@@ -181,7 +181,11 @@ func (k *KeyRing) newKey(now, activate time.Time) (*signingKeyRow, error) {
 		return nil, err
 	}
 	enc := k.aead.Seal(nonce, nonce, der, []byte(kid)) // kid en données associées
-	jwk, err := json.Marshal(publicJWK(kid, &priv.PublicKey))
+	pub, err := publicJWK(kid, &priv.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	jwk, err := json.Marshal(pub)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +232,11 @@ func (k *KeyRing) decrypt(r signingKeyRow) (*signingKey, error) {
 	if !ok {
 		return nil, errors.New("not an ECDSA key")
 	}
-	return &signingKey{kid: r.Kid, private: priv, jwk: publicJWK(r.Kid, &priv.PublicKey),
+	jwk, err := publicJWK(r.Kid, &priv.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return &signingKey{kid: r.Kid, private: priv, jwk: jwk,
 		createdAt: r.CreatedAt, activateAt: r.ActivateAt, retireAt: r.RetireAt}, nil
 }
 
@@ -312,12 +320,18 @@ func (k *KeyRing) Run(ctx context.Context, onError func(error)) {
 	}
 }
 
-func publicJWK(kid string, pub *ecdsa.PublicKey) JWK {
-	// Coordonnées sur 32 octets (P-256), complétées à gauche.
-	x, y := make([]byte, 32), make([]byte, 32)
-	pub.X.FillBytes(x) //nolint:staticcheck // champs dépréciés mais seule API stable pour les coordonnées
-	pub.Y.FillBytes(y) //nolint:staticcheck
+func publicJWK(kid string, pub *ecdsa.PublicKey) (JWK, error) {
+	if pub.Curve != elliptic.P256() {
+		return JWK{}, errors.New("not a P-256 key")
+	}
+	// Point non compressé : 0x04 ‖ X ‖ Y, coordonnées sur 32 octets déjà
+	// complétées à gauche.
+	raw, err := pub.Bytes()
+	if err != nil {
+		return JWK{}, err
+	}
+	x, y := raw[1:33], raw[33:]
 	return JWK{Kty: "EC", Crv: "P-256", Kid: kid, Alg: Algorithm, Use: "sig",
 		X: base64.RawURLEncoding.EncodeToString(x),
-		Y: base64.RawURLEncoding.EncodeToString(y)}
+		Y: base64.RawURLEncoding.EncodeToString(y)}, nil
 }
