@@ -58,15 +58,27 @@ type RistrettoAuthCache struct {
 }
 
 func NewRistrettoAuthCache() (*RistrettoAuthCache, error) {
+	return NewRistrettoAuthCacheWithSize(ristrettoNumCounters, ristrettoMaxCost)
+}
+
+// NewRistrettoAuthCacheWithSize : cache dimensionné à la main (tests : un
+// petit cache se crée et se ferme vite, celui de production remet à zéro
+// 1e7 compteurs à la fermeture).
+func NewRistrettoAuthCacheWithSize(numCounters, maxCost int64) (*RistrettoAuthCache, error) {
 	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: ristrettoNumCounters,
-		MaxCost:     ristrettoMaxCost,
+		NumCounters: numCounters,
+		MaxCost:     maxCost,
 		BufferItems: ristrettoBufferItems,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &RistrettoAuthCache{cache: cache}, nil
+}
+
+// Close arrête les goroutines du cache et libère sa mémoire.
+func (c *RistrettoAuthCache) Close() {
+	c.cache.Close()
 }
 
 func (c *RistrettoAuthCache) SetAccessTokenClaims(ctx context.Context, token string, claims AccessTokenClaims, ttl time.Duration) error {

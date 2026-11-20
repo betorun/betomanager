@@ -15,7 +15,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
 	"github.com/sirupsen/logrus"
-	"github.com/thekrauss/beto-shared/pkg/redis"
 	"github.com/thekrauss/kubemanager/internal/middleware"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/wI2L/fizz"
@@ -249,10 +248,6 @@ func (a *App) gracefulShutdownServers(grpcServer *grpc.Server, httpServer *http.
 		} else {
 			log.Println("HTTP server stopped gracefully")
 		}
-	}
-
-	if err := redis.Close(); err != nil {
-		log.Printf("redis close error: %v", err)
 	}
 }
 

@@ -269,6 +269,22 @@ func (a *App) shutdownInfra() {
 	if a.AsyncPool != nil {
 		a.AsyncPool.Shutdown(10 * time.Second)
 	}
+	// Plus personne ne s'en sert : clients et caches fermés.
+	if a.Redis != nil {
+		if err := a.Redis.Close(); err != nil && a.Logger != nil {
+			a.Logger.Warnw("redis close", "error", err)
+		}
+	}
+	if c, ok := a.AuthCache.(interface{ Close() }); ok {
+		c.Close()
+	}
+	if a.DB != nil {
+		if sqlDB, err := a.DB.DB(); err == nil {
+			if err := sqlDB.Close(); err != nil && a.Logger != nil {
+				a.Logger.Warnw("database close", "error", err)
+			}
+		}
+	}
 	if a.Observability.TracerShutdown != nil {
 		a.Observability.TracerShutdown()
 	}
