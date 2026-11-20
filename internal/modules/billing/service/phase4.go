@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -175,8 +176,11 @@ func (s *Service) CanRun(ctx context.Context, project uuid.UUID) error {
 		return nil
 	}
 	org, err := s.Inventory.ProjectOrg(ctx, project)
-	if err != nil {
+	if errors.Is(err, domain.ErrProjectUnknown) {
 		return nil // projet inconnu ici : le service des conteneurs répondra
+	}
+	if err != nil {
+		return err // panne de lecture : la garde reste fermée
 	}
 	acc, err := s.Ledger.Account(ctx, org)
 	if err != nil {

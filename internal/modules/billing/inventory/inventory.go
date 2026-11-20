@@ -6,7 +6,6 @@ package inventory
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -215,13 +214,16 @@ func (i *Inventory) RunningWorkloads(ctx context.Context, org uuid.UUID, project
 func (i *Inventory) ProjectOrg(ctx context.Context, project uuid.UUID) (uuid.UUID, error) {
 	var rows []uuid.UUID
 	err := i.DB.WithContext(ctx).Raw(`SELECT organization_id FROM projects WHERE id = ?`, project).Scan(&rows).Error
-	if err != nil || len(rows) == 0 {
-		return uuid.Nil, fmt.Errorf("billing inventory: project %s: %w", project, errProjectUnknown)
+	if err != nil {
+		// Erreur de lecture : remontée telle quelle (jamais « projet inconnu »,
+		// qui ouvrirait la garde CanRun pendant une panne de la base).
+		return uuid.Nil, fmt.Errorf("billing inventory: project %s: %w", project, err)
+	}
+	if len(rows) == 0 {
+		return uuid.Nil, fmt.Errorf("billing inventory: project %s: %w", project, domain.ErrProjectUnknown)
 	}
 	return rows[0], nil
 }
-
-var errProjectUnknown = errors.New("unknown project")
 
 // plans : abonnement des organisations à un plan payant (dans la monnaie du
 // compte). Rattaché à l'organisation, pas à un projet (ProjectID nul).

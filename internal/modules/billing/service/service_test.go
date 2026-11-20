@@ -112,7 +112,10 @@ func (m *memStore) Currency(context.Context, uuid.UUID) (string, error) {
 	return m.currency, nil
 }
 
-type fakeInventory struct{ res []domain.Reservation }
+type fakeInventory struct {
+	res    []domain.Reservation
+	orgErr error // erreur de ProjectOrg (nil : organisation nulle)
+}
 
 func (f *fakeInventory) Reservations(context.Context, time.Time) ([]domain.Reservation, error) {
 	return f.res, nil
@@ -127,7 +130,7 @@ func (f *fakeInventory) ProjectUsages(context.Context, uuid.UUID) ([]domain.Proj
 	return nil, nil
 }
 func (f *fakeInventory) ProjectOrg(context.Context, uuid.UUID) (uuid.UUID, error) {
-	return uuid.Nil, nil
+	return uuid.Nil, f.orgErr
 }
 func (f *fakeInventory) ProjectNames(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
 	out := map[uuid.UUID]string{}
