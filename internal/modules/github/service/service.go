@@ -112,7 +112,7 @@ func apiError(err error, notAccessible error) error {
 	return err
 }
 
-// ── Installation ────────────────────────────────────────────────────────────
+//  Installation
 
 type installState struct {
 	User    uuid.UUID `json:"user"`
@@ -355,10 +355,11 @@ func (s *Service) ListBranches(ctx context.Context, project uuid.UUID, in domain
 	return out, nil
 }
 
-// ── Liens ───────────────────────────────────────────────────────────────────
-
-// resolveSource : l'installation est liée au projet, le dépôt lui appartient,
-// la branche existe. Renvoie le lien prêt à enregistrer et le dernier commit.
+/*
+Liens
+resolveSource : l'installation est liée au projet, le dépôt lui appartient,
+la branche existe. Renvoie le lien prêt à enregistrer et le dernier commit
+*/
 func (s *Service) resolveSource(ctx context.Context, project uuid.UUID, src domain.LinkSource) (*domain.Link, string, error) {
 	if err := buildsDomain.ValidateGitRef(src.Branch); err != nil {
 		return nil, "", err
@@ -633,7 +634,7 @@ func (s *Service) CloneAccess(ctx context.Context, project uuid.UUID, installati
 	return &buildActs.CloneAccess{Token: token, CloneURL: s.Client.CloneURL(repo.FullName)}, nil
 }
 
-// ── Webhook ─────────────────────────────────────────────────────────────────
+//  Webhook
 
 // Livraison : résultat du traitement, renvoyé à GitHub (visible dans son
 // historique des livraisons).
