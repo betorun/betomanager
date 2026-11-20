@@ -96,6 +96,7 @@ type MiddlewareManager struct {
 	clusterAgents  ClusterAgentResolver
 	sts            TokenVerifier
 	mfa            *MFAConfig
+	dataAccess     DataAccessPolicy
 }
 
 func NewMiddlewareManager(
@@ -151,9 +152,14 @@ func (m *MiddlewareManager) AuthMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header (Bearer or X-API-Key)"})
 			return
 		}
-		// Jeton machine du STS betorun, sinon jeton Keycloak (humains).
+		// Jeton du STS betorun (sessions humaines et machines).
 		if m.sts != nil && m.sts.Owns(tokenString) {
 			m.handleSTSToken(c, tokenString)
+			return
+		}
+		// Jeton Keycloak brut : refusé hors tests locaux.
+		if m.config == nil || !m.config.Keycloak.AcceptUserTokens {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token, sign in again"})
 			return
 		}
 		m.handleBearer(c, tokenString)

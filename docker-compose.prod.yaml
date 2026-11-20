@@ -91,8 +91,6 @@ x-app-env: &app-env
   KUBEMANAGER_KEYCLOAK_CLIENT_ID: kubemanager-api
   KUBEMANAGER_KEYCLOAK_AUDIENCE: kubemanager-api
   KUBEMANAGER_KEYCLOAK_STRICT_AUDIENCE: "true"
-  KUBEMANAGER_KEYCLOAK_WEB_CLIENT_ID: kubemanager-web
-  KUBEMANAGER_KEYCLOAK_CLI_CLIENT_ID: betorun-cli
   KUBEMANAGER_KEYCLOAK_ADMIN_CLIENT_ID: kubemanager-admin
   KUBEMANAGER_KEYCLOAK_AUTH_CLIENT_ID: betorun-auth
   # Écrits par keycloak-bootstrap dans keycloak.env.
@@ -103,8 +101,8 @@ x-app-env: &app-env
   KUBEMANAGER_IAM_API_KEY_PEPPER: ${IAM_API_KEY_PEPPER:?}
   KUBEMANAGER_IAM_STS_KEY_ENCRYPTION_KEY: ${IAM_STS_KEY_ENCRYPTION_KEY:?}
   KUBEMANAGER_IAM_PLATFORM_ADMINS: ${PLATFORM_ADMINS:?}
-  # Double authentification : le step-up demande acr=gold au flux
-  # betorun-browser créé par keycloak-bootstrap (KEYCLOAK_MFA_ENABLED).
+  # Double authentification gérée par betorun : un step-up réussi
+  # porte acr=gold dans le jeton de session (docs/architecture/auth.md §6).
   KUBEMANAGER_IAM_MFA_ACR_VALUES: gold
   KUBEMANAGER_MAIL_ENABLED: "true"
   KUBEMANAGER_MAIL_SMTP_HOST: ${SMTP_HOST:?}
@@ -347,8 +345,6 @@ services:
       WEB_FRONTEND_ALT_BASE_URL: https://${CONSOLE_HOST:?}
       # Les emails partent du backend (docs/architecture/auth.md), jamais de Keycloak.
       KEYCLOAK_SMTP_ENABLED: "false"
-      # Flux betorun-browser : mot de passe (silver), code TOTP à la demande (gold).
-      KEYCLOAK_MFA_ENABLED: "true"
       OPERATOR_UID: ${OPERATOR_UID:-0}
     volumes:
       - ./docker/keycloak/bootstrap.sh:/bootstrap/bootstrap.sh:ro

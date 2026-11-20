@@ -1,6 +1,6 @@
 # Authentification des personnes : Keycloak invisible
 
-> Statut : **phase 1 livrée** (sessions, jetons betorun, connexion, double authentification, emails, console) ; phases 2 et 3 à venir.
+> Statut : **phases 1, 2 et 3 réalisées** (phase 3 le 2026-11-20 : passkeys, retrait des flux Keycloak, Keycloak en réseau privé). Reste : essai des passkeys dans un vrai navigateur et sur téléphone.
 > Décision associée : [ADR 0007](../adr/0007-keycloak-behind-backend.md) (amende l'ADR 0005).
 
 ## 1. Exigence
@@ -89,7 +89,12 @@ Le grant « password » n'est **jamais** offert aux clients : c'est un appel int
 
 - **TOTP** (RFC 6238) : le backend génère le secret, chiffré en base (AES-256-GCM, même clé de chiffrement que le STS, remplaçable par un KMS). Next.js affiche le QR code ; activation après un premier code correct.
 - **Codes de secours** : 10 codes à usage unique, hachés, affichés une seule fois.
-- **Passkeys** (WebAuthn) : phase 3, avec la même structure (`user_factors`).
+- **Passkeys** (WebAuthn, `internal/auth/passkeys.go`, table `auth_passkeys`, migration 000053). Jusqu'à 10 par compte.
+  - *Rôle* : second facteur à part entière, et connexion sans mot de passe (bouton « Se connecter avec une passkey », passkey choisie par le navigateur).
+  - *Règles* : vérification de l'utilisateur exigée (empreinte, visage, code de l'appareil), sans attestation ; RP ID = domaine de la console, origine = adresse de la console (`frontend_base_url`). Compteur de signature contrôlé (clone refusé).
+  - *Cérémonies* : défi gardé 5 min dans Redis, à usage unique, lié à son usage (enregistrement, connexion, second facteur, step-up).
+  - *Ajout* : exige une vérification récente si un facteur existe déjà. Première passkey sans TOTP : codes de secours remis à ce moment. Retrait du dernier facteur : codes de secours supprimés. Emails de sécurité à l'ajout et au retrait.
+  - *Routes* : `POST /identity/login/passkey{,/options}`, `/identity/login/mfa/passkey{,/options}`, `/identity/session/verify/passkey{,/options}`, `GET|POST /identity/passkeys`, `POST /identity/passkeys/options`, `PATCH|DELETE /identity/passkeys/:id`. La réponse `mfa_required` indique les méthodes possibles (`totp`, `passkey`, `recovery`).
 - **Step-up** : `POST /identity/session/verify {code}` met à jour `mfa_at` et renvoie un jeton `gold`. Dans la console, une fenêtre Next.js demande le code puis rejoue l'action. Dans la CLI, invite dans le terminal ou page Next.js.
 - **Politique d'organisation** `requireMfa` : inchangée. Un membre sans facteur est conduit à l'écran d'enrôlement Next.js.
 - Les OTP enregistrés dans Keycloak aujourd'hui (dev uniquement) ne sont pas repris : réenrôlement.
@@ -129,9 +134,11 @@ Sessions actives (appareil, IP, dernière activité) et révocation ; « se déc
 
 ## 11. Keycloak après la migration
 
-- Réseau privé uniquement (pas d'ingress public).
+- Réseau privé uniquement : en prod, réseau Docker `backend` interne, aucun port publié, `KC_HOSTNAME` interne. Seule l'API le joint.
 - Un seul client utile : confidentiel, `betorun-auth`, réservé au backend (vérification des mots de passe) ; le client admin existant pour l'API admin.
-- Clients publics `kubemanager-web` et `betorun-cli` supprimés ; flux `betorun-browser`, thèmes et SMTP Keycloak retirés.
+- Clients publics `kubemanager-web` et `betorun-cli` supprimés par `scripts/keycloak/bootstrap_platform.sh` s'ils existent ; flux `betorun-browser` plus créé en prod, SMTP Keycloak désactivé.
+- Côté API, plus de relais Keycloak : déconnexion, rafraîchissement, emails d'action et réglages `web_client_id` / `cli_client_id` retirés. Un ancien jeton de rafraîchissement renvoie « session expirée ».
+- Un jeton Keycloak présenté directement à l'API est refusé (`keycloak.accept_user_tokens`, faux par défaut). Seuls les scripts de test locaux l'activent, avec le client de test `kubemanager-dev-cli`.
 - Remplaçable : tout passe par une interface `Directory` (vérifier un mot de passe, créer, désactiver, changer le mot de passe). Une autre implémentation (mots de passe argon2id gérés par betorun, autre fournisseur) pourra la remplacer sans toucher au reste.
 
 ## 12. Plan
@@ -140,13 +147,13 @@ Sessions actives (appareil, IP, dernière activité) et révocation ; « se déc
 |---|---|---|
 | **1** | Sessions et jetons betorun ; connexion par mot de passe ; MFA TOTP et codes de secours ; step-up ; emails (vérification, mot de passe oublié) ; pages Next.js ; middleware acceptant les deux types de jetons pendant la transition | Plus aucune page Keycloak dans la console |
 | **2** | Google/GitHub en direct ; CLI via pages Next.js et device maison ; page Sécurité complète (sessions) | Plus rien de Keycloak nulle part |
-| **3** | Retrait des clients publics et des flux Keycloak, Keycloak en réseau privé ; passkeys | Surface réduite |
+| **3** ✅ | Retrait des clients publics et des flux Keycloak, Keycloak en réseau privé ; passkeys | Surface réduite |
 
 Chaque phase est livrée testée de bout en bout sur la stack de dev, comme l'étape 1.
 
 ## 13. Impact sur le travail récent
 
-- **Flux MFA Keycloak** (`ensure_mfa_loa`, commit `db163c1`) : rendu inutile par la section 6, à retirer en phase 3 (désactivé par défaut dès la phase 1).
+- **Flux MFA Keycloak** (`ensure_mfa_loa`, commit `db163c1`) : rendu inutile par la section 6 ; plus activé en prod depuis la phase 3 (fonction gardée dans le script, désactivée par défaut).
 - **`POST /identity/login`** : l'ancienne route (retirée aujourd'hui, non commité) relayait les jetons Keycloak tels quels. Elle est remplacée par la route de la section 5, qui émet des jetons betorun et gère le MFA.
 - **Step-up CLI par navigateur** (commit `9ddf13d`) : remplacé par la saisie du code dans le terminal (section 9).
 - `users.keycloak_user_id` reste en base, à usage interne uniquement.

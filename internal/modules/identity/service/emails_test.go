@@ -15,7 +15,7 @@ import (
 // Chaque e-mail existe dans les deux langues et se remplit entièrement.
 func TestEmails_CompleteInBothLanguages(t *testing.T) {
 	vars := map[string]string{"Device": "Chrome · Windows", "IP": "41.82.1.2", "When": "le 19/11/2026 à 22:00 UTC",
-		"Provider": "Google", "Email": "awa@gmail.com"}
+		"Provider": "Google", "Email": "awa@gmail.com", "Passkey": "iPhone"}
 	for kind := range emailCopies {
 		for _, lang := range []i18n.Locale{i18n.FR, i18n.EN} {
 			msg, err := renderEmailWith(i18n.With(context.Background(), lang), kind, "awa@x.test", "Awa", "https://c/settings#sessions", vars)

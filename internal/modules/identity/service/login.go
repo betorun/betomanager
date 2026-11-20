@@ -19,27 +19,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
-	keycloakadmin "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 )
 
 // pgUniqueViolation : code SQLSTATE Postgres pour unique_violation.
 const pgUniqueViolation = "23505"
-
-// ── Logout / Refresh ─────────────────────────────────────────────────────
-
-func (s *service) Logout(ctx context.Context, refreshToken string) error {
-	if s == nil || s.keycloak == nil {
-		return ErrIdentityServiceUnavailable
-	}
-	return s.keycloak.Logout(ctx, refreshToken)
-}
-
-func (s *service) RefreshToken(ctx context.Context, refreshToken string) (*keycloakadmin.TokenPair, error) {
-	if s == nil || s.keycloak == nil {
-		return nil, ErrIdentityServiceUnavailable
-	}
-	return s.keycloak.RefreshToken(ctx, refreshToken)
-}
 
 // cliRedirectRe : seule adresse de retour acceptée pour la CLI (boucle locale, RFC 8252).
 var cliRedirectRe = regexp.MustCompile(`^http://127\.0\.0\.1:[0-9]{1,5}/callback$`)

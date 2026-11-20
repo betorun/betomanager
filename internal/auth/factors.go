@@ -55,6 +55,8 @@ type FactorStatus struct {
 	TOTP              bool       `json:"totp"`
 	TOTPSince         *time.Time `json:"totp_since,omitempty"`
 	RecoveryRemaining int        `json:"recovery_codes_remaining"`
+	// Passkeys : nombre de passkeys enregistrées (chacune vaut second facteur).
+	Passkeys int `json:"passkeys"`
 }
 
 // TOTPEnrollment : à afficher une seule fois (QR code et saisie manuelle).
@@ -69,6 +71,8 @@ type Factors struct {
 	Sealer *Sealer
 	Pepper []byte
 	Now    func() time.Time
+	// Passkeys : nil si non configurées.
+	Passkeys *Passkeys
 }
 
 func (f *Factors) now() time.Time {
@@ -97,6 +101,9 @@ func (f *Factors) Status(ctx context.Context, userID uuid.UUID) (*FactorStatus, 
 		return nil, err
 	}
 	st.RecoveryRemaining = int(n)
+	if st.Passkeys, err = f.Passkeys.Count(ctx, userID); err != nil {
+		return nil, err
+	}
 	return st, nil
 }
 
@@ -106,16 +113,16 @@ func (f *Factors) HasFactor(ctx context.Context, userID uuid.UUID) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	return st.TOTP, nil
+	return st.TOTP || st.Passkeys > 0, nil
 }
 
 // StartTOTP : nouveau secret, inactif tant qu'un premier code n'a pas été
 // vérifié (ConfirmTOTP). Remplace un enrôlement non terminé ; refusé si un
 // TOTP est déjà actif (le désactiver d'abord).
 func (f *Factors) StartTOTP(ctx context.Context, userID uuid.UUID, account string) (*TOTPEnrollment, error) {
-	if active, err := f.HasFactor(ctx, userID); err != nil {
+	if st, err := f.Status(ctx, userID); err != nil {
 		return nil, err
-	} else if active {
+	} else if st.TOTP {
 		return nil, ErrFactorExists
 	}
 	secret, err := newTOTPSecret()
@@ -164,7 +171,8 @@ func (f *Factors) ConfirmTOTP(ctx context.Context, userID uuid.UUID, code string
 	return codes, err
 }
 
-// DisableTOTP : retire le second facteur et ses codes de secours.
+// DisableTOTP : retire l'application d'authentification ; les codes de
+// secours partent aussi s'il ne reste aucune passkey.
 func (f *Factors) DisableTOTP(ctx context.Context, userID uuid.UUID) error {
 	return f.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Where("user_id = ? AND kind = ?", userID, factorTOTP).Delete(&factorRow{})
@@ -174,8 +182,56 @@ func (f *Factors) DisableTOTP(ctx context.Context, userID uuid.UUID) error {
 		if res.RowsAffected == 0 {
 			return ErrNoFactor
 		}
-		return tx.Where("user_id = ?", userID).Delete(&recoveryRow{}).Error
+		return dropRecoveryIfAlone(tx, userID)
 	})
+}
+
+// dropRecoveryIfAlone : plus aucun facteur → plus de codes de secours.
+func dropRecoveryIfAlone(tx *gorm.DB, userID uuid.UUID) error {
+	var n int64
+	if err := tx.Model(&factorRow{}).Where("user_id = ? AND confirmed_at IS NOT NULL", userID).Count(&n).Error; err != nil {
+		return err
+	}
+	if n == 0 {
+		if err := tx.Model(&passkeyRow{}).Where("user_id = ?", userID).Count(&n).Error; err != nil {
+			return err
+		}
+	}
+	if n > 0 {
+		return nil
+	}
+	return tx.Where("user_id = ?", userID).Delete(&recoveryRow{}).Error
+}
+
+// RemovePasskey : retire une passkey (et les codes de secours si c'était le
+// dernier facteur).
+func (f *Factors) RemovePasskey(ctx context.Context, userID, id uuid.UUID) error {
+	return f.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("user_id = ? AND id = ?", userID, id).Delete(&passkeyRow{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrPasskeyNotFound
+		}
+		return dropRecoveryIfAlone(tx, userID)
+	})
+}
+
+// EnsureRecovery : codes de secours s'il n'en existe aucun (première
+// passkey sans application) ; nil s'ils existent déjà.
+func (f *Factors) EnsureRecovery(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	var codes []string
+	err := f.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var n int64
+		if err := tx.Model(&recoveryRow{}).Where("user_id = ?", userID).Count(&n).Error; err != nil || n > 0 {
+			return err
+		}
+		var err error
+		codes, err = f.replaceRecovery(tx, userID)
+		return err
+	})
+	return codes, err
 }
 
 // RegenerateRecovery : nouveaux codes de secours ; les anciens cessent de valoir.
@@ -202,17 +258,25 @@ func (f *Factors) Verify(ctx context.Context, userID uuid.UUID, code string) (st
 		var row factorRow
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND kind = ? AND confirmed_at IS NOT NULL", userID, factorTOTP).First(&row).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrNoFactor
-		}
-		if err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			// Pas d'application : passkeys seulement, les codes de secours valent.
+			var n int64
+			if err := tx.Model(&recoveryRow{}).Where("user_id = ?", userID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n == 0 {
+				return ErrNoFactor
+			}
+		case err != nil:
 			return err
-		}
-		if step, err := f.match(&row, code); err == nil {
-			method = MethodTOTP
-			return tx.Model(&row).Update("last_used_step", step).Error
-		} else if !errors.Is(err, ErrInvalidCode) {
-			return err
+		default:
+			if step, err := f.match(&row, code); err == nil {
+				method = MethodTOTP
+				return tx.Model(&row).Update("last_used_step", step).Error
+			} else if !errors.Is(err, ErrInvalidCode) {
+				return err
+			}
 		}
 		used, err := f.useRecovery(tx, userID, code)
 		if err != nil {

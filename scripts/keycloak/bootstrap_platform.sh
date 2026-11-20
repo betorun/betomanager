@@ -406,6 +406,16 @@ ensure_admin_client() {
 #   - Authorization Code + PKCE vers un serveur local éphémère (RFC 8252) :
 #     `betorun login --mfa` et step-up des actions sensibles. Keycloak accepte
 #     tout port sur 127.0.0.1 pour cette URI, et seulement ce chemin.
+# remove_legacy_client : supprime un client public d'avant la phase 3, s'il existe.
+remove_legacy_client() {
+  local realm="$1" clientId="$2" uuid
+  uuid="$(get_client_uuid "$realm" "$clientId")"
+  if [ -n "$uuid" ]; then
+    log "Removing legacy public client ${clientId}"
+    api DELETE "/admin/realms/${realm}/clients/${uuid}" >/dev/null
+  fi
+}
+
 ensure_cli_client() {
   local realm="$1" clientId="$2"
   local uuid payload
@@ -716,19 +726,10 @@ main() {
   local admin_uuid
   admin_uuid="$(ensure_admin_client "$KEYCLOAK_REALM" "$ADMIN_CLIENT_ID")"
 
-  log "Ensuring public web client ${WEB_CLIENT_ID}"
-  local web_uuid
-  web_uuid="$(ensure_web_client "$KEYCLOAK_REALM" "$WEB_CLIENT_ID" \
-    "$WEB_FRONTEND_BASE_URL" "$WEB_FRONTEND_ALT_BASE_URL")"
-  # Login PKCE : les tokens émis pour le client web doivent porter
-  # aud=<API client>, sinon l'AuthMiddleware (strict_audience) les refuse.
-  ensure_audience_mapper "$KEYCLOAK_REALM" "$web_uuid" "$API_CLIENT_ID"
-
-  log "Ensuring CLI client ${CLI_CLIENT_ID} (device flow)"
-  local cli_uuid
-  cli_uuid="$(ensure_cli_client "$KEYCLOAK_REALM" "$CLI_CLIENT_ID")"
-  # Comme le client web : aud=<API client>, sinon strict_audience refuse les jetons.
-  ensure_audience_mapper "$KEYCLOAK_REALM" "$cli_uuid" "$API_CLIENT_ID"
+  # Plus aucun client public : la console et la CLI passent par l'API
+  # betorun (docs/architecture/auth.md §11). Ceux d'avant sont supprimés.
+  remove_legacy_client "$KEYCLOAK_REALM" "$WEB_CLIENT_ID"
+  remove_legacy_client "$KEYCLOAK_REALM" "$CLI_CLIENT_ID"
 
   if is_true "$KEYCLOAK_MFA_ENABLED"; then
     ensure_mfa_loa "$KEYCLOAK_REALM"
@@ -762,8 +763,6 @@ main() {
   echo "Realm:         ${KEYCLOAK_REALM}"
   echo "Client (API):   ${API_CLIENT_ID}"
   echo "Client (Admin): ${ADMIN_CLIENT_ID}"
-  echo "Client (Web):   ${WEB_CLIENT_ID}"
-  echo "Client (CLI):   ${CLI_CLIENT_ID} (device flow)"
   if is_true "$KEYCLOAK_SMTP_ENABLED"; then
     echo "SMTP:           ${KEYCLOAK_SMTP_HOST}:${KEYCLOAK_SMTP_PORT} (from=${KEYCLOAK_SMTP_FROM})"
     if [ "${KEYCLOAK_SMTP_HOST}" = "mailhog" ] || [ "${KEYCLOAK_SMTP_HOST}" = "127.0.0.1" ]; then
@@ -783,7 +782,6 @@ main() {
   echo "  KUBEMANAGER_KEYCLOAK_REALM=${KEYCLOAK_REALM}"
   echo "  KUBEMANAGER_KEYCLOAK_ISSUER_URL=${KEYCLOAK_BASE_URL}/realms/${KEYCLOAK_REALM}"
   echo "  KUBEMANAGER_KEYCLOAK_CLIENT_ID=${API_CLIENT_ID}"
-  echo "  KUBEMANAGER_KEYCLOAK_CLI_CLIENT_ID=${CLI_CLIENT_ID}"
   echo "  KUBEMANAGER_KEYCLOAK_AUTH_CLIENT_ID=${AUTH_CLIENT_ID}"
   echo "  KUBEMANAGER_KEYCLOAK_AUTH_CLIENT_SECRET=<secret du client ${AUTH_CLIENT_ID}>"
   echo "  KUBEMANAGER_IAM_MFA_ACR_VALUES=gold"

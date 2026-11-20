@@ -3,7 +3,6 @@ package keycloak
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,17 +21,6 @@ type KeycloakClient interface {
 	GetUserByID(ctx context.Context, keycloakUserID string) (*UserProfile, error)
 	FindUserByEmail(ctx context.Context, email string) (*UserProfile, error)
 
-	// User-facing auth (ROPC / token endpoint).
-	RefreshToken(ctx context.Context, refreshToken string) (*TokenPair, error)
-	Logout(ctx context.Context, refreshToken string) error
-
-	// Admin actions.
-	ExecuteActionsEmail(ctx context.Context, userID string, actions []string, opts *ActionEmailOptions) error
-	ResetPassword(ctx context.Context, keycloakUserID, newPassword string) error
-
-	// SendVerificationEmail triggers a VERIFY_EMAIL action email for the user.
-	SendVerificationEmail(ctx context.Context, userID string, opts *ActionEmailOptions) error
-
 	// Annuaire derrière le backend (directory.go).
 	VerifyPassword(ctx context.Context, email, password string) (*PasswordCheck, error)
 	MarkEmailVerified(ctx context.Context, subject string) error
@@ -46,18 +34,6 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 )
 
-// TokenPair holds the tokens returned by a user-facing login or refresh.
-type TokenPair struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresIn    int64
-}
-
-type ActionEmailOptions struct {
-	ClientID    string
-	RedirectURI string
-}
-
 type userTokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -69,9 +45,6 @@ type AdminConfig struct {
 	Realm        string
 	ClientID     string
 	ClientSecret string
-	// WebClientID : client public (PKCE) des flux Authorization Code. Vide =
-	// ClientID (comportement historique, client confidentiel).
-	WebClientID string
 	// AuthClientID / AuthClientSecret : client confidentiel de vérification
 	// des mots de passe (VerifyPassword). Vide : vérification indisponible.
 	AuthClientID     string
@@ -84,7 +57,6 @@ type Client struct {
 	realm        string
 	clientID     string
 	clientSecret string
-	webClientID  string
 	pwdClientID  string
 	pwdSecret    string
 	httpClient   *http.Client
@@ -179,7 +151,6 @@ func New(cfg AdminConfig, issuerURL string) (*Client, error) {
 		realm:        realm,
 		clientID:     clientID,
 		clientSecret: clientSecret,
-		webClientID:  strings.TrimSpace(cfg.WebClientID),
 		pwdClientID:  strings.TrimSpace(cfg.AuthClientID),
 		pwdSecret:    strings.TrimSpace(cfg.AuthClientSecret),
 		httpClient:   &http.Client{Timeout: timeout},
@@ -533,190 +504,6 @@ func (c *Client) clientRole(ctx context.Context, token string, clientUUID string
 		return roleRepresentation{}, fmt.Errorf("keycloak role %s not found", roleName)
 	}
 	return role, nil
-}
-
-func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (*TokenPair, error) {
-	refreshToken = strings.TrimSpace(refreshToken)
-	if refreshToken == "" {
-		return nil, errors.New("refresh token is required")
-	}
-	form := url.Values{}
-	form.Set("grant_type", "refresh_token")
-	c.setClientCredentials(form, c.clientForRefreshToken(refreshToken))
-	form.Set("refresh_token", refreshToken)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/realms/%s/protocol/openid-connect/token", c.baseURL, url.PathEscape(c.realm)),
-		strings.NewReader(form.Encode()),
-	)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, ErrInvalidCredentials
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("keycloak refresh token failed with status %d", resp.StatusCode)
-	}
-	var t userTokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return nil, err
-	}
-	return &TokenPair{AccessToken: t.AccessToken, RefreshToken: t.RefreshToken, ExpiresIn: t.ExpiresIn}, nil
-}
-
-func (c *Client) Logout(ctx context.Context, refreshToken string) error {
-	refreshToken = strings.TrimSpace(refreshToken)
-	if refreshToken == "" {
-		return errors.New("refresh token is required")
-	}
-	form := url.Values{}
-	c.setClientCredentials(form, c.clientForRefreshToken(refreshToken))
-	form.Set("refresh_token", refreshToken)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/realms/%s/protocol/openid-connect/logout", c.baseURL, url.PathEscape(c.realm)),
-		strings.NewReader(form.Encode()),
-	)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
-		return nil
-	}
-	return fmt.Errorf("keycloak logout failed with status %d", resp.StatusCode)
-}
-
-func (c *Client) ExecuteActionsEmail(ctx context.Context, userID string, actions []string, opts *ActionEmailOptions) error {
-	userID = strings.TrimSpace(userID)
-	if userID == "" {
-		return errors.New("user id is required")
-	}
-	token, err := c.adminAccessToken(ctx)
-	if err != nil {
-		return err
-	}
-	body, err := json.Marshal(actions)
-	if err != nil {
-		return err
-	}
-	requestURL := fmt.Sprintf("%s/admin/realms/%s/users/%s/execute-actions-email", c.baseURL, url.PathEscape(c.realm), url.PathEscape(userID))
-	if opts != nil {
-		params := url.Values{}
-		if clientID := strings.TrimSpace(opts.ClientID); clientID != "" {
-			params.Set("client_id", clientID)
-		}
-		if redirectURI := strings.TrimSpace(opts.RedirectURI); redirectURI != "" {
-			params.Set("redirect_uri", redirectURI)
-		}
-		if encoded := params.Encode(); encoded != "" {
-			requestURL += "?" + encoded
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
-		requestURL,
-		bytes.NewReader(body),
-	)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
-		return nil
-	}
-	return fmt.Errorf("execute actions email failed with status %d", resp.StatusCode)
-}
-
-func (c *Client) ResetPassword(ctx context.Context, keycloakUserID, newPassword string) error {
-	keycloakUserID = strings.TrimSpace(keycloakUserID)
-	newPassword = strings.TrimSpace(newPassword)
-	if keycloakUserID == "" || newPassword == "" {
-		return errors.New("keycloak user id and new password are required")
-	}
-	token, err := c.adminAccessToken(ctx)
-	if err != nil {
-		return err
-	}
-	payload, err := json.Marshal(credentialRepresentation{Type: "password", Value: newPassword, Temporary: false})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut,
-		fmt.Sprintf("%s/admin/realms/%s/users/%s/reset-password", c.baseURL, url.PathEscape(c.realm), url.PathEscape(keycloakUserID)),
-		bytes.NewReader(payload),
-	)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
-		return nil
-	}
-	return fmt.Errorf("reset password failed with status %d", resp.StatusCode)
-}
-
-// setClientCredentials pose client_id, et le secret uniquement pour le client
-// confidentiel : un client public n'en a pas.
-func (c *Client) setClientCredentials(form url.Values, clientID string) {
-	form.Set("client_id", clientID)
-	if clientID == c.clientID {
-		form.Set("client_secret", c.clientSecret)
-	}
-}
-
-// clientForRefreshToken : Keycloak n'accepte un refresh token que du client
-// qui l'a obtenu (claim azp). Décodé sans vérification de signature — c'est
-// Keycloak qui valide le token ensuite.
-func (c *Client) clientForRefreshToken(refreshToken string) string {
-	if c.webClientID != "" && tokenAuthorizedParty(refreshToken) == c.webClientID {
-		return c.webClientID
-	}
-	return c.clientID
-}
-
-func tokenAuthorizedParty(token string) string {
-	parts := strings.SplitN(token, ".", 3)
-	if len(parts) != 3 {
-		return ""
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
-	if err != nil {
-		return ""
-	}
-	var claims struct {
-		AZP string `json:"azp"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return ""
-	}
-	return claims.AZP
-}
-
-// SendVerificationEmail triggers a VERIFY_EMAIL required-action email for the user.
-func (c *Client) SendVerificationEmail(ctx context.Context, userID string, opts *ActionEmailOptions) error {
-	return c.ExecuteActionsEmail(ctx, userID, []string{"VERIFY_EMAIL"}, opts)
 }
 
 func deriveBaseURLAndRealm(issuerURL string) (string, string, error) {

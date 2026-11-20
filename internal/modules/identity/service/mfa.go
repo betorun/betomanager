@@ -75,6 +75,25 @@ func (s *service) RegenerateRecoveryCodes(ctx context.Context, userID, sessionID
 	return &identitytypes.RecoveryCodesResponse{RecoveryCodes: codes}, nil
 }
 
+// mfaMethods : seconds facteurs proposés à la connexion.
+func (s *service) mfaMethods(ctx context.Context, userID uuid.UUID) []string {
+	st, err := s.factors.Status(ctx, userID)
+	if err != nil {
+		return []string{auth.MethodTOTP, auth.MethodRecovery}
+	}
+	out := []string{}
+	if st.TOTP {
+		out = append(out, auth.MethodTOTP)
+	}
+	if st.Passkeys > 0 && s.factors.Passkeys != nil && s.factors.Passkeys.WebAuthn != nil {
+		out = append(out, auth.MethodPasskey)
+	}
+	if st.RecoveryRemaining > 0 {
+		out = append(out, auth.MethodRecovery)
+	}
+	return out
+}
+
 func (s *service) requireRecentMFA(ctx context.Context, userID, sessionID uuid.UUID) error {
 	if err := s.authReady(); err != nil {
 		return err

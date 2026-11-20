@@ -1,6 +1,11 @@
 package types
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Authentification gérée par betorun (docs/architecture/auth.md). Aucun
 // type ci-dessous ne contient d'information de l'annuaire d'identité.
@@ -35,6 +40,65 @@ type AuthResponse struct {
 	MFA bool `json:"mfa"`
 	// Challenge : à renvoyer avec le code (POST /identity/login/mfa), 5 min.
 	Challenge string `json:"challenge,omitempty"`
+	// Methods : seconds facteurs possibles (totp, passkey, recovery).
+	Methods []string `json:"methods,omitempty"`
+}
+
+// ── Passkeys (WebAuthn) ──
+
+// PasskeyOptions : options pour le navigateur et identifiant de la cérémonie
+// (état gardé côté serveur, 5 min, usage unique).
+type PasskeyOptions struct {
+	Ceremony string          `json:"ceremony"`
+	Options  json.RawMessage `json:"options" description:"PublicKeyCredentialCreationOptions ou RequestOptions (JSON, base64url)"`
+}
+
+type PasskeyRegisterRequest struct {
+	Ceremony   string          `json:"ceremony" binding:"required"`
+	Name       string          `json:"name" binding:"required" description:"Nom affiché de la passkey (1 à 60 caractères)"`
+	Credential json.RawMessage `json:"credential" binding:"required" description:"Réponse de navigator.credentials.create() (JSON, base64url)"`
+}
+
+// PasskeyRegistered : passkey enregistrée ; codes de secours remis une fois
+// pour la première, si le compte n'en avait pas.
+type PasskeyRegistered struct {
+	Passkey       Passkey  `json:"passkey"`
+	RecoveryCodes []string `json:"recovery_codes,omitempty"`
+}
+
+type PasskeyLoginOptionsRequest struct {
+	// Client : "cli" pour une session de la CLI ; défaut : navigateur.
+	Client string `json:"client,omitempty"`
+}
+
+type PasskeyLoginRequest struct {
+	Ceremony   string          `json:"ceremony" binding:"required"`
+	Credential json.RawMessage `json:"credential" binding:"required" description:"Réponse de navigator.credentials.get() (JSON, base64url)"`
+	Client     string          `json:"client,omitempty"`
+}
+
+type PasskeyMFAOptionsRequest struct {
+	Challenge string `json:"challenge" binding:"required"`
+}
+
+type PasskeyMFARequest struct {
+	Challenge  string          `json:"challenge" binding:"required"`
+	Ceremony   string          `json:"ceremony" binding:"required"`
+	Credential json.RawMessage `json:"credential" binding:"required" description:"Réponse de navigator.credentials.get() (JSON, base64url)"`
+}
+
+type PasskeyStepUpRequest struct {
+	Ceremony   string          `json:"ceremony" binding:"required"`
+	Credential json.RawMessage `json:"credential" binding:"required" description:"Réponse de navigator.credentials.get() (JSON, base64url)"`
+}
+
+type PasskeyPath struct {
+	ID string `path:"id" binding:"required"`
+}
+
+type PasskeyRenameRequest struct {
+	ID   string `path:"id" binding:"required"`
+	Name string `json:"name" binding:"required" description:"Nouveau nom (1 à 60 caractères)"`
 }
 
 type StepUpRequest struct {
@@ -143,4 +207,25 @@ type SocialCallbackRequest struct {
 
 type SocialProvidersResponse struct {
 	Providers []string `json:"providers"`
+}
+
+// Passkey : vue publique d'une passkey (même forme que auth.Passkey ; le
+// paquet auth n'est pas importé ici, ces types servent aussi à la CLI).
+type Passkey struct {
+	ID         uuid.UUID  `json:"id"`
+	Name       string     `json:"name"`
+	CreatedAt  time.Time  `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	Synced     bool       `json:"synced"`
+}
+
+// ── Connexion d'entreprise (iam.md §9.2) ──
+
+type SSOStartRequest struct {
+	Email string `json:"email" binding:"required" description:"Adresse professionnelle : son domaine désigne l'organisation"`
+}
+
+type SSOCallbackRequest struct {
+	Code  string `json:"code" binding:"required"`
+	State string `json:"state" binding:"required"`
 }

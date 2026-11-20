@@ -1,0 +1,30 @@
+[
+ {
+  "fr": "Nom de passkey invalide : 1 à 60 caractères",
+  "en": "invalid passkey name: 1 to 60 characters"
+ },
+ {
+  "fr": "Passkey introuvable",
+  "en": "passkey not found"
+ },
+ {
+  "fr": "Les passkeys ne sont pas disponibles sur cette plateforme",
+  "en": "passkeys are not available on this platform"
+ },
+ {
+  "fr": "La demande de passkey a expiré, réessayez",
+  "en": "the passkey request has expired, try again"
+ },
+ {
+  "fr": "Cette passkey n'a pas pu être vérifiée",
+  "en": "this passkey could not be verified"
+ },
+ {
+  "fr": "Trop de passkeys : retirez-en une d'abord",
+  "en": "too many passkeys: remove one first"
+ },
+ {
+  "fr": "Jeton invalide, reconnectez-vous",
+  "en": "invalid token, sign in again"
+ }
+]

@@ -40,6 +40,8 @@ const (
 	emailRecoveryRegenerated
 	emailRecoveryUsed
 	emailIdentityLinked
+	emailPasskeyAdded
+	emailPasskeyRemoved
 )
 
 // securityOutro : fin commune des e-mails de sécurité.
@@ -101,6 +103,22 @@ var emailCopies = map[emailKind]map[i18n.Locale]emailCopy{
 		i18n.EN: {Subject: "{{.Provider}} account linked to your betorun account", Title: "New sign-in method",
 			Intro:  "Hello {{.Name}}, a {{.Provider}} account ({{.Email}}) was just linked to your betorun account: it can now be used to sign in.",
 			Button: "View my sign-in methods", Outro: securityOutro[i18n.EN]},
+	},
+	emailPasskeyAdded: {
+		i18n.FR: {Subject: "Nouvelle passkey sur votre compte betorun", Title: "Nouvelle passkey",
+			Intro:  "Bonjour {{.Name}}, une passkey ({{.Passkey}}) vient d'être ajoutée à votre compte betorun : elle permet de vous connecter et de confirmer les actions sensibles.",
+			Button: "Voir la sécurité du compte", Outro: securityOutro[i18n.FR]},
+		i18n.EN: {Subject: "New passkey on your betorun account", Title: "New passkey",
+			Intro:  "Hello {{.Name}}, a passkey ({{.Passkey}}) was just added to your betorun account: it can be used to sign in and to confirm sensitive actions.",
+			Button: "View account security", Outro: securityOutro[i18n.EN]},
+	},
+	emailPasskeyRemoved: {
+		i18n.FR: {Subject: "Passkey retirée de votre compte betorun", Title: "Passkey retirée",
+			Intro:  "Bonjour {{.Name}}, une passkey vient d'être retirée de votre compte betorun.",
+			Button: "Voir la sécurité du compte", Outro: securityOutro[i18n.FR]},
+		i18n.EN: {Subject: "Passkey removed from your betorun account", Title: "Passkey removed",
+			Intro:  "Hello {{.Name}}, a passkey was just removed from your betorun account.",
+			Button: "View account security", Outro: securityOutro[i18n.EN]},
 	},
 	emailVerify: {
 		i18n.FR: {Subject: "Confirmez votre adresse email", Title: "Bienvenue sur betorun",

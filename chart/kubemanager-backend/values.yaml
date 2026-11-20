@@ -78,7 +78,6 @@ config:
     issuerUrl: "https://auth.example.com/realms/kubemanager"
     audience: "kubemanager-api"
     # Client public de la CLI (Device Authorization Grant activé). Vide : désactivé.
-    cliClientId: "betorun-cli"
   vps:
     # IP publique du point d'entrée des conteneurs (URL <release>-<projet>.<ip>.sslip.io).
     # Vide : conteneurs déployés sans URL publique.
