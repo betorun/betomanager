@@ -101,12 +101,20 @@ func (a *App) initDependencies() error {
 	return nil
 }
 
+// initAuthCache : cache d'authentification à deux niveaux. Redis (partagé,
+// survit aux redémarrages) porte les révocations — déconnexions, clés
+// révoquées — qui sinon ne vivaient qu'en mémoire et se perdaient à chaque
+// redémarrage ; ristretto (local) évite l'aller-retour pour le reste.
 func (a *App) initAuthCache() error {
-	authCache, err := cache.NewRistrettoAuthCache()
+	local, err := cache.NewRistrettoAuthCache()
 	if err != nil {
 		return fmt.Errorf("ristretto auth cache init: %w", err)
 	}
-	a.AuthCache = authCache
+	var shared cache.AuthCache
+	if a.Redis != nil { // pas d'interface non nulle autour d'un client nil
+		shared = cache.NewRedisAuthCacheFromClient(a.Redis)
+	}
+	a.AuthCache = cache.NewTieredAuthCache(shared, local)
 	return nil
 }
 

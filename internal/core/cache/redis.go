@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -23,26 +22,10 @@ type RedisAuthCache struct {
 
 var _ AuthCache = (*RedisAuthCache)(nil)
 
-func NewRedisAuthCache(ctx context.Context, addr string, password string, db int) (*RedisAuthCache, error) {
-	if addr == "" {
-		return nil, fmt.Errorf("redis address is required")
-	}
-
-	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       db,
-	})
-
-	pingCtx := ctx
-	if pingCtx == nil {
-		pingCtx = context.Background()
-	}
-	if err := client.Ping(pingCtx).Err(); err != nil {
-		return nil, err
-	}
-
-	return &RedisAuthCache{client: client}, nil
+// NewRedisAuthCacheFromClient : cache partagé sur le client Redis de
+// l'application (instrumenté, fermé à l'arrêt par elle).
+func NewRedisAuthCacheFromClient(client *redis.Client) *RedisAuthCache {
+	return &RedisAuthCache{client: client}
 }
 
 func (c *RedisAuthCache) SetAccessTokenClaims(ctx context.Context, token string, claims AccessTokenClaims, ttl time.Duration) error {

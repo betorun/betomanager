@@ -22,7 +22,7 @@ func TestShutdownInfra_ClosesClients(t *testing.T) {
 		t.Fatal(err)
 	}
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
-	a := &App{Logger: zap.NewNop().Sugar(), Redis: rdb, AuthCache: ac}
+	a := &App{Logger: zap.NewNop().Sugar(), Redis: rdb, AuthCache: cache.NewTieredAuthCache(cache.NewRedisAuthCacheFromClient(rdb), ac)}
 	a.shutdownInfra()
 	if err := rdb.Ping(context.Background()).Err(); !errors.Is(err, redis.ErrClosed) {
 		t.Fatalf("Redis encore ouvert après l'arrêt : %v", err)
