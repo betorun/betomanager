@@ -10,7 +10,6 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -316,26 +315,6 @@ func (s *APIKeyService) ValidateKey(ctx context.Context, rawKey string) (*APIKey
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-// generateKey : produit (prefix, fullKey) où fullKey = prefix + "_" + secret.
-// Format : "km_<env>_<12 hex>_<40 hex>"
-func (s *APIKeyService) generateKey() (string, string, error) {
-	env := s.envTag
-	if env == "" {
-		env = apiKeyDefaultEnvTag
-	}
-	prefixBytes := make([]byte, apiKeyPrefixRandomBytes)
-	if _, err := rand.Read(prefixBytes); err != nil {
-		return "", "", err
-	}
-	secretBytes := make([]byte, apiKeySecretBytes)
-	if _, err := rand.Read(secretBytes); err != nil {
-		return "", "", err
-	}
-	prefix := strings.Join([]string{apiKeyBrand, env, hex.EncodeToString(prefixBytes)}, apiKeySeparator)
-	full := prefix + apiKeySeparator + hex.EncodeToString(secretBytes)
-	return prefix, full, nil
-}
 
 // extractPrefix : isole la partie publique d'une clé "prefix_secret".
 func extractPrefix(raw string) string {

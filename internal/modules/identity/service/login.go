@@ -95,36 +95,6 @@ func (s *service) touchLastLogin(ctx context.Context, user *domain.User) {
 	_ = s.users.UpdateUser(ctx, user)
 }
 
-// ── JWT claim decoding (no signature check — use only on fresh Keycloak tokens) ──
-
-type jwtClaims struct {
-	Sub           string `json:"sub"`
-	EmailVerified bool   `json:"email_verified"`
-	Name          string `json:"name"`
-	Picture       string `json:"picture"`
-}
-
-func extractJWTClaims(tokenString string) jwtClaims {
-	parts := strings.SplitN(tokenString, ".", 3)
-	if len(parts) != 3 {
-		return jwtClaims{}
-	}
-	seg := parts[1]
-	if rem := len(seg) % 4; rem != 0 {
-		seg += strings.Repeat("=", 4-rem)
-	}
-	decoded, err := base64.URLEncoding.DecodeString(seg)
-	if err != nil {
-		return jwtClaims{}
-	}
-	var claims jwtClaims
-	if err := json.Unmarshal(decoded, &claims); err != nil {
-		return jwtClaims{}
-	}
-	claims.Sub = strings.TrimSpace(claims.Sub)
-	return claims
-}
-
 // ExtractJTI decodes the JTI claim from a JWT access token (without signature
 // verification). Exposed so the controller can blacklist a token on logout.
 func ExtractJTI(tokenString string) string {

@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
-	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
 	"slices"
 	"strconv"
 	"strings"
+
+	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/activities"
@@ -1047,11 +1048,6 @@ func (s *WorkloadService) parseStorage(storage string) int64 {
 		return 0
 	}
 	return res.Value() / utils.BytesPerMi
-}
-
-func (s *WorkloadService) parseStorageToBytes(storage string) int64 {
-	res, _ := resource.ParseQuantity(storage)
-	return res.Value()
 }
 
 func (s *WorkloadService) validateNetwork(port int) error {

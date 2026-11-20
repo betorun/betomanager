@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	projectDomain "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
-	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
-	projectRepo "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	projectDomain "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
+	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
+	projectRepo "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -83,8 +84,6 @@ func (c cancelOnStart) ExecuteWorkflow(ctx context.Context, o temporal.ExecuteOp
 type fakeVariables struct {
 	repository.VariableStore
 	revision int64
-	values   map[string]string
-	secrets  map[string]bool
 	imported map[string]string
 	applied  []domain.VariableChange
 	// restored : révisions demandées à Restore. racer : écriture concurrente

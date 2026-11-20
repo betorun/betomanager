@@ -40,12 +40,6 @@ var (
 	ErrCLIRedirectURI             = errors.New("CLI redirect_uri must be http://127.0.0.1:<port>/callback")
 )
 
-// validProviders : nom exposé → alias IDP configuré dans Keycloak (voir bootstrap_platform.sh).
-var validProviders = map[string]string{
-	"google": "google",
-	"github": "github",
-}
-
 type BootstrapPrincipal struct {
 	KeycloakUserID string
 	Email          string
