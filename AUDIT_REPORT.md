@@ -56,7 +56,7 @@ Gravité : **haute** (panique, garde de sécurité, fuite en production), **moye
 | internal/cli/auth.go:220 | processus zombie (lanceur de navigateur sans `Wait`) | basse | corrigé | `310145d` |
 | internal/cli/browserlogin.go:48 | noctx (`net.Listen`) | basse | corrigé | `310145d` |
 | go.mod (golang.org/x/crypto) | GO-2026-5932 (module requis, non appelé) | basse | corrigé (v0.59.0) | `08067d2` |
-| internal/core/cache/factory.go, redis.go, fallback.go | cache d'auth Redis jamais branché | — | décision à prendre (§3) | — |
+| internal/core/cache/tiered.go (+ factory.go, fallback.go supprimés) | révocations perdues au redémarrage ; repli silencieux « non révoqué » si Redis tombe | haute | corrigé, Redis branché | `50b8d91` |
 | internal/core/cache/redis.go:37 | contextcheck | — | faux positif (garde `ctx == nil`) | — |
 | internal/iam/sts/federation_e2e_test.go:210 | bodyclose | — | faux positif (la requête doit échouer) | — |
 | boucles avec `time.After` (router, temporal…) | fuite de timer supposée | — | sans objet depuis Go 1.23 | — |
@@ -85,7 +85,7 @@ Gravité : **haute** (panique, garde de sécurité, fuite en production), **moye
     - double wrap `%w: %v` (social.go:193, authflow.go:131, diskresize/resize.go:305) ;
     - comparaison de sentinelle dans errors.go:330.
 11. **Nouveau constructeur `NewRistrettoAuthCacheWithSize`** pour les tests : le cache de production (1e7 compteurs, 1 Gio) met environ 1 s à se fermer sous `-race`.
-12. **Cache d'authentification Redis (`core/cache` : factory.go, redis.go, fallback.go) jamais branché** : l'application n'utilise que ristretto, local au processus. Je ne l'ai pas supprimé, car avec plusieurs instances de l'API il faudra une liste noire des JTI partagée. Deux options : le brancher, ou le supprimer. C'est un choix produit.
+12. **Cache d'authentification Redis : branché, décision prise** (`50b8d91`). Les révocations (déconnexions, clés révoquées) ne vivaient qu'en mémoire : elles se perdaient à chaque redémarrage et restaient invisibles entre instances. `TieredAuthCache` (Redis partagé + ristretto local) les rend persistantes. Si Redis est en panne, la vérification d'une révocation échoue fermée (refus) ; pour les accélérations, la panne vaut un simple « absent ». Limites qui ne changent pas : une clé API révoquée peut rester acceptée au plus 30 s sur une instance qui l'avait validée en local (la base fait foi au-delà) ; et si l'écriture d'une déconnexion dans Redis échoue, le contrôleur l'ignore (l'effet local reste immédiat).
 13. **contextcheck non activé** : en production, tous ses constats sont des détachements voulus (`Spawner`, arrêt, pool de workers). L'activer obligerait à un `nolint` par ligne, sans rien gagner.
 
 ## 4. Problèmes non résolus
@@ -103,7 +103,7 @@ Repris ensuite, à la demande, et clos :
 - **contextcheck** : revu, et pas activé (§3).
 - **govulncheck** : x/crypto monté en v0.59.0, plus aucune vulnérabilité.
 
-Plus rien d'ouvert, à part les décisions du §3 (surtout `CanRun` et le cache Redis) et le sort de la branche (push ou fusion dans `dev`).
+Plus rien d'ouvert, à part les décisions du §3 (surtout `CanRun`) et le sort de la branche (push ou fusion dans `dev`).
 
 Note : `go test -race` tournait encore quand j'ai commencé à modifier le pool de workers. La référence reste valable : elle a été prise sur un worktree séparé.
 
@@ -138,6 +138,10 @@ go test -race -count=1 -run 'TestSubmitDuringShutdown|TestAccumulator_Backpressu
   ./internal/core/workerpool ./internal/modules/auth/service ./internal/infrastructure/router \
   ./internal/iam/sts ./internal/iam ./internal/cli/api
 go test -race -count=1 ./internal/modules/billing/service ./internal/infrastructure/mail
+# Cache d'auth contre un vrai Redis jetable
+redis-server --port 6390 --save '' --appendonly no --daemonize yes
+AUTHCACHE_REDIS_ADDR=127.0.0.1:6390 go test -count=1 -run TestE2E ./internal/core/cache/
+
 go test -race -count=1 -run 'TestSpawner|TestNotifier_Background|TestBackup_(Shutdown|Stale)|TestResize_(Unrecorded|SpawnerTracks)' \
   ./internal/infrastructure/router ./internal/modules/alerts ./internal/modules/addons ./internal/modules/diskresize
 ```
