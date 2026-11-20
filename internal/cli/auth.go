@@ -216,18 +216,23 @@ func newVersion() *cobra.Command {
 	}
 }
 
-// openBrowser : au mieux ; l'URL est de toute façon affichée.
+// openBrowser : au mieux ; l'URL est de toute façon affichée. Le lanceur
+// (open, xdg-open…) rend la main aussitôt et le navigateur vit sa vie : rien
+// à annuler, d'où exec.Command sans contexte. Il est en revanche attendu,
+// sinon il reste à l'état zombie tant que la CLI tourne (serveur MCP).
 func openBrowser(url string) {
 	var c *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		c = exec.Command("open", url)
+		c = exec.Command("open", url) //nolint:noctx // voir ci-dessus
 	case "windows":
-		c = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		c = exec.Command("rundll32", "url.dll,FileProtocolHandler", url) //nolint:noctx // voir ci-dessus
 	default:
-		c = exec.Command("xdg-open", url)
+		c = exec.Command("xdg-open", url) //nolint:noctx // voir ci-dessus
 	}
-	_ = c.Start()
+	if c.Start() == nil {
+		go func() { _ = c.Wait() }()
+	}
 }
 
 func firstNonEmpty(v ...string) string {

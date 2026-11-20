@@ -45,7 +45,8 @@ func newPKCE() (verifier, challenge string, err error) {
 }
 
 func browserLogin(ctx context.Context, cl *api.Client, out io.Writer, open bool) (*config.Credentials, error) {
-	ln, err := net.Listen("tcp", loopbackListenAddr)
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", loopbackListenAddr)
 	if err != nil {
 		return nil, err
 	}

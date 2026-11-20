@@ -8,6 +8,10 @@
 # s'abriter derrière ces exclusions pour un fichier écrit.
 version: "2"
 linters:
+  enable:
+    # Appels réseau et processus sans contexte (hors tests : httptest et
+    # appels de test n'ont rien à annuler).
+    - noctx
   settings:
     staticcheck:
       # Défauts de golangci, sans deux suggestions de réécriture jugées
@@ -36,4 +40,4 @@ linters:
       # Tests : les erreurs utiles sont vérifiées par assertion ; le reste
       # (fermetures, écritures dans un httptest) n'apporte rien.
       - path: _test\.go
-        linters: [errcheck]
+        linters: [errcheck, noctx]
