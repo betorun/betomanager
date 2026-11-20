@@ -1,6 +1,6 @@
 # Module `databases`
 
-> Bases Postgres gérées d'un projet (CloudNativePG) : création, état, branchement sur un conteneur, restauration depuis les sauvegardes, import d'un dump, contenu, remise à zéro.
+> Bases Postgres gérées d'un projet (CloudNativePG) : création, état, branchement sur un conteneur, restauration depuis les sauvegardes, import d'un dump, contenu, remise à zéro, arrêt et relance.
 
 ## Modèle
 
@@ -39,6 +39,18 @@ Lecture et écriture SQL sans exec (la plateforme n'a pas `pods/exec`, voir [rba
 - **Import avec « vider d'abord »** : champ multipart `reset=true` ; exige aussi `databases.databases.reset`.
 - **Prérequis** : ceux de l'import (stockage d'objets, `builds.secret`, `builds.public_api_url`) ; sans eux, `503` (pas de remise à zéro sans copie possible).
 - **Console** : carte de la base (taille, tables par schéma, Actualiser), « Vider la base » (nom à retaper, conteneurs branchés arrêtés puis redémarrables), bandeau de la copie et « Restaurer la copie », aperçu du dump dans le dialogue d'import.
+
+## Arrêt et relance
+
+| Méthode | Chemin | Permission | Effet |
+|---|---|---|---|
+| `POST` | `/:databaseID/stop` | `databases.databases.stop` (éditeur) | Hibernation CloudNativePG (annotation `cnpg.io/hibernation=on`) : plus de pod, disque et données gardés ; statut `STOPPED`. Déjà arrêtée : rien de plus. Refusé (`409`) pendant la création (moins de 10 min, instance jamais prête). |
+| `POST` | `/:databaseID/start` | `databases.databases.stop` | Annotation à `off` : l'instance repart sur le même disque ; statut `PROVISIONING` puis `READY`. `409` si la base n'est pas arrêtée. |
+
+- L'état suit l'annotation lue sur le Cluster : une base mise en hibernation à la main apparaît `STOPPED`.
+- Base arrêtée : branchement, import, contenu et remise à zéro répondent `409` « la base est arrêtée : relancez-la d'abord ». Les conteneurs branchés gardent leur variable mais perdent la connexion.
+- **Disque plein** : à 120 % de sa taille, le module `diskusage` arrête la base par le même chemin, puis laisse 6 h après une relance pour faire de la place (voir [diskusage](diskusage.md)).
+- **Console** : boutons « Arrêter » (confirmation) et « Relancer » sur la carte de la base (page Bases et page Services).
 
 ## Fichiers clés
 

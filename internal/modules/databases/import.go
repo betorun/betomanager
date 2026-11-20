@@ -103,7 +103,7 @@ func (s *Service) Import(ctx context.Context, projectID, databaseID uuid.UUID, r
 		return nil, err
 	}
 	if !st.ReadyInstance || st.Image == "" {
-		return nil, domain.ErrNotReady
+		return nil, notReady(st)
 	}
 	if running, err := s.runningImport(ctx, ns, databaseID); err != nil {
 		return nil, err

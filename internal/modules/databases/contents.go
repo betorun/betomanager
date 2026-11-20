@@ -92,7 +92,7 @@ func (s *Service) readyDatabase(ctx context.Context, projectID, id uuid.UUID) (*
 		return nil, err
 	}
 	if !st.ReadyInstance || st.Image == "" {
-		return nil, domain.ErrNotReady
+		return nil, notReady(st)
 	}
 	return &target{db: d, ns: ns, TaskTarget: TaskTarget{Cluster: d.ClusterName(), Image: st.Image}}, nil
 }

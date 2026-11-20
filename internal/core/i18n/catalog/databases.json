@@ -134,5 +134,17 @@
  {
   "fr": "La copie finale de la base ne peut pas être stockée",
   "en": "the final copy of the database cannot be stored"
+ },
+ {
+  "fr": "La base est introuvable sur le cluster",
+  "en": "database cluster not found"
+ },
+ {
+  "fr": "La base n'est pas arrêtée",
+  "en": "the database is not stopped"
+ },
+ {
+  "fr": "La base est arrêtée : relancez-la d'abord",
+  "en": "the database is stopped: start it first"
  }
 ]

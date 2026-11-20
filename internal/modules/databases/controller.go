@@ -44,7 +44,7 @@ func apiError(err error) error {
 		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
 	case errors.Is(err, domain.ErrNoBackup):
 		return betoerrors.New(betoerrors.CodeUnprocessable, err.Error())
-	case errors.Is(err, domain.ErrNotReady):
+	case errors.Is(err, domain.ErrNotReady), errors.Is(err, domain.ErrStopped), errors.Is(err, domain.ErrNotStopped):
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
 	case errors.Is(err, domain.ErrNameTaken):
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
@@ -125,6 +125,26 @@ func (h *Controller) Delete(c *gin.Context, in *domain.DatabasePath) error {
 		return err
 	}
 	return apiError(h.Service.Delete(c.Request.Context(), p, d))
+}
+
+// Stop : arrête la base (disque gardé).
+func (h *Controller) Stop(c *gin.Context, in *domain.DatabasePath) (*domain.DatabaseView, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := h.Service.Stop(c.Request.Context(), p, d)
+	return out, apiError(err)
+}
+
+// Start : relance une base arrêtée.
+func (h *Controller) Start(c *gin.Context, in *domain.DatabasePath) (*domain.DatabaseView, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := h.Service.Start(c.Request.Context(), p, d)
+	return out, apiError(err)
 }
 
 // Attach : la route a vérifié databases.databases.connect sur la base ; il

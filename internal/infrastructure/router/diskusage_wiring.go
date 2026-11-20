@@ -7,7 +7,9 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"k8s.io/client-go/dynamic"
 
+	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 )
 
@@ -55,6 +57,21 @@ func (t *diskTargets) Workload(ctx context.Context, project uuid.UUID, name stri
 
 func (t *diskTargets) Database(ctx context.Context, project uuid.UUID, name string) (*diskusage.Target, error) {
 	return t.find(ctx, "databases", project, name)
+}
+
+// StopDatabase : hibernation de la base (même chemin que la console).
+func (t *diskTargets) StopDatabase(ctx context.Context, project, id uuid.UUID) error {
+	if t.app.K8sProvider == nil || t.app.K8sProvider.Config == nil {
+		return errors.New("cluster unavailable")
+	}
+	dyn, err := dynamic.NewForConfig(t.app.K8sProvider.Config)
+	if err != nil {
+		return err
+	}
+	s := &databases.Service{Repo: &databases.GormRepository{DB: t.db}, Projects: t.app.Repos.Project,
+		Clusters: &databases.CNPG{Dynamic: dyn, Kube: t.app.K8sProvider.Client}, Logger: t.app.Logger}
+	_, err = s.Stop(ctx, project, id)
+	return err
 }
 
 func (t *diskTargets) StopWorkload(ctx context.Context, id uuid.UUID) error {

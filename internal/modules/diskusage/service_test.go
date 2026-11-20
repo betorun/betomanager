@@ -57,11 +57,17 @@ type fakeTargets struct {
 	stopped []uuid.UUID
 }
 
+func (f *fakeTargets) StopDatabase(_ context.Context, _, id uuid.UUID) error {
+	f.stopped = append(f.stopped, id)
+	f.db.Status = statusStopped
+	return nil
+}
+
 func (f *fakeTargets) Workload(context.Context, uuid.UUID, string) (*Target, error) { return f.wl, nil }
 func (f *fakeTargets) Database(context.Context, uuid.UUID, string) (*Target, error) { return f.db, nil }
 func (f *fakeTargets) StopWorkload(_ context.Context, id uuid.UUID) error {
 	f.stopped = append(f.stopped, id)
-	f.wl.Status = workloadStopped
+	f.wl.Status = statusStopped
 	return nil
 }
 
@@ -139,19 +145,27 @@ func TestPass_StopsWorkloadAt120WithGrace(t *testing.T) {
 
 func TestPass_AlreadyStoppedByClientOnlyAlerts(t *testing.T) {
 	s, m, tg, a, _ := setup(KindWorkload)
-	tg.wl.Status = workloadStopped
+	tg.wl.Status = statusStopped
 	m.used["api-pvc"] = 2 * gi
 	s.Pass(context.Background())
 	assert.Empty(t, tg.stopped)
 	assert.Equal(t, []sentAlert{{120, KindWorkload}}, a.sent)
 }
 
-func TestPass_DatabaseNeverStopped(t *testing.T) {
-	s, m, tg, a, _ := setup(KindDatabase)
+func TestPass_StopsDatabaseAt120WithGrace(t *testing.T) {
+	s, m, tg, a, now := setup(KindDatabase)
 	m.used["api-pvc"] = 2 * gi
 	s.Pass(context.Background())
-	assert.Empty(t, tg.stopped)
+	require.Equal(t, []uuid.UUID{tg.db.ID}, tg.stopped)
 	assert.Equal(t, []sentAlert{{120, KindDatabase}}, a.sent)
+	// Relancée par le client : pas de nouvel arrêt pendant le délai de grâce.
+	tg.db.Status = "READY"
+	*now = now.Add(time.Hour)
+	s.Pass(context.Background())
+	assert.Len(t, tg.stopped, 1)
+	*now = now.Add(StopGrace)
+	s.Pass(context.Background())
+	assert.Len(t, tg.stopped, 2)
 }
 
 func TestPass_SkipsUnknownTargetAndPrunes(t *testing.T) {

@@ -8,9 +8,9 @@
 |----------------------|-------|
 | ≥ 80 % | E-mail aux propriétaires et éditeurs du projet (une fois par 24 h au plus) |
 | ≥ 100 % | E-mail « disque plein » (une fois par 24 h au plus) |
-| ≥ 120 % | **Conteneur** : arrêté (mis à 0, données gardées), e-mail « arrêté : disque plein ». Relancé par le client, il a 6 h (`StopGrace`) pour faire de la place avant un nouvel arrêt. **Base PostgreSQL** : e-mail seulement, jamais d'arrêt automatique (pas encore de relance d'une base dans la console). |
+| ≥ 120 % | **Conteneur** : arrêté (mis à 0, données gardées), e-mail « arrêté : disque plein ». Relancé par le client, il a 6 h (`StopGrace`) pour faire de la place avant un nouvel arrêt. **Base PostgreSQL** : arrêtée de la même façon (hibernation, données gardées), avec le même délai de grâce après une relance depuis la console. |
 
-Un e-mail part quand un seuil est franchi vers le haut (redescendre puis remonter en renvoie un). Un conteneur déjà arrêté par le client n'est pas touché : il reçoit seulement l'alerte. Un conteneur recréé sous le même nom repart de zéro.
+Un e-mail part quand un seuil est franchi vers le haut (redescendre puis remonter en renvoie un). Un conteneur ou une base déjà arrêtés par le client ne sont pas touchés : seule l'alerte part. Un conteneur recréé sous le même nom repart de zéro.
 
 Les services additionnels (Redis via Valkey…) suivent la règle des conteneurs : leur porteur est un conteneur.
 
@@ -33,7 +33,7 @@ Aucun droit nouveau sur le cluster : la plateforme crée déjà des Jobs et lit 
 ## Console
 
 - Conteneur, onglet « Vue d'ensemble », carte « Disque persistant » : jauge, date de mesure, avertissement à 80 / 100 %, « Conteneur arrêté : disque plein » après un arrêt.
-- Page « Services » : usage dans la colonne des ressources (`0,4 Go / 1 Go`) et jauge dans le détail de chaque base et service.
+- Page « Services » : usage dans la colonne des ressources (`0,4 Go / 1 Go`) et jauge dans le détail de chaque base et service ; « Base arrêtée : disque plein » après un arrêt.
 
 ## Code
 

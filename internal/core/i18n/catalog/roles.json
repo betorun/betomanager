@@ -494,5 +494,17 @@
  {
   "fr": "Brancher un service sur un conteneur",
   "en": "Attach a service to a container"
+ },
+ {
+  "fr": "Arrêter et relancer une base de données (ses données sont gardées)",
+  "en": "Stop and start a database (its data is kept)"
+ },
+ {
+  "fr": "Restaurer la sauvegarde d'un service (ses données actuelles sont remplacées)",
+  "en": "Restore a service backup (its current data is replaced)"
+ },
+ {
+  "fr": "Ajouter un service (Redis, MariaDB, Meilisearch…)",
+  "en": "Add a service (Redis, MariaDB, Meilisearch…)"
  }
 ]

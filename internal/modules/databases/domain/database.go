@@ -22,6 +22,9 @@ const (
 	StatusReady        = "READY"
 	StatusFailed       = "FAILED"
 	StatusDeleting     = "DELETING"
+	// StatusStopped : base arrêtée (hibernation CloudNativePG : plus de pod,
+	// le disque et les données sont gardés).
+	StatusStopped = "STOPPED"
 
 	// Port, base et utilisateur créés par CloudNativePG (bootstrap initdb).
 	Port         = 5432
@@ -144,6 +147,8 @@ func ValidVariable(n string) bool { return variableRe.MatchString(n) }
 
 var (
 	ErrNotReady         = errors.New("the database is not ready yet")
+	ErrStopped          = errors.New("the database is stopped: start it first")
+	ErrNotStopped       = errors.New("the database is not stopped")
 	ErrInvalidVariable  = errors.New("invalid variable name: uppercase letters, digits and underscores")
 	ErrWorkloadNotFound = errors.New("container not found in this project")
 )

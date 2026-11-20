@@ -2,6 +2,7 @@ package databases
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -37,7 +39,9 @@ type ClusterState struct {
 	Exists        bool
 	Phase         string // texte de CloudNativePG, ex. « Cluster in healthy state »
 	ReadyInstance bool
-	Image         string
+	// Hibernated : base arrêtée (annotation cnpg.io/hibernation=on).
+	Hibernated bool
+	Image      string
 	// Sauvegardes : configurées (plugin présent) et dernière issue connue.
 	BackupsEnabled bool
 	LastBackup     *BackupState
@@ -55,6 +59,8 @@ type Clusters interface {
 	Create(ctx context.Context, ns string, spec ClusterSpec) error
 	State(ctx context.Context, ns, name string) (ClusterState, error)
 	Delete(ctx context.Context, ns, name string) error
+	// Hibernate : arrête (on) ou relance (off) l'instance ; le disque reste.
+	Hibernate(ctx context.Context, ns, name string, on bool) error
 	// AppURI : URI de connexion de l'utilisateur « app » (secret <cluster>-app
 	// créé par CloudNativePG). Mot de passe compris : ne jamais la renvoyer.
 	AppURI(ctx context.Context, ns, name string) (string, error)
@@ -301,7 +307,7 @@ func (c *CNPG) State(ctx context.Context, ns, name string) (ClusterState, error)
 	if err != nil {
 		return ClusterState{}, err
 	}
-	st := ClusterState{Exists: true}
+	st := ClusterState{Exists: true, Hibernated: obj.GetAnnotations()[hibernationAnnotation] == "on"}
 	st.Phase, _, _ = unstructured.NestedString(obj.Object, "status", "phase")
 	st.Image, _, _ = unstructured.NestedString(obj.Object, "status", "image")
 	ready, _, _ := unstructured.NestedInt64(obj.Object, "status", "readyInstances")
@@ -342,6 +348,29 @@ func (c *CNPG) lastBackup(ctx context.Context, ns, cluster string) *BackupState 
 	}
 	return best
 }
+
+// hibernationAnnotation : hibernation déclarative de CloudNativePG. « on » :
+// les pods sont supprimés, les disques gardés ; « off » : l'instance repart
+// sur le même disque.
+const hibernationAnnotation = "cnpg.io/hibernation"
+
+func (c *CNPG) Hibernate(ctx context.Context, ns, name string, on bool) error {
+	value := "off"
+	if on {
+		value = "on"
+	}
+	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"annotations": map[string]string{hibernationAnnotation: value}}})
+	if err != nil {
+		return err
+	}
+	_, err = c.Dynamic.Resource(ClusterGVR).Namespace(ns).Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	if apierrors.IsNotFound(err) {
+		return errClusterMissing
+	}
+	return err
+}
+
+var errClusterMissing = errors.New("database cluster not found")
 
 // Delete : le Cluster (ses disques suivent : CloudNativePG en est
 // propriétaire) et sa politique réseau. Absent : rien à faire.

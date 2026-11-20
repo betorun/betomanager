@@ -84,6 +84,8 @@ type fakeClusters struct {
 	deleted  []string
 	state    ClusterState
 	createEr error
+	// hibernations : appels à Hibernate (true : arrêt).
+	hibernations []bool
 }
 
 func (f *fakeClusters) Create(_ context.Context, _ string, s ClusterSpec) error {
@@ -98,6 +100,15 @@ func (f *fakeClusters) AppURI(context.Context, string, string) (string, error) {
 		return "", errAppSecretMissing
 	}
 	return "postgresql://app:s3cret@db-main-rw.km-demo:5432/app", nil
+}
+
+func (f *fakeClusters) Hibernate(_ context.Context, _, _ string, on bool) error {
+	f.hibernations = append(f.hibernations, on)
+	f.state.Hibernated = on
+	if on {
+		f.state.ReadyInstance = false
+	}
+	return nil
 }
 
 func (f *fakeClusters) Delete(_ context.Context, _, name string) error {
@@ -211,6 +222,22 @@ func TestCNPGObjects(t *testing.T) {
 	// Création rejouée : sans erreur (idempotente).
 	if err := c.Create(ctx, "km-demo", spec); err != nil {
 		t.Fatalf("création rejouée : %v", err)
+	}
+	// Arrêt puis relance : annotation d'hibernation de CloudNativePG.
+	if err := c.Hibernate(ctx, "km-demo", "db-main", true); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := c.State(ctx, "km-demo", "db-main"); !st.Hibernated {
+		t.Fatal("hibernation attendue")
+	}
+	if err := c.Hibernate(ctx, "km-demo", "db-main", false); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := c.State(ctx, "km-demo", "db-main"); st.Hibernated {
+		t.Fatal("relance attendue")
+	}
+	if err := c.Hibernate(ctx, "km-demo", "absent", true); !errors.Is(err, errClusterMissing) {
+		t.Fatalf("cluster absent : %v", err)
 	}
 	if err := c.Delete(ctx, "km-demo", "db-main"); err != nil {
 		t.Fatal(err)
@@ -512,5 +539,50 @@ func TestAttachRecordsAttachment(t *testing.T) {
 	}
 	if len(got.Attachments) != 1 || got.Attachments[0].WorkloadName != "bomba-api" || got.Attachments[0].Variable != "BOMBA_DATABASE_URL" {
 		t.Fatalf("branchements : %+v", got.Attachments)
+	}
+}
+
+func TestStopAndStart(t *testing.T) {
+	ctx, p := context.Background(), uuid.New()
+	fc := &fakeClusters{}
+	s, repo := svc(fc)
+	s.Workloads = &fakeWorkloads{project: p, set: map[string]string{}}
+	v, _ := s.Create(ctx, p, domain.CreateDatabaseRequest{Name: "main"}, "u")
+	id := uuid.MustParse(v.ID)
+	// En création : pas d'arrêt.
+	fc.state = ClusterState{Exists: true}
+	if _, err := s.Stop(ctx, p, id); !errors.Is(err, domain.ErrNotReady) {
+		t.Fatalf("en création : %v", err)
+	}
+	if _, err := s.Start(ctx, p, id); !errors.Is(err, domain.ErrNotStopped) {
+		t.Fatalf("relance d'une base en marche : %v", err)
+	}
+	fc.state = ClusterState{Exists: true, ReadyInstance: true, Image: "ghcr.io/cloudnative-pg/postgresql:17.6"}
+	out, err := s.Stop(ctx, p, id)
+	if err != nil || out.Status != domain.StatusStopped || repo.rows[id].Status != domain.StatusStopped {
+		t.Fatalf("arrêt : %v %+v", err, out)
+	}
+	// Déjà arrêtée : rien de plus côté cluster.
+	if _, err := s.Stop(ctx, p, id); err != nil || len(fc.hibernations) != 1 {
+		t.Fatalf("second arrêt : %v %v", err, fc.hibernations)
+	}
+	// La liste garde STOPPED ; brancher ou lire le contenu est refusé clairement.
+	if list, _ := s.List(ctx, p); list[0].Status != domain.StatusStopped {
+		t.Fatalf("liste : %s", list[0].Status)
+	}
+	if _, err := s.Attach(ctx, p, id, uuid.New(), "DATABASE_URL"); !errors.Is(err, domain.ErrStopped) {
+		t.Fatalf("branchement d'une base arrêtée : %v", err)
+	}
+	out, err = s.Start(ctx, p, id)
+	if err != nil || out.Status != domain.StatusProvisioning || fc.hibernations[1] {
+		t.Fatalf("relance : %v %+v %v", err, out, fc.hibernations)
+	}
+	// Instance de nouveau prête : READY.
+	fc.state.ReadyInstance = true
+	if got, _ := s.Get(ctx, p, id); got.Status != domain.StatusReady {
+		t.Fatalf("après relance : %s", got.Status)
+	}
+	if _, err := s.Stop(ctx, uuid.New(), id); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("autre projet : %v", err)
 	}
 }

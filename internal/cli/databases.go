@@ -30,7 +30,7 @@ func newDatabases() *cobra.Command {
 			"# " + i18n.T("ex.db.import") + "\n" +
 			"pg_dump -Fc -d \"$OLD_DATABASE_URL\" -f app.dump\n" +
 			"betorun databases import main app.dump"}
-	c.AddCommand(newDatabasesList(), newDatabasesImport())
+	c.AddCommand(newDatabasesList(), newDatabasesImport(), newDatabasesPower(true), newDatabasesPower(false))
 	return c
 }
 
@@ -65,6 +65,37 @@ func newDatabasesList() *cobra.Command {
 				t.Row(p.Bold(d.Name), p.Status(tone, d.Status), d.StorageSize)
 			}
 			return t.Flush()
+		},
+	}
+}
+
+// newDatabasesPower : « stop » ou « start » (hibernation, disque gardé).
+func newDatabasesPower(stop bool) *cobra.Command {
+	use, short, done, action := "start", "db.start.short", "db.start.done", "/start"
+	if stop {
+		use, short, done, action = "stop", "db.stop.short", "db.stop.done", "/stop"
+	}
+	return &cobra.Command{
+		Use: use + " " + i18n.T("arg.database"), Short: i18n.T(short), Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cl, project, _, err := projectClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			db, err := databaseByName(ctx, cl, project, args[0])
+			if err != nil {
+				return err
+			}
+			var out cliDatabase
+			if err := cl.Do(ctx, http.MethodPost, databasesPath(project)+"/"+url.PathEscape(db.ID)+action, map[string]any{}, &out); err != nil {
+				return err
+			}
+			if ok, err := wantJSON(cmd, out); ok {
+				return err
+			}
+			printer(cmd).Success(i18n.T(done, db.Name))
+			return nil
 		},
 	}
 }

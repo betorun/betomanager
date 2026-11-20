@@ -77,6 +77,14 @@ type Service struct {
 	Logger   *zap.SugaredLogger
 }
 
+// notReady : base arrêtée, ou pas encore prête.
+func notReady(st ClusterState) error {
+	if st.Hibernated {
+		return domain.ErrStopped
+	}
+	return domain.ErrNotReady
+}
+
 func (s *Service) available() error {
 	if s.Clusters == nil {
 		return domain.ErrUnavailable
@@ -260,12 +268,14 @@ func (s *Service) live(ctx context.Context, d domain.Database, ns string) domain
 	}
 	next := d.Status
 	switch {
+	case st.Hibernated:
+		next = domain.StatusStopped
 	case st.ReadyInstance:
 		next = domain.StatusReady
 	case !st.Exists && d.Status != domain.StatusFailed && time.Since(d.CreatedAt) > time.Minute:
 		next = domain.StatusFailed // Cluster disparu
-	case st.Exists && d.Status == domain.StatusReady:
-		next = domain.StatusProvisioning // instance redémarrée, pas encore prête
+	case st.Exists && (d.Status == domain.StatusReady || d.Status == domain.StatusStopped):
+		next = domain.StatusProvisioning // instance redémarrée ou relancée, pas encore prête
 	}
 	if next != d.Status {
 		if err := s.Repo.SetStatus(ctx, d.ID, next); err == nil {
@@ -300,6 +310,65 @@ func (s *Service) Delete(ctx context.Context, projectID, id uuid.UUID) error {
 	return s.Repo.Delete(ctx, d.ID)
 }
 
+// Stop : arrête la base (hibernation : plus de pod, disque et données
+// gardés). Les conteneurs branchés perdent la connexion jusqu'à la relance.
+// Déjà arrêtée : rien à faire.
+func (s *Service) Stop(ctx context.Context, projectID, id uuid.UUID) (*domain.DatabaseView, error) {
+	return s.hibernate(ctx, projectID, id, true)
+}
+
+// Start : relance une base arrêtée, sur le même disque.
+func (s *Service) Start(ctx context.Context, projectID, id uuid.UUID) (*domain.DatabaseView, error) {
+	return s.hibernate(ctx, projectID, id, false)
+}
+
+func (s *Service) hibernate(ctx context.Context, projectID, id uuid.UUID, on bool) (*domain.DatabaseView, error) {
+	if err := s.available(); err != nil {
+		return nil, err
+	}
+	d, err := s.Repo.Get(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	ns, err := s.namespace(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	st, err := s.Clusters.State(ctx, ns, d.ClusterName())
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case d.Status == domain.StatusDeleting || !st.Exists:
+		return nil, domain.ErrNotReady
+	case on && !st.Hibernated && !st.ReadyInstance && d.Status == domain.StatusProvisioning && time.Since(d.CreatedAt) < 10*time.Minute:
+		// Encore en création : l'arrêter maintenant laisserait une base à moitié initialisée.
+		return nil, domain.ErrNotReady
+	case !on && !st.Hibernated:
+		return nil, domain.ErrNotStopped
+	}
+	if st.Hibernated != on {
+		if err := s.Clusters.Hibernate(ctx, ns, d.ClusterName(), on); err != nil {
+			if on {
+				return nil, fmt.Errorf("the database could not be stopped: %w", err)
+			}
+			return nil, fmt.Errorf("the database could not be started: %w", err)
+		}
+	}
+	next := domain.StatusProvisioning
+	if on {
+		next = domain.StatusStopped
+	}
+	if err := s.Repo.SetStatus(ctx, d.ID, next); err != nil {
+		return nil, err
+	}
+	d.Status = next
+	st.Hibernated, st.ReadyInstance = on, false
+	v := view(*d, ns, st)
+	s.enrich(ctx, &v, d.ID)
+	return &v, nil
+}
+
 // Attach : pose l'URI de connexion de la base dans une variable SECRÈTE du
 // conteneur (redéployé). Le conteneur doit être du même projet ; l'URI ne
 // sort jamais de l'API. Les droits (connect sur la base, variables du
@@ -330,6 +399,9 @@ func (s *Service) Attach(ctx context.Context, projectID, id, workloadID uuid.UUI
 		return nil, err
 	}
 	if v := s.live(ctx, *d, ns); v.Status != domain.StatusReady {
+		if v.Status == domain.StatusStopped {
+			return nil, domain.ErrStopped
+		}
 		return nil, domain.ErrNotReady
 	}
 	uri, err := s.Clusters.AppURI(ctx, ns, d.ClusterName())

@@ -36,11 +36,12 @@ type Target struct {
 	Status string
 }
 
-// Targets : conteneurs et bases, et l'arrêt d'un conteneur.
+// Targets : conteneurs et bases, et leur arrêt (données gardées).
 type Targets interface {
 	Workload(ctx context.Context, project uuid.UUID, name string) (*Target, error) // nil : inconnu
 	Database(ctx context.Context, project uuid.UUID, name string) (*Target, error)
 	StopWorkload(ctx context.Context, id uuid.UUID) error
+	StopDatabase(ctx context.Context, project, id uuid.UUID) error
 }
 
 // Alerter : e-mail aux propriétaires et éditeurs du projet.
@@ -48,8 +49,9 @@ type Alerter interface {
 	DiskUsage(ctx context.Context, project, subject uuid.UUID, level int, kind, name string, used, capacity int64)
 }
 
-// workloadStopped : état d'un conteneur arrêté (utils.WorkloadStopped).
-const workloadStopped = "STOPPED"
+// statusStopped : état d'un conteneur (utils.WorkloadStopped) ou d'une base
+// (domain.StatusStopped) arrêtés.
+const statusStopped = "STOPPED"
 
 // Service : passages de mesure et règle de dépassement.
 type Service struct {
@@ -156,22 +158,23 @@ func (s *Service) disk(ctx context.Context, p Project, d Disk) error {
 		prevLevel, u.StoppedAt = prev.Level, prev.StoppedAt
 	}
 	// Un seuil franchi vers le haut : une alerte (le palier 120 a la sienne,
-	// à l'arrêt, pour les conteneurs).
-	if u.Level > prevLevel && !(u.Level == LevelStop && d.Kind == KindWorkload) {
+	// à l'arrêt).
+	if u.Level > prevLevel && u.Level != LevelStop {
 		s.alert(ctx, p.ID, target.ID, u)
 	}
-	if u.Level == LevelStop && d.Kind == KindWorkload {
-		if err := s.stop(ctx, p.ID, target, u, prevLevel); err != nil {
-			s.log().Warnw("disk usage: stop failed", "workload", target.ID, "error", err)
+	if u.Level == LevelStop {
+		if err := s.stop(ctx, p.ID, d.Kind, target, u, prevLevel); err != nil {
+			s.log().Warnw("disk usage: stop failed", "kind", d.Kind, "target", target.ID, "error", err)
 		}
 	}
 	return s.Store.Save(ctx, u)
 }
 
-// stop : arrête le conteneur (données gardées), sauf s'il est déjà arrêté ou
-// s'il a été relancé il y a moins de StopGrace après un arrêt pour disque plein.
-func (s *Service) stop(ctx context.Context, project uuid.UUID, target *Target, u *Usage, prevLevel int) error {
-	if target.Status == workloadStopped {
+// stop : arrête le conteneur ou la base (données gardées), sauf s'il est
+// déjà arrêté ou s'il a été relancé il y a moins de StopGrace après un arrêt
+// pour disque plein.
+func (s *Service) stop(ctx context.Context, project uuid.UUID, kind string, target *Target, u *Usage, prevLevel int) error {
+	if target.Status == statusStopped {
 		if prevLevel < LevelStop {
 			s.alert(ctx, project, target.ID, u) // déjà arrêté par le client : on prévient seulement
 		}
@@ -180,7 +183,13 @@ func (s *Service) stop(ctx context.Context, project uuid.UUID, target *Target, u
 	if u.StoppedAt != nil && s.now().Sub(*u.StoppedAt) < StopGrace {
 		return nil // relancé pour faire de la place : délai de grâce
 	}
-	if err := s.Targets.StopWorkload(ctx, target.ID); err != nil {
+	var err error
+	if kind == KindDatabase {
+		err = s.Targets.StopDatabase(ctx, project, target.ID)
+	} else {
+		err = s.Targets.StopWorkload(ctx, target.ID)
+	}
+	if err != nil {
 		return err
 	}
 	at := s.now()

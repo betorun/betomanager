@@ -6,11 +6,9 @@
 // dans l'espace du projet, et applique la règle :
 //   - 80 % : alerte aux propriétaires et éditeurs ;
 //   - 100 % : alerte « disque plein » ;
-//   - 120 % : le conteneur est arrêté (données gardées) et une alerte part.
-//     Relancé par le client, il a un délai de grâce pour faire de la place.
-//
-// Les bases PostgreSQL sont mesurées et alertées ; leur arrêt n'est pas
-// automatique (pas encore de relance d'une base dans la console).
+//   - 120 % : le conteneur ou la base est arrêté (données gardées) et une
+//     alerte part. Relancé par le client, il a un délai de grâce pour faire
+//     de la place.
 package diskusage
 
 import (
@@ -33,7 +31,7 @@ const (
 	LevelStop    = 120
 )
 
-// StopGrace : après un arrêt pour disque plein, un conteneur relancé par le
+// StopGrace : après un arrêt pour disque plein, un conteneur ou une base relancé par le
 // client n'est pas arrêté de nouveau avant ce délai (le temps de faire de la
 // place).
 const StopGrace = 6 * time.Hour

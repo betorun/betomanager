@@ -55,9 +55,9 @@ var (
 		ProjectsUpdate,
 		WorkloadsDelete, SitesDelete, SiteDomainsDelete, BuildsDelete,
 		// Une base occupe du disque et sa suppression perd des données : éditeur.
-		DatabasesCreate, DatabasesDelete, DatabasesImport, DatabasesReset,
+		DatabasesCreate, DatabasesDelete, DatabasesImport, DatabasesReset, DatabasesStop,
 		// Un service occupe des ressources et sa suppression perd des données : éditeur.
-		AddonsCreate, AddonsUpdate, AddonsDelete,
+		AddonsCreate, AddonsUpdate, AddonsDelete, AddonsRestore,
 		// Relier un compte GitHub ouvre au projet du code privé : pas un droit de développeur.
 		WorkloadsGitHubManage,
 		// Un jeton de registre ouvre les images privées de l'entreprise : même règle.

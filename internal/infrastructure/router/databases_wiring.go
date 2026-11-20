@@ -146,6 +146,14 @@ func addDatabaseRoutes(app *App) {
 		g.Perm(iam.DatabasesCreate, project), tonic.Handler(r.Restore, http.StatusCreated)).
 		ForCopilot(CopilotTool{Name: "restore_database", Write: true, Risk: tools.RiskLow,
 			Hint: "Creates a NEW database from the backups of this one (latest state, or target_time in RFC 3339). The source is never changed. Then attach_database switches a container to the copy."})
+	dbs.AddRoute("/:databaseID/stop", http.MethodPost, "Arrêter une base (ses données sont gardées ; les conteneurs branchés perdent la connexion)",
+		g.Perm(iam.DatabasesStop, db), tonic.Handler(r.Stop, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "stop_database", Write: true, Risk: tools.RiskMedium,
+			Hint: "Stops the database instance; its disk and data are kept. Containers using it lose their connection until start_database."})
+	dbs.AddRoute("/:databaseID/start", http.MethodPost, "Relancer une base arrêtée (prête en une minute environ)",
+		g.Perm(iam.DatabasesStop, db), tonic.Handler(r.Start, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "start_database", Write: true, Risk: tools.RiskLow,
+			Hint: "Starts a stopped database again on the same disk; ready in about a minute."})
 	dbs.AddRoute("/:databaseID", http.MethodDelete, "Supprimer une base (ses données sont perdues)", g.Perm(iam.DatabasesDelete, db),
 		tonic.Handler(r.Delete, http.StatusNoContent))
 
