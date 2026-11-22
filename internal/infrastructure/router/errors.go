@@ -2,8 +2,11 @@ package router
 
 import (
 	"errors"
-	mailSvc "github.com/thekrauss/kubemanager/internal/modules/mail/service"
 	"net/http"
+
+	"github.com/thekrauss/kubemanager/internal/modules/compute"
+	computeDomain "github.com/thekrauss/kubemanager/internal/modules/compute/domain"
+	mailSvc "github.com/thekrauss/kubemanager/internal/modules/mail/service"
 
 	"github.com/thekrauss/kubemanager/internal/auth/sso"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
@@ -221,6 +224,10 @@ var sentinelErrors = []sentinelMapping{
 	{iam.ErrInvalidDenyPermission, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{mailSvc.ErrNotSuppressed, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{mailSvc.ErrNoSuppressions, http.StatusServiceUnavailable, "UNAVAILABLE", false},
+	{computeDomain.ErrOfferNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{computeDomain.ErrInvalidOffer, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{computeDomain.ErrUnavailable, http.StatusServiceUnavailable, "UNAVAILABLE", false},
+	{compute.ErrRequestNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{iam.ErrMFANotConfigured, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{iam.ErrInvalidDomain, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{sso.ErrNoSSO, http.StatusNotFound, "SSO_NOT_CONFIGURED", false},

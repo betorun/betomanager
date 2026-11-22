@@ -1,0 +1,26 @@
+[
+ {
+  "fr": "Identifiants OVH incomplets",
+  "en": "ovh: incomplete credentials"
+ },
+ {
+  "fr": "Demande introuvable",
+  "en": "compute request not found"
+ },
+ {
+  "fr": "Offre de VPS introuvable",
+  "en": "VPS offer not found"
+ },
+ {
+  "fr": "Offre de VPS invalide : le coefficient et le palier doivent être positifs",
+  "en": "invalid VPS offer: coefficient and rounding must be positive"
+ },
+ {
+  "fr": "Les VPS ne sont pas disponibles sur cette plateforme pour le moment",
+  "en": "VPS are not available on this platform for now"
+ },
+ {
+  "fr": "Demande déjà lancée",
+  "en": "compute request already started"
+ }
+]

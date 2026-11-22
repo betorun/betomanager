@@ -30,6 +30,11 @@ dev-platform: ## Lance l'API du back-office (APP_MODE=platform, 127.0.0.1:8081) 
 	@docker compose up -d --build kubemanager-platform
 	@echo "✓ API plateforme : http://127.0.0.1:8081 — console : cd ../kweb && npm run dev:platform (http://localhost:3001)"
 
+.PHONY: dev-compute
+dev-compute: ## Lance le mode compute (VPS) ; KUBEMANAGER_COMPUTE_ENABLED=true aussi pour l'API et le worker
+	@docker compose up -d --build kubemanager-compute
+	@echo "✓ Mode compute lancé (file Temporal « compute »)"
+
 .PHONY: dev-down
 dev-down: ## Arrête la stack dev (garde les volumes)
 	@docker compose down

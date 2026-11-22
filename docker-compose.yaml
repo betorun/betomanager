@@ -243,6 +243,32 @@ services:
     networks:
       - backend
 
+  # Mode compute : seul process à détenir les clés du fournisseur de VPS.
+  # Il exécute les demandes que l'API dépose (outbox → Temporal, file « compute »).
+  kubemanager-compute:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file:
+      - .env
+    environment:
+      - GODEBUG=netdns=go
+      - APP_MODE=compute
+      - KUBEMANAGER_COMPUTE_ENABLED=true
+      - KUBEMANAGER_DATABASE_SKIP_MIGRATIONS=true
+    volumes:
+      - ./internal/core/configs:/app/internal/core/configs:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      k8sdb:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    restart: always
+    networks:
+      - backend
+
   jaeger:
     image: jaegertracing/all-in-one:1.50
     environment:

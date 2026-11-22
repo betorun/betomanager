@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/thekrauss/kubemanager/internal/modules/compute"
+
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
@@ -75,6 +77,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Registries:  &registries.Controller{},
 				Billing:     &billing.Controller{},
 				DomainSales: &domainsales.Controller{},
+				Compute:     &compute.Controller{},
 				Databases:   &databases.Controller{},
 				Addons:      &addons.Controller{},
 				DiskUsage:   &diskusage.Controller{},
