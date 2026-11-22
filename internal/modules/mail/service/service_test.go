@@ -48,7 +48,9 @@ func (m *memSuppressions) Suppress(_ context.Context, s domain.Suppression) erro
 	}
 	return nil
 }
-func (m *memSuppressions) List(context.Context, string, int) ([]domain.Suppression, error) { return nil, nil }
+func (m *memSuppressions) List(context.Context, string, int) ([]domain.Suppression, error) {
+	return nil, nil
+}
 func (m *memSuppressions) Remove(_ context.Context, e string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

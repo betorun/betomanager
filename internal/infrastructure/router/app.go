@@ -47,13 +47,18 @@ type Mode string
 const (
 	ModeServer Mode = "server"
 	ModeWorker Mode = "worker"
-	EnvAppMode      = "APP_MODE"
+	// ModePlatform : API du back-office de l'équipe betorun (routes /admin),
+	// hébergée à part de l'API des clients (docs/architecture/platform-console.md).
+	ModePlatform Mode = "platform"
+	EnvAppMode        = "APP_MODE"
 )
 
 func ResolveMode() Mode {
 	switch Mode(os.Getenv(EnvAppMode)) {
 	case ModeWorker:
 		return ModeWorker
+	case ModePlatform:
+		return ModePlatform
 	default:
 		return ModeServer
 	}
@@ -124,7 +129,7 @@ func (a *App) Init(ctx context.Context) error {
 func (a *App) RunServer(ctx context.Context) error {
 	defer a.shutdownInfra()
 
-	a.startHTTPServer()
+	a.startHTTPServer(ModeServer)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -135,6 +140,22 @@ func (a *App) RunServer(ctx context.Context) error {
 	a.Logger.Infow("server shutdown signal received")
 	a.gracefulShutdownServers(a.Servers.GRPC, a.Servers.HTTP, a.Config.Server.ShutdownTimeout)
 	a.Logger.Infow("server stopped gracefully")
+	return nil
+}
+
+// RunPlatform : API du back-office (routes /admin, connexion, IAM). Aucune
+// boucle de fond : elles tournent dans l'API des clients et le worker.
+func (a *App) RunPlatform(ctx context.Context) error {
+	defer a.shutdownInfra()
+
+	a.startHTTPServer(ModePlatform)
+
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	a.Logger.Infow("platform API shutdown signal received")
+	a.gracefulShutdownServers(a.Servers.GRPC, a.Servers.HTTP, a.Config.Server.ShutdownTimeout)
 	return nil
 }
 

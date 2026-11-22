@@ -66,6 +66,9 @@ func documentRawRoutes(gen *openapi.Generator, groups []*RouteGroup) {
 			}
 		}
 		for _, child := range g.Groups {
+			if absPath == PathAPIRoot && !ServedIn(servingMode, child.Path) {
+				continue
+			}
 			walk(child, absPath+child.Path, tag, internal || child.internal)
 		}
 	}
