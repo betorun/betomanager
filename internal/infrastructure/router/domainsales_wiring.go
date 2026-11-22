@@ -20,7 +20,8 @@ func (a *App) domainSalesService() *domainsalesSvc.Service {
 	if a.DB == nil || billing == nil {
 		return nil
 	}
-	svc := &domainsalesSvc.Service{Store: domainsalesRepo.New(a.DB), Wallet: billing, Logger: a.Logger.With("component", "domain-sales")}
+	svc := &domainsalesSvc.Service{Store: domainsalesRepo.New(a.DB), Wallet: billing, Logger: a.Logger.With("component", "domain-sales"),
+		SuggestTLDs: a.Config.Domains.SuggestTLDs}
 	o := a.Config.Domains.OVH
 	if o.ApplicationKey != "" {
 		reg, err := registrar.NewOVH(registrar.OVHConfig{Endpoint: o.Endpoint, ApplicationKey: o.ApplicationKey,

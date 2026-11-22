@@ -63,7 +63,9 @@ type GlobalConfig struct {
 
 // DomainsConfig : registraires.
 type DomainsConfig struct {
-	OVH OVHConfig `mapstructure:"ovh"`
+	// SuggestTLDs : extensions proposées en suggestion de recherche (vide : liste par défaut).
+	SuggestTLDs []string  `mapstructure:"suggest_tlds"`
+	OVH         OVHConfig `mapstructure:"ovh"`
 }
 
 // OVHConfig : API OVH (https://eu.api.ovh.com/createToken/). Clé limitée à

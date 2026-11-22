@@ -15,6 +15,15 @@ internal/domains/registrar/   client OVH (Check, Register, OrderStatus, Info, Se
 
 Ports du service : `registrar.Registrar`, `Wallet` (module billing : grille, débit, remboursement), `Workloads` (domaines des conteneurs). Câblage : [domainsales_wiring.go](../../internal/infrastructure/router/domainsales_wiring.go).
 
+## Suggestions de recherche
+
+`GET /organizations/:id/domains/suggestions?domain=…` (`billing.accounts.get`) : à partir d'un nom ou d'un mot-clé (« bomba shop » → `bombashop.com`), le même nom sur d'autres extensions (`domains.suggest_tlds`, liste par défaut `domain.DefaultSuggestTLDs`), puis des variantes (`get…`, `mon…`, `…app`, `…hq`, `…online`) sur l'extension recherchée ; 16 noms au plus, sans le nom exact (la console le cherche à part, `/search`).
+
+- Vérification groupée chez le registraire (`registrar.BatchChecker` : un panier, 6 appels simultanés), 8 s au plus pour l'ensemble.
+- Tarif : même règle que la recherche et l'achat (`priceQuote`).
+- Extension que le registraire ne vend pas : omise. Nom non vérifié à temps : raison `unknown` (jamais l'erreur du fournisseur).
+- Disponibilités gardées 10 minutes en mémoire (les suggestions seulement : un achat revérifie toujours).
+
 ## Prix
 
 Prix de vente = prix du registraire (centimes d'euro) × `eur_rate_milli` (655957, parité fixe du FCFA), + `domain_margin_bp` (2000 = 20 %), arrondi au palier `domain_round_to` (500). Réglages de la grille de prix, modifiables par l'équipe. Exemple : 8,49 € → 7 000 FCFA. Le client ne voit que le prix final.

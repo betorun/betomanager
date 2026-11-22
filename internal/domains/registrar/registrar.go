@@ -33,6 +33,15 @@ type Availability struct {
 	Currency   string
 	// RenewCents : prix du renouvellement annuel (même devise).
 	RenewCents int64
+	// Unsupported : le fournisseur ne vend pas cette extension (aucune offre).
+	Unsupported bool
+}
+
+// BatchChecker : vérification de plusieurs noms en une fois (suggestions).
+// Facultatif : sans lui, l'appelant fait des Check en parallèle. Un nom absent
+// du résultat n'a pas pu être vérifié (erreur, délai).
+type BatchChecker interface {
+	CheckMany(ctx context.Context, domains []string) map[string]*Availability
 }
 
 // Contact : titulaire du domaine. Il doit être le client réel (règles ICANN et

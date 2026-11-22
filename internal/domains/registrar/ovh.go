@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -141,12 +142,51 @@ func (o *OVH) Check(ctx context.Context, domain string) (*Availability, error) {
 	if err != nil {
 		return nil, err
 	}
+	return o.checkIn(ctx, cart, domain)
+}
+
+// checkConcurrency : appels simultanés au plus pour une vérification groupée
+// (le fournisseur limite le débit de son API).
+const checkConcurrency = 6
+
+// CheckMany : un seul panier pour tous les noms, vérifiés en parallèle.
+func (o *OVH) CheckMany(ctx context.Context, domains []string) map[string]*Availability {
+	out := make(map[string]*Availability, len(domains))
+	cart, err := o.newCart(ctx)
+	if err != nil {
+		return out
+	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, checkConcurrency)
+	for _, d := range domains {
+		wg.Add(1)
+		go func(d string) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+			if a, err := o.checkIn(ctx, cart, d); err == nil {
+				mu.Lock()
+				out[d] = a
+				mu.Unlock()
+			}
+		}(d)
+	}
+	wg.Wait()
+	return out
+}
+
+func (o *OVH) checkIn(ctx context.Context, cart, domain string) (*Availability, error) {
 	var offers []ovhOffer
 	path := "/order/cart/" + url.PathEscape(cart) + "/domain?domain=" + url.QueryEscape(domain)
 	if err := o.call(ctx, http.MethodGet, path, nil, &offers); err != nil {
 		return nil, err
 	}
-	out := &Availability{Domain: domain}
+	out := &Availability{Domain: domain, Unsupported: len(offers) == 0}
 	for _, offer := range offers {
 		if !offer.Orderable || offer.Action != "create" {
 			continue

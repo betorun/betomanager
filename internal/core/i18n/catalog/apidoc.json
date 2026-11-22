@@ -2206,5 +2206,17 @@
  {
   "fr": "Service annoncé (ex. mariadb)",
   "en": "Announced service (e.g. mariadb)"
+ },
+ {
+  "fr": "extension (même nom, autre extension) ou variant (variante du nom)",
+  "en": "extension (same name, another extension) or variant (variant of the name)"
+ },
+ {
+  "fr": "Suggestions : le nom sur d'autres extensions et des variantes, avec disponibilité et prix",
+  "en": "Suggestions: the name on other extensions and variants, with availability and price"
+ },
+ {
+  "fr": "Nom ou mot-clé recherché (ex. mon-site, mon-site.com)",
+  "en": "Name or keyword searched (e.g. my-site, my-site.com)"
  }
 ]
