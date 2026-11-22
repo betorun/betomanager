@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/loopfz/gadgeto/tonic"
 	"go.temporal.io/sdk/client"
@@ -17,9 +19,11 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/ovh"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/realtime"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/compute"
+	computeDomain "github.com/thekrauss/kubemanager/internal/modules/compute/domain"
 	computeRepo "github.com/thekrauss/kubemanager/internal/modules/compute/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/compute/repository/ovhvps"
 	computeSvc "github.com/thekrauss/kubemanager/internal/modules/compute/service"
@@ -42,6 +46,9 @@ func (a *App) computeService() *computeSvc.Service {
 		return nil
 	}
 	s := &computeSvc.Service{Store: &computeRepo.GormStore{DB: a.DB}, Ordering: a.Config.Compute.OrderingEnabled}
+	if e := a.computeEvents(); e != nil {
+		s.Events = e
+	}
 	if billing := a.billingService(); billing != nil {
 		s.Catalogs = computeCatalogs{billing: billing}
 		s.Wallet = billing
@@ -74,6 +81,72 @@ func (a *App) startComputeRenewals(ctx context.Context) {
 			}
 		}
 	})
+}
+
+// computeEvents : changements de VPS publiés sur Centrifugo (nil sans temps réel).
+func (a *App) computeEvents() *vpsEvents {
+	if a.Publisher == nil {
+		return nil
+	}
+	return &vpsEvents{pub: a.Publisher, log: a.Logger}
+}
+
+type vpsEvents struct {
+	pub realtime.Publisher
+	log interface {
+		Warnw(msg string, kv ...any)
+	}
+}
+
+// VPSEvent : publié à chaque changement d'un VPS.
+type VPSEvent struct {
+	Type string             `json:"type"`
+	VPS  *computeDomain.VPS `json:"vps"`
+}
+
+func (e *vpsEvents) VPSChanged(ctx context.Context, v *computeDomain.VPS) {
+	ev := VPSEvent{Type: "vps.updated", VPS: v}
+	for _, ch := range []string{realtime.VPSChannel(v.ProjectID.String(), v.ID.String()), realtime.ProjectChannel(v.ProjectID.String())} {
+		if err := e.pub.Publish(ctx, ch, ev); err != nil {
+			e.log.Warnw("compute: VPS event not published", "vps", v.ID, "channel", ch, "error", err)
+		}
+	}
+}
+
+// computeSuspender : VPS arrêtés à la suspension d'une organisation (module
+// billing) ; sans dépendre de billingService (pas de boucle).
+func (a *App) computeSuspender() *computeSvc.Service {
+	if a.DB == nil || !a.Config.Compute.Enabled {
+		return nil
+	}
+	s := &computeSvc.Service{Store: &computeRepo.GormStore{DB: a.DB}}
+	if e := a.computeEvents(); e != nil {
+		s.Events = e
+	}
+	return s
+}
+
+// vpsProject : projet du VPS de l'URL, s'il est bien dans l'organisation de
+// l'URL (sinon refus, sans dire si le VPS existe ailleurs).
+func vpsProject(r *compute.Controller) security.ResourceResolver {
+	return func(c *gin.Context) (iam.ResourceName, error) {
+		org, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+		if err != nil {
+			return "", security.ErrResourceRefInvalid
+		}
+		id, err := uuid.Parse(strings.TrimSpace(c.Param("vpsID")))
+		if err != nil {
+			return "", security.ErrResourceRefInvalid
+		}
+		if r.Service == nil {
+			return iam.OrganizationName(org), nil
+		}
+		v, err := r.Service.Store.VPS(c.Request.Context(), id)
+		if err != nil || v.OrganizationID != org {
+			return iam.OrganizationName(org), nil // droit de l'organisation, puis 404 par le contrôleur
+		}
+		return iam.ProjectName(v.ProjectID), nil
+	}
 }
 
 // computeCatalogs : taux de la grille de l'organisation (module billing).
@@ -131,6 +204,9 @@ func (a *App) RunCompute(ctx context.Context) error {
 	}
 	if billing := a.billingService(); billing != nil {
 		activities.Wallet = billing
+	}
+	if e := a.computeEvents(); e != nil {
+		activities.Events = e
 	}
 	w.RegisterActivity(activities)
 	if err := w.Start(); err != nil {
@@ -203,10 +279,16 @@ func addComputeRoutes(app *App) {
 		Named("Serveurs VPS", "Serveurs privés virtuels : offres et prix mensuels.")
 	org.AddRoute("/offers", http.MethodGet, "Offres de VPS en vente, prix mensuel dans la monnaie de l'organisation",
 		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Offers, http.StatusOK))
-	org.AddRoute("/vps", http.MethodGet, "VPS de l'organisation",
-		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.List, http.StatusOK))
-	org.AddRoute("/vps/:vpsID", http.MethodGet, "Un VPS de l'organisation",
-		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Get, http.StatusOK))
+	// Un VPS appartient à un projet : ses droits se vérifient sur ce projet
+	// (un droit sur l'organisation est hérité).
+	onVPS := func(p iam.Permission) Access { return g.Perm(p, vpsProject(r)) }
+	org.AddRoute("/vps", http.MethodGet, "VPS de l'organisation", g.Perm(iam.VPSList, security.OrganizationParam("id")), tonic.Handler(r.List, http.StatusOK))
+	org.AddRoute("/vps/:vpsID", http.MethodGet, "Un VPS de l'organisation", onVPS(iam.VPSGet), tonic.Handler(r.Get, http.StatusOK))
+	org.AddRoute("/vps/:vpsID/start", http.MethodPost, "Démarrer un VPS", onVPS(iam.VPSStart), tonic.Handler(r.Start, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/stop", http.MethodPost, "Arrêter un VPS", onVPS(iam.VPSStop), tonic.Handler(r.Stop, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/reboot", http.MethodPost, "Redémarrer un VPS", onVPS(iam.VPSReboot), tonic.Handler(r.Reboot, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/reinstall", http.MethodPost, "Réinstaller un VPS avec un système et une clé SSH : son disque est effacé",
+		onVPS(iam.VPSReinstall), tonic.Handler(r.Reinstall, http.StatusAccepted))
 	org.AddRoute("/vps", http.MethodPost, "Commander un VPS : le premier mois est débité du solde, puis le serveur est créé avec la clé SSH fournie",
 		g.Perm(iam.BillingPaymentsCreate, security.OrganizationParam("id")), tonic.Handler(r.Order, http.StatusAccepted))
 

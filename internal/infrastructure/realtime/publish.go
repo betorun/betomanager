@@ -92,6 +92,11 @@ func WorkloadChannel(projectID string, workloadID string) string {
 	return fmt.Sprintf(workloadChannelFormat, strings.TrimSpace(projectID), strings.TrimSpace(workloadID))
 }
 
+// VPSChannel : changements d'un VPS (module compute).
+func VPSChannel(projectID, vpsID string) string {
+	return fmt.Sprintf(vpsChannelFormat, strings.TrimSpace(projectID), strings.TrimSpace(vpsID))
+}
+
 func DeploymentChannel(projectID string, workloadID string) string {
 	return fmt.Sprintf(deploymentChannelFormat, strings.TrimSpace(projectID), strings.TrimSpace(workloadID))
 }

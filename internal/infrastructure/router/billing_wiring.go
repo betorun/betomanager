@@ -41,6 +41,9 @@ func (a *App) billingService() *billingSvc.Service {
 	}
 	// Phase 4 : suspension (arrêt et relance des conteneurs), documents.
 	svc.Phase4 = billingRepo.NewPhase4(a.DB)
+	if c := a.computeSuspender(); c != nil { // pas d'interface non nulle autour d'un nil
+		svc.VPS = c
+	}
 	if a.Services != nil {
 		if c, ok := a.Services.Workload.(billingSvc.Containers); ok {
 			svc.Containers = c

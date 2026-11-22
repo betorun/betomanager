@@ -49,7 +49,11 @@ func (s *GormStore) EnqueueTx(tx *gorm.DB, r *domain.Request) error {
 	if len(r.Payload) == 0 {
 		r.Payload = []byte(`{}`)
 	}
-	return tx.Create(r).Error
+	err := tx.Create(r).Error
+	if isUniqueViolation(err, "uq_compute_requests_active_vps") {
+		return domain.ErrBusy
+	}
+	return err
 }
 
 // ClaimPending : FOR UPDATE SKIP LOCKED : deux relais ne prennent jamais la même demande.
@@ -93,9 +97,17 @@ func (s *GormStore) FinishRequest(ctx context.Context, id uuid.UUID, ok bool, er
 	if len(errMsg) > maxErrorLen {
 		errMsg = errMsg[:maxErrorLen]
 	}
-	return s.DB.WithContext(ctx).Model(&domain.Request{}).
-		Where("id = ? AND status IN ?", id, []string{domain.RequestPending, domain.RequestStarted}).
-		Updates(map[string]any{"status": status, "finished_at": at, "last_error": errMsg}).Error
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&domain.Request{}).
+			Where("id = ? AND status IN ?", id, []string{domain.RequestPending, domain.RequestStarted}).
+			Updates(map[string]any{"status": status, "finished_at": at, "last_error": errMsg})
+		if res.Error != nil || res.RowsAffected == 0 {
+			return res.Error
+		}
+		// L'opération du VPS est finie, réussie ou non : il redevient libre.
+		return tx.Exec(`UPDATE compute_vps SET operation = '', version = version + 1, updated_at = ?
+			WHERE operation <> '' AND id = (SELECT vps_id FROM compute_requests WHERE id = ?)`, at, id).Error
+	})
 }
 
 func (s *GormStore) Request(ctx context.Context, id uuid.UUID) (*domain.Request, error) {

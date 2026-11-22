@@ -25,6 +25,7 @@ type vmStore struct {
 	reqs     map[uuid.UUID]*domain.Request
 	vps      map[uuid.UUID]*domain.VPS
 	finished map[uuid.UUID]bool
+	enqueued []string
 }
 
 func (s *vmStore) Request(_ context.Context, id uuid.UUID) (*domain.Request, error) {
@@ -62,6 +63,10 @@ func (s *vmStore) UpdateVPS(_ context.Context, id uuid.UUID, f map[string]any) e
 			v.IPv4 = val.(string)
 		case "paid_until":
 			v.PaidUntil = nil
+		case "image":
+			v.Image = val.(string)
+		case "ssh_key_fingerprint":
+			v.SSHKeyFingerprint = val.(string)
 		}
 	}
 	v.Version++
@@ -71,7 +76,13 @@ func (s *vmStore) Offer(context.Context, string) (*domain.Offer, error) {
 	return &domain.Offer{Code: "VPS-1", ProviderPlanCode: "vps-2025-model1", ProviderPriceCents: 649,
 		Images: json.RawMessage(`{"ubuntu-24.04":"Ubuntu 24.04"}`)}, nil
 }
-func (s *vmStore) EnqueueTx(*gorm.DB, *domain.Request) error { return nil }
+func (s *vmStore) EnqueueTx(_ *gorm.DB, r *domain.Request) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.enqueued = append(s.enqueued, r.Kind)
+	return nil
+}
+func (s *vmStore) Transaction(_ context.Context, fn func(*gorm.DB) error) error { return fn(nil) }
 
 type fakeCloud struct {
 	service.ComputeProvider
@@ -105,6 +116,10 @@ func (f *fakeCloud) Rebuild(_ context.Context, _, image, key string) (string, er
 }
 func (f *fakeCloud) Task(context.Context, string, string) (*service.ProviderTask, error) {
 	return &service.ProviderTask{State: service.TaskDone}, nil
+}
+func (f *fakeCloud) Reboot(context.Context, string) (string, error) {
+	f.powered = append(f.powered, "reboot")
+	return "58", nil
 }
 func (f *fakeCloud) Stop(context.Context, string) (string, error) {
 	f.powered = append(f.powered, "stop")
@@ -216,4 +231,38 @@ func TestStartAfterPayment(t *testing.T) {
 	assert.Equal(t, []string{"start"}, cloud.powered)
 	assert.Equal(t, domain.StateRunning, store.vps[vid].State)
 	assert.Equal(t, "", store.vps[vid].FailureCode)
+}
+
+func TestRebootVM(t *testing.T) {
+	store, vid, rid := setup(domain.StateRunning, KindReboot)
+	store.vps[vid].ProviderID = "vps-a.vps.ovh.net"
+	cloud := &fakeCloud{state: domain.StateRunning}
+	require.NoError(t, runVM(t, store, cloud, &fakeWallet{}, rid, KindReboot))
+	assert.Equal(t, []string{"reboot"}, cloud.powered)
+	assert.Equal(t, domain.StateRunning, store.vps[vid].State)
+}
+
+func TestReinstallVM(t *testing.T) {
+	store, vid, rid := setup(domain.StateStopped, KindReinstall)
+	store.vps[vid].ProviderID = "vps-a.vps.ovh.net"
+	payload, _ := json.Marshal(domain.ReinstallPayload{Image: "ubuntu-24.04", SSHPublicKey: "ssh-ed25519 BBBB", Fingerprint: "SHA256:new"})
+	store.reqs[rid].Payload = payload
+	cloud := &fakeCloud{state: domain.StateRunning}
+	require.NoError(t, runVM(t, store, cloud, &fakeWallet{}, rid, KindReinstall))
+	assert.Equal(t, "Ubuntu 24.04|ssh-ed25519 BBBB", cloud.rebuilt)
+	v := store.vps[vid]
+	assert.Equal(t, "SHA256:new", v.SSHKeyFingerprint)
+	assert.Equal(t, domain.StateRunning, v.State, "un VPS réinstallé redémarre")
+}
+
+func TestSuspendedDuringOperationGetsStopped(t *testing.T) {
+	store, vid, rid := setup(domain.StateRunning, KindReboot)
+	v := store.vps[vid]
+	v.ProviderID = "vps-a.vps.ovh.net"
+	cloud := &fakeCloud{state: domain.StateRunning}
+	// L'organisation est suspendue pendant le redémarrage.
+	v.State, v.FailureCode = domain.StateSuspended, domain.FailureOrgSuspended
+	require.NoError(t, runVM(t, store, cloud, &fakeWallet{}, rid, KindReboot))
+	assert.Equal(t, domain.StateSuspended, store.vps[vid].State)
+	assert.Equal(t, []string{KindStop}, store.enqueued, "arrêt déposé à la fin de l'opération")
 }

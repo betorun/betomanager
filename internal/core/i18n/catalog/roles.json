@@ -518,5 +518,29 @@
  {
   "fr": "Lancer une réconciliation ou un diagnostic des VPS",
   "en": "Run a VPS reconciliation or diagnostic"
+ },
+ {
+  "fr": "Lister les VPS",
+  "en": "List VPS"
+ },
+ {
+  "fr": "Voir un VPS",
+  "en": "View a VPS"
+ },
+ {
+  "fr": "Démarrer un VPS",
+  "en": "Start a VPS"
+ },
+ {
+  "fr": "Arrêter un VPS",
+  "en": "Stop a VPS"
+ },
+ {
+  "fr": "Redémarrer un VPS",
+  "en": "Reboot a VPS"
+ },
+ {
+  "fr": "Réinstaller un VPS (efface son disque)",
+  "en": "Reinstall a VPS (erases its disk)"
  }
 ]

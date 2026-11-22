@@ -49,8 +49,10 @@ type Service struct {
 	// rien n'est arrêté (garde seule) ; Issuer incomplet : pas de facture.
 	Phase4     repository.Phase4
 	Containers Containers
-	Budgets    BudgetAlerter
-	Issuer     domain.Issuer
+	// VPS nil : aucun VPS arrêté à la suspension.
+	VPS     VPSSuspender
+	Budgets BudgetAlerter
+	Issuer  domain.Issuer
 	// Phase 5 : plans. Limits nil : le plan est enregistré sans toucher aux
 	// limites des projets (tests).
 	Plans  repository.Plans

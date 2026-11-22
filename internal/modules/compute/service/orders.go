@@ -101,6 +101,7 @@ func (s *Service) Order(ctx context.Context, req OrderRequest, by string) (*doma
 		return nil, err
 	}
 	s.Wallet.AfterComputeCharge(ctx, org)
+	Notify(ctx, s.Store, s.Events, id)
 	return v, nil
 }
 
@@ -203,8 +204,11 @@ func (s *Service) renew(ctx context.Context, v domain.VPS, now time.Time) (renew
 		return nil
 	})
 	switch {
+	case isBusy(err):
+		return false, false, nil // une opération occupe le VPS : passage suivant
 	case err == nil:
 		s.Wallet.AfterComputeCharge(ctx, v.OrganizationID)
+		Notify(ctx, s.Store, s.Events, v.ID)
 		return true, false, nil
 	case errors.Is(err, errUnpaid):
 		if v.State == domain.StateSuspended {
@@ -217,6 +221,12 @@ func (s *Service) renew(ctx context.Context, v domain.VPS, now time.Time) (renew
 			}
 			return s.Store.EnqueueTx(tx, &domain.Request{OrganizationID: v.OrganizationID, VPSID: &v.ID, Kind: domain.KindStop, CreatedBy: "billing"})
 		})
+		if isBusy(err) {
+			return false, false, nil
+		}
+		if err == nil {
+			Notify(ctx, s.Store, s.Events, v.ID)
+		}
 		return false, err == nil, err
 	default:
 		return false, false, err

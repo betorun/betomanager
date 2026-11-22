@@ -70,5 +70,17 @@
  {
   "fr": "Cette offre de VPS n'est pas vendue avec cet emplacement et ce système",
   "en": "this VPS offer is not sold with this location and system"
+ },
+ {
+  "fr": "Une opération est déjà en cours sur ce VPS : attendez qu'elle se termine",
+  "en": "an operation is already running on this VPS: wait for it to finish"
+ },
+ {
+  "fr": "Ce VPS n'est pas prêt pour cette action",
+  "en": "this VPS is not ready for this action"
+ },
+ {
+  "fr": "Ce VPS est suspendu : rechargez le solde pour le relancer",
+  "en": "this VPS is suspended: top up the balance to restart it"
  }
 ]

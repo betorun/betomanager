@@ -7,8 +7,11 @@ jamais côté client (ni dans l'API, ni dans la console, ni dans les messages).
 fournisseur) ; **lot 2** — lecture chez le fournisseur, réconciliation,
 page « VPS » du back-office ; **lot 3** — commande payée par le solde,
 création avec la clé SSH du client, remboursement en cas d'échec,
-renouvellement mensuel et suspension. Pas encore d'action du client sur un
-VPS ni de pages de la console (lot 4).
+renouvellement mensuel et suspension ; **lot 4** — actions du client (une
+opération à la fois), permissions `compute.vps.*`, temps réel, suspension
+de l'organisation, pages de la console. La console du serveur (terminal)
+viendra plus tard derrière le domaine de la plateforme : l'adresse du
+fournisseur n'est jamais donnée au client.
 
 ## Processus
 
@@ -91,6 +94,43 @@ Un mois se termine le même jour du mois suivant, borné à son dernier jour
 Le fournisseur renouvelle de son côté chaque mois (paiement automatique du
 compte) : un VPS suspendu reste payé chez lui jusqu'à la résiliation (lot 7).
 
+## Actions du client (lot 4)
+
+| Action | Depuis | Opération | Permission |
+|---|---|---|---|
+| démarrer | stopped | starting | `compute.vps.start` (développeur) |
+| arrêter | running | stopping | `compute.vps.stop` (développeur) |
+| redémarrer | running | rebooting | `compute.vps.reboot` (développeur) |
+| réinstaller (système de l'offre + clé SSH ; **efface le disque**) | running, stopped | reinstalling | `compute.vps.reinstall` (éditeur, sensible) |
+
+Lecture : `compute.vps.list`, `compute.vps.get` (lecteur). Commande :
+`billing.payments.create`. Les actions et la fiche se vérifient sur le **projet** du VPS (un droit sur l'organisation est hérité) ; la liste et la commande, sur l'organisation.
+
+**Une opération à la fois** : l'action dépose sa demande (outbox) et marque
+`operation` dans la même transaction ; un index unique partiel
+(`uq_compute_requests_active_vps`, migration 000060) refuse toute seconde
+demande active du même VPS (`VPS_BUSY`), qu'elle vienne du client, du
+renouvellement ou de la suspension. La fin de la demande (réussie ou non)
+efface `operation`. Refus : `VPS_NOT_READY` (état), `VPS_SUSPENDED`.
+
+**Temps réel** : à chaque changement, `{type: "vps.updated", vps}` sur
+`project:<projet>:vps:<vps>` et `project:<projet>:events` (abonnement
+réservé aux membres du projet) ; `version` permet d'ignorer un événement
+plus ancien.
+
+## Suspension de l'organisation (lot 4)
+
+Le module billing appelle `SuspendOrganization` quand il suspend une
+organisation (solde épuisé, grâce finie) et `ResumeOrganization` à la levée :
+
+- suspension : VPS en marche ou arrêtés → `suspended` (`org_suspended`),
+  état retenu (`resume_state`), arrêt demandé pour ceux en marche ; un VPS
+  occupé est suspendu quand même et son arrêt est déposé à la fin de
+  l'opération en cours (`StopIfSuspended`) ;
+- reprise : mois encore payé → il retrouve son état (relancé s'il
+  tournait) ; mois fini pendant la suspension → reste suspendu pour impayé,
+  le renouvellement le relancera après paiement.
+
 ## Lecture chez le fournisseur (lot 2)
 
 `repository/ovhvps.Provider` implémente `ComputeProvider` en lecture :
@@ -164,9 +204,13 @@ prix. Emplacements autorisés : `gra`, `rbx`, `sbg` ; images : `ubuntu-24.04`,
 | GET | `/organizations/:id/compute/offers` | `billing.accounts.get` |
 | GET | `/admin/compute/offers` | `platform.billingCatalogs.get` |
 | PUT | `/admin/compute/offers/:code` | `platform.billingCatalogs.update` |
-| GET | `/organizations/:id/compute/vps` | `billing.accounts.get` |
-| GET | `/organizations/:id/compute/vps/:vpsID` | `billing.accounts.get` |
+| GET | `/organizations/:id/compute/vps` | `compute.vps.list` |
+| GET | `/organizations/:id/compute/vps/:vpsID` | `compute.vps.get` |
 | POST | `/organizations/:id/compute/vps` | `billing.payments.create` |
+| POST | `/organizations/:id/compute/vps/:vpsID/start` | `compute.vps.start` |
+| POST | `/organizations/:id/compute/vps/:vpsID/stop` | `compute.vps.stop` |
+| POST | `/organizations/:id/compute/vps/:vpsID/reboot` | `compute.vps.reboot` |
+| POST | `/organizations/:id/compute/vps/:vpsID/reinstall` | `compute.vps.reinstall` |
 | GET | `/admin/compute/vps` | `platform.compute.get` |
 | POST | `/admin/compute/reconcile` | `platform.compute.manage` |
 | POST | `/admin/compute/ping` | `platform.compute.manage` |
