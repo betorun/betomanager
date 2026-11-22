@@ -1,4 +1,4 @@
-package mail
+package repository
 
 import (
 	"context"

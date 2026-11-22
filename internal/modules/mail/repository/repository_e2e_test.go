@@ -1,4 +1,4 @@
-package mail_test
+package repository_test
 
 // Adresses mises de côté sur un vrai Postgres. Ignoré sans IAM_E2E :
 //
@@ -17,8 +17,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
 	"github.com/thekrauss/kubemanager/internal/modules/mail/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/mail/repository"
 )
 
 const e2eDSN = "postgres://postgres:pw@127.0.0.1:55433/postgres?sslmode=disable"
@@ -30,7 +30,7 @@ func TestE2E_Suppressions(t *testing.T) {
 	db, err := gorm.Open(postgres.Open(e2eDSN), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	ctx := context.Background()
-	r := &mailmod.GormRepository{DB: db}
+	r := &repository.GormRepository{DB: db}
 	email := uuid.NewString()[:8] + "@Rebond.example"
 
 	require.NoError(t, r.Suppress(ctx, domain.NewSuppression(email, domain.ReasonBounce, domain.SourceSendGrid, "550 user unknown")))
