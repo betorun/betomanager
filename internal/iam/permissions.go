@@ -158,6 +158,11 @@ const (
 	// PlatformMailSuppressionsManage : adresses e-mail mises de côté (rebonds,
 	// refus) : les voir et les relâcher.
 	PlatformMailSuppressionsManage Permission = "platform.mailSuppressions.manage"
+	// PlatformComputeGet / Manage : VPS de tous les clients, relevé du
+	// fournisseur et réconciliation (les prix des offres restent sous
+	// PlatformBillingCatalogs*).
+	PlatformComputeGet    Permission = "platform.compute.get"
+	PlatformComputeManage Permission = "platform.compute.manage"
 )
 
 // PermissionInfo : métadonnées d'une permission (doc, UI, rôles personnalisés).
@@ -279,6 +284,8 @@ var catalog = map[Permission]PermissionInfo{
 	PlatformBillingAccountsGet:     {Title: "Voir les comptes de facturation des clients", PlatformOnly: true},
 	PlatformBillingAccountsUpdate:  {Title: "Offrir un crédit, corriger un solde, activer la facturation", PlatformOnly: true, Sensitive: true},
 	PlatformMailSuppressionsManage: {Title: "Voir et relâcher les adresses e-mail mises de côté", PlatformOnly: true},
+	PlatformComputeGet:             {Title: "Voir les VPS de tous les clients et la réconciliation", PlatformOnly: true},
+	PlatformComputeManage:          {Title: "Lancer une réconciliation ou un diagnostic des VPS", PlatformOnly: true},
 }
 
 // Known : la permission figure au catalogue.

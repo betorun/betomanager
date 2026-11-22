@@ -17,13 +17,23 @@ import (
 
 // Noms et file.
 const (
-	DefaultTaskQueue    = "compute"
-	RequestWorkflowName = "ComputeRequestWorkflow"
+	DefaultTaskQueue      = "compute"
+	RequestWorkflowName   = "ComputeRequestWorkflow"
+	ReconcileWorkflowName = "ComputeReconcileWorkflow"
+	// ReconcileWorkflowID : un seul workflow périodique, quel que soit le
+	// nombre de process compute.
+	ReconcileWorkflowID = "compute-reconcile"
+	// ReconcileCron : toutes les 10 minutes.
+	ReconcileCron = "*/10 * * * *"
 )
 
 // Types d'opération. compute.ping : traverse toute la chaîne (outbox, relais,
 // Temporal, worker compute, base) sans toucher à un fournisseur.
-const KindPing = "compute.ping"
+// compute.reconcile : une passe de réconciliation demandée par l'équipe.
+const (
+	KindPing      = "compute.ping"
+	KindReconcile = "compute.reconcile"
+)
 
 // RequestWorkflow : une demande de l'outbox. Chaque étape est une activité ;
 // la demande est close en base à la fin (réussie ou non).
@@ -37,6 +47,8 @@ func RequestWorkflow(ctx workflow.Context, in service.RequestInput) error {
 	switch in.Kind {
 	case KindPing:
 		runErr = workflow.ExecuteActivity(ctx, a.Ping, in.RequestID).Get(ctx, nil)
+	case KindReconcile:
+		runErr = workflow.ExecuteActivity(reconcileOptions(ctx), a.Reconcile).Get(ctx, nil)
 	default:
 		runErr = temporal.NewNonRetryableApplicationError(fmt.Sprintf("unknown compute request kind %q", in.Kind), "UnknownKind", nil)
 	}
@@ -48,6 +60,20 @@ func RequestWorkflow(ctx workflow.Context, in service.RequestInput) error {
 		return err
 	}
 	return runErr
+}
+
+func reconcileOptions(ctx workflow.Context) workflow.Context {
+	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Minute,
+		RetryPolicy:         &temporal.RetryPolicy{InitialInterval: 30 * time.Second, BackoffCoefficient: 2, MaximumAttempts: 3},
+	})
+}
+
+// ReconcileWorkflow : passe périodique (planifiée par ReconcileCron) ; une
+// passe en échec est journalisée en base et retentée à la suivante.
+func ReconcileWorkflow(ctx workflow.Context) error {
+	var a *Activities
+	return workflow.ExecuteActivity(reconcileOptions(ctx), a.Reconcile).Get(ctx, nil)
 }
 
 // Activities : accès à la base et au fournisseur (mode compute seulement).
@@ -78,6 +104,15 @@ func (a *Activities) Ping(ctx context.Context, requestID string) error {
 		return temporal.NewNonRetryableApplicationError("compute request not found", "RequestNotFound", nil)
 	}
 	return nil
+}
+
+// Reconcile : une passe base ↔ fournisseur.
+func (a *Activities) Reconcile(ctx context.Context) error {
+	if a.Provider == nil {
+		return temporal.NewNonRetryableApplicationError("no compute provider configured", "NoProvider", nil)
+	}
+	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Now: a.Now}).Run(ctx)
+	return err
 }
 
 // Finish : clôt la demande (idempotent).

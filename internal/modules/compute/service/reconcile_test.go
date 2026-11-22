@@ -1,0 +1,110 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/thekrauss/kubemanager/internal/modules/compute/domain"
+)
+
+type reconStore struct {
+	Store
+	vps      []domain.VPS
+	applied  map[uuid.UUID]string
+	stale    map[uuid.UUID]bool // version changée entre-temps
+	machines []domain.ProviderMachine
+	runs     []domain.ReconcileRun
+}
+
+func (s *reconStore) ProviderVPS(context.Context, string) ([]domain.VPS, error) { return s.vps, nil }
+func (s *reconStore) ApplyObserved(_ context.Context, id uuid.UUID, _ int64, state, ipv4, _ string, _ time.Time) (bool, error) {
+	if s.stale[id] {
+		return false, nil
+	}
+	s.applied[id] = state + " " + ipv4
+	return true, nil
+}
+func (s *reconStore) ReplaceMachines(_ context.Context, _ string, ms []domain.ProviderMachine) error {
+	s.machines = ms
+	return nil
+}
+func (s *reconStore) SaveRun(_ context.Context, r *domain.ReconcileRun) error {
+	s.runs = append(s.runs, *r)
+	return nil
+}
+
+type fakeProvider struct {
+	ComputeProvider
+	vms []ProviderVM
+	err error
+}
+
+func (f *fakeProvider) Name() string                               { return domain.ProviderOVH }
+func (f *fakeProvider) List(context.Context) ([]ProviderVM, error) { return f.vms, f.err }
+
+func TestReconcile(t *testing.T) {
+	stopped, ipChanged, raced, suspended, busy, gone, creating, deleted := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	store := &reconStore{applied: map[uuid.UUID]string{}, stale: map[uuid.UUID]bool{raced: true}, vps: []domain.VPS{
+		{ID: stopped, ProviderID: "p-stopped", State: domain.StateRunning, IPv4: "1.1.1.1"},
+		{ID: ipChanged, ProviderID: "p-ip", State: domain.StateRunning, IPv4: "2.2.2.2"},
+		{ID: raced, ProviderID: "p-raced", State: domain.StateStopped},
+		{ID: suspended, ProviderID: "p-susp", State: domain.StateSuspended},
+		{ID: busy, ProviderID: "p-busy", State: domain.StateRunning},
+		{ID: gone, ProviderID: "p-gone", State: domain.StateRunning},
+		{ID: creating, ProviderID: "p-new", State: domain.StateCreating},
+		{ID: deleted, ProviderID: "p-del", State: domain.StateDeleted},
+	}}
+	prov := &fakeProvider{vms: []ProviderVM{
+		{ProviderID: "p-stopped", State: domain.StateStopped},             // arrêté chez le fournisseur : corrigé, IP gardée
+		{ProviderID: "p-ip", State: domain.StateRunning, IPv4: "9.9.9.9"}, // nouvelle adresse
+		{ProviderID: "p-raced", State: domain.StateRunning},               // le client a agi entre-temps : rien écrit
+		{ProviderID: "p-susp", State: domain.StateRunning},                // suspendu mais en marche : écart
+		{ProviderID: "p-busy", State: domain.StateStopped, Busy: true},    // opération en cours : rien
+		{ProviderID: "p-new", State: domain.StateRunning},                 // en création : le workflow s'en charge
+		{ProviderID: "p-del", State: domain.StateRunning},                 // résilié mais toujours là : écart (payé !)
+		{ProviderID: "p-orphan", State: domain.StateRunning},              // inconnu
+	}}
+	r := &Reconciler{Store: store, Provider: prov}
+	run, err := r.Run(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, map[uuid.UUID]string{stopped: "stopped 1.1.1.1", ipChanged: "running 9.9.9.9"}, store.applied)
+	assert.Equal(t, 8, run.Seen)
+	assert.Equal(t, 2, run.Updated)
+	assert.Equal(t, 1, run.Orphans)
+	assert.Equal(t, 2, run.Drifts, "suspendu en marche + résilié présent")
+	assert.Equal(t, 1, run.Missing, "p-gone")
+	assert.NotNil(t, run.FinishedAt)
+
+	drift := map[string]string{}
+	for _, m := range store.machines {
+		drift[m.ProviderID] = m.Drift
+		if m.ProviderID != "p-orphan" {
+			assert.NotNil(t, m.VPSID, m.ProviderID)
+		}
+	}
+	assert.Equal(t, domain.DriftOrphan, drift["p-orphan"])
+	assert.Equal(t, domain.DriftState, drift["p-susp"])
+	assert.Equal(t, domain.DriftState, drift["p-del"])
+	assert.Equal(t, "", drift["p-new"])
+	assert.Equal(t, "", drift["p-busy"])
+	require.Len(t, store.runs, 2, "passe enregistrée au début et à la fin")
+}
+
+func TestReconcile_ProviderDown(t *testing.T) {
+	store := &reconStore{applied: map[uuid.UUID]string{}}
+	r := &Reconciler{Store: store, Provider: &fakeProvider{err: errors.New("503")}}
+	run, err := r.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, run.Error, "503")
+	assert.Nil(t, store.machines, "relevé précédent gardé")
+
+	_, err = (&Reconciler{Store: store}).Run(context.Background())
+	assert.ErrorIs(t, err, ErrNoProvider)
+}

@@ -71,17 +71,33 @@ type PingResponse struct {
 // Ping : une demande compute.ping traverse la chaîne (outbox → relais →
 // Temporal → mode compute → base) ; suivre son état par GET /admin/compute/requests/:id.
 func (h *Controller) Ping(c *gin.Context) (*PingResponse, error) {
+	return h.enqueue(c, workflows.KindPing)
+}
+
+// Reconcile : une passe de réconciliation tout de suite (en plus de la passe
+// périodique du mode compute).
+func (h *Controller) Reconcile(c *gin.Context) (*PingResponse, error) {
+	return h.enqueue(c, workflows.KindReconcile)
+}
+
+// enqueue : demande de l'équipe, sans organisation.
+func (h *Controller) enqueue(c *gin.Context, kind string) (*PingResponse, error) {
 	by := ""
 	if p, ok := security.PrincipalFromContext(c); ok {
 		by = string(p)
 	}
-	r := &domain.Request{OrganizationID: uuid.Nil, Kind: workflows.KindPing, CreatedBy: by}
+	r := &domain.Request{OrganizationID: uuid.Nil, Kind: kind, CreatedBy: by}
 	if err := h.DB.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		return h.Service.Store.EnqueueTx(tx, r)
 	}); err != nil {
 		return nil, err
 	}
 	return &PingResponse{RequestID: r.ID.String()}, nil
+}
+
+// Fleet : VPS de tous les clients, relevé du fournisseur, écarts, passes.
+func (h *Controller) Fleet(c *gin.Context) (*service.Fleet, error) {
+	return h.Service.Fleet(c.Request.Context())
 }
 
 type RequestPath struct {

@@ -103,3 +103,70 @@ func (s *GormStore) Request(ctx context.Context, id uuid.UUID) (*domain.Request,
 	}
 	return &r, err
 }
+
+// ── Réconciliation ──────────────────────────────────────────────────────
+
+func (s *GormStore) ProviderVPS(ctx context.Context, provider string) ([]domain.VPS, error) {
+	out := []domain.VPS{}
+	return out, s.DB.WithContext(ctx).Where("provider = ? AND provider_id <> ''", provider).Find(&out).Error
+}
+
+// ApplyObserved : écrit seulement si la version n'a pas bougé (une opération
+// du client passée entre-temps garde la main).
+func (s *GormStore) ApplyObserved(ctx context.Context, id uuid.UUID, version int64, state, ipv4, ipv6 string, at time.Time) (bool, error) {
+	res := s.DB.WithContext(ctx).Model(&domain.VPS{}).Where("id = ? AND version = ?", id, version).
+		Updates(map[string]any{"state": state, "ipv4": ipv4, "ipv6": ipv6, "version": gorm.Expr("version + 1"), "updated_at": at})
+	return res.RowsAffected == 1, res.Error
+}
+
+// ReplaceMachines : le relevé du fournisseur remplace le précédent, d'un bloc.
+func (s *GormStore) ReplaceMachines(ctx context.Context, provider string, ms []domain.ProviderMachine) error {
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("provider = ?", provider).Delete(&domain.ProviderMachine{}).Error; err != nil {
+			return err
+		}
+		if len(ms) == 0 {
+			return nil
+		}
+		return tx.CreateInBatches(ms, 200).Error
+	})
+}
+
+func (s *GormStore) SaveRun(ctx context.Context, r *domain.ReconcileRun) error {
+	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(r).Error
+}
+
+// ── Back-office ─────────────────────────────────────────────────────────
+
+func (s *GormStore) ListVPS(ctx context.Context, limit int) ([]domain.VPS, error) {
+	out := []domain.VPS{}
+	return out, s.DB.WithContext(ctx).Order("created_at DESC").Limit(limit).Find(&out).Error
+}
+
+func (s *GormStore) Machines(ctx context.Context) ([]domain.ProviderMachine, error) {
+	out := []domain.ProviderMachine{}
+	return out, s.DB.WithContext(ctx).Order("provider, provider_id").Find(&out).Error
+}
+
+func (s *GormStore) Runs(ctx context.Context, limit int) ([]domain.ReconcileRun, error) {
+	out := []domain.ReconcileRun{}
+	return out, s.DB.WithContext(ctx).Order("started_at DESC").Limit(limit).Find(&out).Error
+}
+
+func (s *GormStore) OrganizationNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := map[uuid.UUID]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		ID          uuid.UUID
+		DisplayName string
+	}
+	if err := s.DB.WithContext(ctx).Table("organizations").Select("id, display_name").Where("id IN ?", ids).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.ID] = r.DisplayName
+	}
+	return out, nil
+}

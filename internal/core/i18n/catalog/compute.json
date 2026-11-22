@@ -22,5 +22,13 @@
  {
   "fr": "Demande déjà lancée",
   "en": "compute request already started"
+ },
+ {
+  "fr": "Cette action n'est pas encore disponible pour ce serveur.",
+  "en": "compute: action not supported yet"
+ },
+ {
+  "fr": "Aucun fournisseur de serveurs n'est configuré.",
+  "en": "compute: no provider configured"
  }
 ]

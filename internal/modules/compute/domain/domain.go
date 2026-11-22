@@ -198,3 +198,52 @@ var (
 
 // NormalizeCode : « vps-1 » → « VPS-1 ».
 func NormalizeCode(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
+
+// ── Réconciliation (base ↔ fournisseur) ────────────────────────────────
+
+// Écarts relevés par la réconciliation (vue de l'équipe seulement).
+const (
+	// DriftOrphan : VPS chez le fournisseur, inconnu de la plateforme (payé, vendu à personne).
+	DriftOrphan = "orphan"
+	// DriftState : état différent, que la réconciliation ne corrige pas
+	// (VPS suspendu encore en marche, en création, résilié…).
+	DriftState = "state"
+	// DriftMissing : VPS de la plateforme absent chez le fournisseur.
+	DriftMissing = "missing"
+)
+
+// ProviderMachine : dernier relevé d'un VPS chez le fournisseur (table
+// compute_provider_vms), remplacé à chaque réconciliation.
+type ProviderMachine struct {
+	Provider   string     `gorm:"primaryKey" json:"provider"`
+	ProviderID string     `gorm:"primaryKey" json:"provider_id"`
+	VPSID      *uuid.UUID `gorm:"column:vps_id;type:uuid" json:"vps_id,omitempty"`
+	// State : état traduit (domain.State*) ; RawState : celui du fournisseur.
+	State    string    `gorm:"not null" json:"state"`
+	RawState string    `gorm:"not null;default:''" json:"raw_state"`
+	Plan     string    `gorm:"not null;default:''" json:"plan"`
+	Zone     string    `gorm:"not null;default:''" json:"zone"`
+	IPv4     string    `gorm:"column:ipv4;not null;default:''" json:"ipv4"`
+	IPv6     string    `gorm:"column:ipv6;not null;default:''" json:"ipv6"`
+	Busy     bool      `gorm:"not null;default:false" json:"busy"`
+	Drift    string    `gorm:"not null;default:''" json:"drift"`
+	SeenAt   time.Time `gorm:"not null" json:"seen_at"`
+}
+
+func (ProviderMachine) TableName() string { return "compute_provider_vms" }
+
+// ReconcileRun : une passe de réconciliation (table compute_reconcile_runs).
+type ReconcileRun struct {
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	Provider   string     `gorm:"not null" json:"provider"`
+	StartedAt  time.Time  `gorm:"not null" json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	Seen       int        `gorm:"not null;default:0" json:"seen"`
+	Updated    int        `gorm:"not null;default:0" json:"updated"`
+	Orphans    int        `gorm:"not null;default:0" json:"orphans"`
+	Missing    int        `gorm:"not null;default:0" json:"missing"`
+	Drifts     int        `gorm:"not null;default:0" json:"drifts"`
+	Error      string     `gorm:"not null;default:''" json:"error,omitempty"`
+}
+
+func (ReconcileRun) TableName() string { return "compute_reconcile_runs" }
