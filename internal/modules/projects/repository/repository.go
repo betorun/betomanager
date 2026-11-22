@@ -13,7 +13,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	dauth "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
-	"github.com/thekrauss/kubemanager/internal/modules/organizations"
+	organizationsRepo "github.com/thekrauss/kubemanager/internal/modules/organizations/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 )
 
@@ -70,7 +70,7 @@ func (r *pgProjectRepo) CreateProject(ctx context.Context, project *dauth.Projec
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if project.OrganizationID == uuid.Nil {
-			orgID, err := organizations.EnsurePersonal(ctx, tx, ownerUUID, "")
+			orgID, err := organizationsRepo.EnsurePersonal(ctx, tx, ownerUUID, "")
 			if err != nil {
 				return err
 			}

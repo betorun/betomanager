@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm/llmtest"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 )
 
@@ -19,9 +20,9 @@ const spec = `{"paths":{
  "/w/{id}/events":{"get":{"summary":"E","parameters":[{"name":"id","in":"path","required":true}]}},
  "/w/{id}/logs":{"get":{"summary":"L","parameters":[{"name":"id","in":"path","required":true}]}}}}`
 
-func enabledService(t *testing.T) *Service {
+func enabledService(t *testing.T) *service.Service {
 	t.Helper()
-	s := &Service{LLM: llmtest.New("p")}
+	s := &service.Service{LLM: llmtest.New("p")}
 	err := s.Bind(http.NotFoundHandler(), []tools.Route{
 		{Name: tools.ToolGetWorkload, Method: "GET", Path: "/w/:id"},
 		{Name: tools.ToolGetWorkloadStatus, Method: "GET", Path: "/w/:id/status"},
@@ -34,7 +35,7 @@ func enabledService(t *testing.T) *Service {
 	return s
 }
 
-func chat(s *Service, body string, setup func(c *gin.Context)) *httptest.ResponseRecorder {
+func chat(s *service.Service, body string, setup func(c *gin.Context)) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -53,7 +54,7 @@ func person(c *gin.Context) {
 }
 
 func TestChatRefusals(t *testing.T) {
-	if w := chat(&Service{}, `{"message":"x"}`, person); w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "COPILOT_DISABLED") {
+	if w := chat(&service.Service{}, `{"message":"x"}`, person); w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "COPILOT_DISABLED") {
 		t.Fatalf("désactivé : %d %s", w.Code, w.Body)
 	}
 	s := enabledService(t)

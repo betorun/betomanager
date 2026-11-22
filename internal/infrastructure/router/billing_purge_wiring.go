@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 
 	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
-	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	databasesDomain "github.com/thekrauss/kubemanager/internal/modules/databases/domain"
+	databasesSvc "github.com/thekrauss/kubemanager/internal/modules/databases/service"
 	sitesSvc "github.com/thekrauss/kubemanager/internal/modules/sites/service"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
 )
@@ -47,7 +47,7 @@ func (a *App) startSuspensionPurge(ctx context.Context) {
 type orgPurger struct {
 	a         *App
 	workloads workloadsSvc.IWorkloadService
-	databases *databases.Service
+	databases *databasesSvc.Service
 	sites     sitesSvc.ISiteService // nil : sites désactivés
 }
 

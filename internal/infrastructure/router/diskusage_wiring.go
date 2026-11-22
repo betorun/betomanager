@@ -9,17 +9,21 @@ import (
 	"gorm.io/gorm"
 	"k8s.io/client-go/dynamic"
 
-	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	databasesRepo "github.com/thekrauss/kubemanager/internal/modules/databases/repository"
+	databasesSvc "github.com/thekrauss/kubemanager/internal/modules/databases/service"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
+	diskusageDomain "github.com/thekrauss/kubemanager/internal/modules/diskusage/domain"
+	diskusageRepo "github.com/thekrauss/kubemanager/internal/modules/diskusage/repository"
+	diskusageSvc "github.com/thekrauss/kubemanager/internal/modules/diskusage/service"
 )
 
 // diskUsageService : mesure de l'usage réel des disques (local-path ne
 // plafonne pas). Sans cluster, seule la lecture des mesures reste possible.
-func (a *App) diskUsageService() *diskusage.Service {
-	s := &diskusage.Service{Store: &diskusage.GormStore{DB: a.DB}, Targets: &diskTargets{db: a.DB, app: a},
+func (a *App) diskUsageService() *diskusageSvc.Service {
+	s := &diskusageSvc.Service{Store: &diskusageRepo.GormStore{DB: a.DB}, Targets: &diskTargets{db: a.DB, app: a},
 		Logger: a.Logger.With("component", "disk-usage")}
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
-		s.Measurer = &diskusage.KubeMeasurer{Kube: a.K8sProvider.Client, Image: "busybox:1.37.0",
+		s.Measurer = &diskusageRepo.KubeMeasurer{Kube: a.K8sProvider.Client, Image: "busybox:1.37.0",
 			Timeout: 2 * time.Minute, Poll: 2 * time.Second}
 	}
 	if n := a.alertNotifier(); n != nil { // pas d'interface non nulle autour d'un nil
@@ -38,8 +42,8 @@ type diskTargets struct {
 	app *App
 }
 
-func (t *diskTargets) find(ctx context.Context, table string, project uuid.UUID, name string) (*diskusage.Target, error) {
-	var out diskusage.Target
+func (t *diskTargets) find(ctx context.Context, table string, project uuid.UUID, name string) (*diskusageDomain.Target, error) {
+	var out diskusageDomain.Target
 	err := t.db.WithContext(ctx).Table(table).Select("id, status").
 		Where("project_id = ? AND name = ?", project, name).Take(&out).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -51,11 +55,11 @@ func (t *diskTargets) find(ctx context.Context, table string, project uuid.UUID,
 	return &out, nil
 }
 
-func (t *diskTargets) Workload(ctx context.Context, project uuid.UUID, name string) (*diskusage.Target, error) {
+func (t *diskTargets) Workload(ctx context.Context, project uuid.UUID, name string) (*diskusageDomain.Target, error) {
 	return t.find(ctx, "workloads", project, name)
 }
 
-func (t *diskTargets) Database(ctx context.Context, project uuid.UUID, name string) (*diskusage.Target, error) {
+func (t *diskTargets) Database(ctx context.Context, project uuid.UUID, name string) (*diskusageDomain.Target, error) {
 	return t.find(ctx, "databases", project, name)
 }
 
@@ -68,8 +72,8 @@ func (t *diskTargets) StopDatabase(ctx context.Context, project, id uuid.UUID) e
 	if err != nil {
 		return err
 	}
-	s := &databases.Service{Repo: &databases.GormRepository{DB: t.db}, Projects: t.app.Repos.Project,
-		Clusters: &databases.CNPG{Dynamic: dyn, Kube: t.app.K8sProvider.Client}, Logger: t.app.Logger}
+	s := &databasesSvc.Service{Repo: &databasesRepo.GormRepository{DB: t.db}, Projects: t.app.Repos.Project,
+		Clusters: &databasesRepo.CNPG{Dynamic: dyn, Kube: t.app.K8sProvider.Client}, Logger: t.app.Logger}
 	_, err = s.Stop(ctx, project, id)
 	return err
 }

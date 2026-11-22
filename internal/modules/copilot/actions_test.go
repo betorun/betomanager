@@ -17,46 +17,47 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/iam/sts"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm/llmtest"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 )
 
 // memProposals : ProposalStore en mémoire.
 type memProposals struct {
 	mu      sync.Mutex
-	items   map[string]*Proposal
+	items   map[string]*service.Proposal
 	claimed map[string]bool
 }
 
 func newMem() *memProposals {
-	return &memProposals{items: map[string]*Proposal{}, claimed: map[string]bool{}}
+	return &memProposals{items: map[string]*service.Proposal{}, claimed: map[string]bool{}}
 }
-func (m *memProposals) save(_ context.Context, p *Proposal, _ time.Duration) error {
+func (m *memProposals) Save(_ context.Context, p *service.Proposal, _ time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	cp := *p
 	m.items[p.Token] = &cp
 	return nil
 }
-func (m *memProposals) load(_ context.Context, token, user string) (*Proposal, error) {
+func (m *memProposals) Load(_ context.Context, token, user string) (*service.Proposal, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	p, ok := m.items[token]
 	if !ok || p.UserID != user {
-		return nil, errProposalNotFound
+		return nil, service.ErrProposalNotFound
 	}
 	cp := *p
 	return &cp, nil
 }
-func (m *memProposals) claim(_ context.Context, token string) error {
+func (m *memProposals) Claim(_ context.Context, token string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.claimed[token] {
-		return errProposalHandled
+		return service.ErrProposalHandled
 	}
 	m.claimed[token] = true
 	return nil
 }
-func (m *memProposals) drop(_ context.Context, token string) {
+func (m *memProposals) Drop(_ context.Context, token string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.items, token)
@@ -102,10 +103,10 @@ const actionSpec = `{"paths":{
    "requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Vars"}}}}}}},
  "components":{"schemas":{"Vars":{"type":"object","properties":{"env":{"type":"object"},"secrets":{"type":"object"}}}}}}`
 
-func actionService(t *testing.T) (*Service, *api, *fakeMinter) {
+func actionService(t *testing.T) (*service.Service, *api, *fakeMinter) {
 	t.Helper()
 	a, m := &api{}, &fakeMinter{}
-	s := &Service{LLM: llmtest.New("p"), STS: m, Proposals: newMem(), Logger: zap.NewNop().Sugar()}
+	s := &service.Service{LLM: llmtest.New("p"), STS: m, Proposals: newMem(), Logger: zap.NewNop().Sugar()}
 	err := s.Bind(a, []tools.Route{
 		{Name: tools.ToolGetWorkload, Method: "GET", Path: "/workloads/:id"},
 		{Name: tools.ToolGetWorkloadStatus, Method: "GET", Path: "/w/:id/status"},
@@ -121,12 +122,12 @@ func actionService(t *testing.T) (*Service, *api, *fakeMinter) {
 	return s, a, m
 }
 
-func runner(s *Service, user string, views *[]View) *boundRunner {
-	return &boundRunner{cat: s.catalog, inv: tools.Invoker{Handler: s.handler, Token: "tok-read"},
-		svc: s, userID: user, conversationID: "conv", onProposal: func(v View) { *views = append(*views, v) }}
+func runner(s *service.Service, user string, views *[]service.View) *service.BoundRunner {
+	return &service.BoundRunner{Cat: s.Catalog, Inv: tools.Invoker{Handler: s.Handler, Token: "tok-read"},
+		Svc: s, UserID: user, ConversationID: "conv", OnProposal: func(v service.View) { *views = append(*views, v) }}
 }
 
-func call(t *testing.T, s *Service, method, token string, user, session uuid.UUID) (*httptest.ResponseRecorder, ActionResult) {
+func call(t *testing.T, s *service.Service, method, token string, user, session uuid.UUID) (*httptest.ResponseRecorder, ActionResult) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -149,7 +150,7 @@ func call(t *testing.T, s *Service, method, token string, user, session uuid.UUI
 
 func TestProposeNeverExecutesAndOneCardPerMessage(t *testing.T) {
 	s, a, _ := actionService(t)
-	var views []View
+	var views []service.View
 	r := runner(s, uuid.NewString(), &views)
 	res := r.Run(context.Background(), "stop_workload", json.RawMessage(`{"id":"w1"}`))
 	if res.IsError || !strings.Contains(res.Content, "awaiting_validation") {
@@ -177,7 +178,7 @@ func TestProposeNeverExecutesAndOneCardPerMessage(t *testing.T) {
 		t.Fatal("secret accepté comme argument du modèle")
 	}
 	// Un appel direct d'écriture par Call est refusé.
-	if res := s.catalog.Call(context.Background(), tools.Invoker{Handler: a}, "stop_workload", json.RawMessage(`{"id":"w1"}`)); !res.IsError {
+	if res := s.Catalog.Call(context.Background(), tools.Invoker{Handler: a}, "stop_workload", json.RawMessage(`{"id":"w1"}`)); !res.IsError {
 		t.Fatal("Call a exécuté une écriture")
 	}
 }
@@ -185,7 +186,7 @@ func TestProposeNeverExecutesAndOneCardPerMessage(t *testing.T) {
 func TestApproveOnceWithWriteTokenThenUndo(t *testing.T) {
 	s, a, m := actionService(t)
 	user, session := uuid.New(), uuid.New()
-	var views []View
+	var views []service.View
 	runner(s, user.String(), &views).Run(context.Background(), "stop_workload", json.RawMessage(`{"id":"w1"}`))
 	token := views[0].Token
 
@@ -225,7 +226,7 @@ func TestApproveOnceWithWriteTokenThenUndo(t *testing.T) {
 func TestRejectDoesNothing(t *testing.T) {
 	s, a, _ := actionService(t)
 	user, session := uuid.New(), uuid.New()
-	var views []View
+	var views []service.View
 	runner(s, user.String(), &views).Run(context.Background(), "stop_workload", json.RawMessage(`{"id":"w1"}`))
 	before := len(a.reqs)
 	if w, out := call(t, s, "reject", views[0].Token, user, session); w.Code != 200 || out.Status != "rejected" {

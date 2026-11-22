@@ -12,6 +12,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/addons/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/addons/service"
 )
 
 // Authorizer : décision IAM (iam.Engine).
@@ -21,12 +22,12 @@ type Authorizer interface {
 
 // Controller : routes /projects/:id/addons.
 type Controller struct {
-	Service *Service
+	Service *service.Service
 	// IAM : second contrôle du branchement (variables du conteneur visé).
 	IAM Authorizer
 }
 
-func NewController(s *Service) *Controller { return &Controller{Service: s} }
+func NewController(s *service.Service) *Controller { return &Controller{Service: s} }
 
 // apiError : erreurs du service → statut HTTP et message stable.
 func apiError(err error) error {

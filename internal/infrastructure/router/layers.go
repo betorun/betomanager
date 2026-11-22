@@ -10,9 +10,11 @@ import (
 	authCtrl "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	"github.com/thekrauss/kubemanager/internal/modules/builds/images"
-	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
+	"github.com/thekrauss/kubemanager/internal/modules/clusters"
+	clustersRepo "github.com/thekrauss/kubemanager/internal/modules/clusters/repository"
+	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
-	"github.com/thekrauss/kubemanager/internal/modules/databases"
+	databasesRepo "github.com/thekrauss/kubemanager/internal/modules/databases/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identityCtrl "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
@@ -110,13 +112,13 @@ func (a *App) initDomainLayers() error {
 
 	realtimeController := realtimeCtrl.NewController(a.Config.Centrifugo, a.RealtimeSigner, a.IAM)
 
-	clusterRepo := clustersCtrl.NewClusterRepository(a.DB)
-	var clusterOpts []clustersCtrl.Option
+	clusterRepo := clustersRepo.NewClusterRepository(a.DB)
+	var clusterOpts []clustersSvc.Option
 	if n := a.alertNotifier(); n != nil {
-		clusterOpts = append(clusterOpts, clustersCtrl.WithAlerts(n))
+		clusterOpts = append(clusterOpts, clustersSvc.WithAlerts(n))
 	}
-	clustersService := clustersCtrl.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger, clusterOpts...)
-	clustersController := clustersCtrl.NewController(clustersService)
+	clustersService := clustersSvc.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger, clusterOpts...)
+	clustersController := clusters.NewController(clustersService)
 
 	// Sites statiques : actifs seulement si l'object store est configuré.
 	var siteService sitesSvc.ISiteService
@@ -144,7 +146,7 @@ func (a *App) initDomainLayers() error {
 	}
 
 	if ps, ok := projectService.(*projectSvc.ProjectService); ok {
-		ps.Databases = &databases.GormRepository{DB: a.DB}
+		ps.Databases = &databasesRepo.GormRepository{DB: a.DB}
 	}
 
 	buildController, err := a.newBuildController()

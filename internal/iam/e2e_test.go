@@ -26,7 +26,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam"
 	authdomain "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	authrepo "github.com/thekrauss/kubemanager/internal/modules/auth/repository"
-	"github.com/thekrauss/kubemanager/internal/modules/organizations"
+	organizationsRepo "github.com/thekrauss/kubemanager/internal/modules/organizations/repository"
 	projectrepo "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 )
 
@@ -148,7 +148,7 @@ func TestE2E_IAM(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			ids[i], errs[i] = organizations.EnsurePersonal(ctx, db, racer, "Racer")
+			ids[i], errs[i] = organizationsRepo.EnsurePersonal(ctx, db, racer, "Racer")
 		}(i)
 	}
 	wg.Wait()

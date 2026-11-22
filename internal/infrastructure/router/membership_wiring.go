@@ -6,14 +6,15 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
-	"github.com/thekrauss/kubemanager/internal/modules/alerts"
+	alertsDomain "github.com/thekrauss/kubemanager/internal/modules/alerts/domain"
+	alertsSvc "github.com/thekrauss/kubemanager/internal/modules/alerts/service"
 )
 
 // membershipMails : e-mail aux personnes dont les accès changent (rôle sur un
 // projet ou une organisation, groupe). Implémente iam.MembershipNotifier.
 type membershipMails struct {
 	app *App
-	n   *alerts.Notifier
+	n   *alertsSvc.Notifier
 }
 
 func (a *App) membershipNotifier() iam.MembershipNotifier {
@@ -25,15 +26,15 @@ func (a *App) membershipNotifier() iam.MembershipNotifier {
 }
 
 // person : adresse et nom d'une personne (user:<uuid>) ; ok=false sinon.
-func (m *membershipMails) person(ctx context.Context, p iam.Principal) (alerts.Recipient, bool) {
+func (m *membershipMails) person(ctx context.Context, p iam.Principal) (alertsDomain.Recipient, bool) {
 	kind, id, err := p.Parse()
 	if err != nil || kind != iam.KindUser {
-		return alerts.Recipient{}, false
+		return alertsDomain.Recipient{}, false
 	}
-	var r alerts.Recipient
+	var r alertsDomain.Recipient
 	row := m.app.DB.WithContext(ctx).Raw(`SELECT id, email, full_name, locale FROM users WHERE id = ? AND deleted_at IS NULL`, id).Row()
 	if err := row.Scan(&r.ID, &r.Email, &r.FullName, &r.Locale); err != nil || r.Email == "" {
-		return alerts.Recipient{}, false
+		return alertsDomain.Recipient{}, false
 	}
 	return r, true
 }
@@ -52,9 +53,9 @@ func (m *membershipMails) AccessChanged(ctx context.Context, caller iam.Principa
 	// Projet ou organisation seulement (pas les sous-ressources).
 	var resource, name string
 	if id, ok := r.Project(); ok && r == iam.ProjectName(id) {
-		resource, name = alerts.ResourceProject, m.name(ctx, "projects", id)
+		resource, name = alertsSvc.ResourceProject, m.name(ctx, "projects", id)
 	} else if id, ok := r.Organization(); ok && r == iam.OrganizationName(id) {
-		resource, name = alerts.ResourceOrganization, m.name(ctx, "organizations", id)
+		resource, name = alertsSvc.ResourceOrganization, m.name(ctx, "organizations", id)
 	} else {
 		return
 	}
@@ -62,12 +63,12 @@ func (m *membershipMails) AccessChanged(ctx context.Context, caller iam.Principa
 	if !ok || name == "" {
 		return
 	}
-	change := alerts.AccessChanged
+	change := alertsSvc.AccessChanged
 	switch {
 	case len(c.Before) == 0:
-		change = alerts.AccessGranted
+		change = alertsSvc.AccessGranted
 	case len(c.After) == 0:
-		change = alerts.AccessRemoved
+		change = alertsSvc.AccessRemoved
 	}
 	titles := make([]string, 0, len(c.After))
 	for _, role := range c.After {

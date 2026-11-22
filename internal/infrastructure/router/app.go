@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/thekrauss/kubemanager/internal/auth/sso"
-	"github.com/thekrauss/kubemanager/internal/modules/addons"
+	addonsSvc "github.com/thekrauss/kubemanager/internal/modules/addons/service"
 	billingSvc "github.com/thekrauss/kubemanager/internal/modules/billing/service"
-	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
+	diskusageSvc "github.com/thekrauss/kubemanager/internal/modules/diskusage/service"
 	domainsalesSvc "github.com/thekrauss/kubemanager/internal/modules/domainsales/service"
 	registriesRepo "github.com/thekrauss/kubemanager/internal/modules/registries/repository"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
@@ -205,19 +205,19 @@ func (a *App) RunWorker(ctx context.Context) error {
 	// Usage réel des disques : alertes à 80 et 100 %, arrêt du conteneur à 120 %.
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
 		disks := a.diskUsageService()
-		a.goWith(ctx, "disk-usage", func(ctx context.Context) { disks.Run(ctx, diskusage.DefaultEvery) })
+		a.goWith(ctx, "disk-usage", func(ctx context.Context) { disks.Run(ctx, diskusageSvc.DefaultEvery) })
 	}
 
 	// Sauvegarde nocturne des services qui en ont (MariaDB).
 	if b := a.addonBackupService(); b.Backups != nil {
-		a.goWith(ctx, "addon-backups", func(ctx context.Context) { b.RunBackups(ctx, addons.BackupEvery) })
+		a.goWith(ctx, "addon-backups", func(ctx context.Context) { b.RunBackups(ctx, addonsSvc.BackupEvery) })
 	}
 
 	// « Me prévenir » : e-mail quand un service annoncé ouvre (ADR 0013).
 	if n := a.alertNotifier(); n != nil {
-		waitlist := &addons.Service{Waitlists: &addons.GormWaitlist{DB: a.DB}, Announcer: n,
+		waitlist := &addonsSvc.Service{Waitlists: &addonsSvc.GormWaitlist{DB: a.DB}, Announcer: n,
 			Logger: a.Logger.With("component", "addon-waitlist")}
-		a.goWith(ctx, "addon-waitlist", func(ctx context.Context) { waitlist.RunWaitlistNotifier(ctx, addons.WaitlistEvery) })
+		a.goWith(ctx, "addon-waitlist", func(ctx context.Context) { waitlist.RunWaitlistNotifier(ctx, addonsSvc.WaitlistEvery) })
 	}
 
 	// Une panne du worker doit sortir en erreur : sinon le code 0 ne déclenche
