@@ -38,6 +38,33 @@ type ComputeProvider interface {
 	Task(ctx context.Context, providerID, taskID string) (*ProviderTask, error)
 }
 
+// BackupProvider : sauvegardes automatiques et option snapshot (mode compute).
+type BackupProvider interface {
+	// Backups : relevé (points de restauration, montés, snapshot, option).
+	Backups(ctx context.Context, providerID string) (*ProviderBackups, error)
+	Restore(ctx context.Context, providerID string, point time.Time, full bool) (string, error)
+	Unmount(ctx context.Context, providerID string, point time.Time) (string, error)
+	CreateSnapshot(ctx context.Context, providerID, description string) (string, error)
+	RevertSnapshot(ctx context.Context, providerID string) (string, error)
+	DeleteSnapshot(ctx context.Context, providerID string) (string, error)
+	// AbortStuck : annule un snapshot ou une sauvegarde bloqué depuis plus de
+	// maxAge ; vrai si une annulation a été demandée.
+	AbortStuck(ctx context.Context, providerID string, maxAge time.Duration) (bool, error)
+	// OrderSnapshotOption : commande l'option (une seule tentative), rend la commande.
+	OrderSnapshotOption(ctx context.Context, providerID, planCode string, maxPriceCents int64) (string, error)
+	// ReleaseSnapshotOption : option résiliée (planCode : celui de l'offre).
+	ReleaseSnapshotOption(ctx context.Context, providerID, planCode string) error
+}
+
+// ProviderBackups : sauvegardes d'un VPS chez le fournisseur.
+type ProviderBackups struct {
+	Automated      bool
+	RestorePoints  []time.Time // plus récent d'abord
+	Mounted        []domain.MountedBackup
+	Snapshot       *domain.SnapshotInfo
+	SnapshotOption bool // option souscrite chez le fournisseur
+}
+
 // Orderer : commande de VPS chez le fournisseur (mode compute seulement).
 type Orderer interface {
 	// Order : panier, configuration, paiement par le moyen par défaut du
@@ -149,6 +176,10 @@ type Store interface {
 	// DueVPS : VPS dont le mois payé est fini (renouvellement), au plus limit.
 	DueVPS(ctx context.Context, now time.Time, limit int) ([]domain.VPS, error)
 	ProjectOrganization(ctx context.Context, project uuid.UUID) (uuid.UUID, error)
+
+	// Sauvegardes : relevé écrit par le mode compute, lu par l'API.
+	SaveBackups(ctx context.Context, b *domain.Backups) error
+	Backups(ctx context.Context, vps uuid.UUID) (*domain.Backups, error)
 
 	// OrganizationNames : nom affiché de chaque organisation.
 	OrganizationNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)

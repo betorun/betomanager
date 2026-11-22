@@ -30,6 +30,12 @@ func (e *recordedEvents) VPSChanged(_ context.Context, v *domain.VPS) {
 	e.seen = append(e.seen, v.State+"/"+v.Operation)
 }
 
+func (e *recordedEvents) BackupsChanged(_ context.Context, v *domain.VPS) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.seen = append(e.seen, "backups/"+v.ID.String())
+}
+
 func TestE2E_ComputeLifecycle(t *testing.T) {
 	if os.Getenv("IAM_E2E") == "" {
 		t.Skip("IAM_E2E not set")

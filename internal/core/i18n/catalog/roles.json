@@ -542,5 +542,13 @@
  {
   "fr": "Réinstaller un VPS (efface son disque)",
   "en": "Reinstall a VPS (erases its disk)"
+ },
+ {
+  "fr": "Restaurer un VPS depuis une sauvegarde ou son snapshot",
+  "en": "Restore a VPS from a backup or its snapshot"
+ },
+ {
+  "fr": "Créer ou supprimer le snapshot d'un VPS",
+  "en": "Create or delete a VPS snapshot"
  }
 ]

@@ -137,6 +137,8 @@ const (
 	VPSStop      Permission = "compute.vps.stop"
 	VPSReboot    Permission = "compute.vps.reboot"
 	VPSReinstall Permission = "compute.vps.reinstall"
+	VPSRestore   Permission = "compute.vps.restore"
+	VPSSnapshot  Permission = "compute.vps.snapshot"
 
 	// billing / logging
 	BillingAccountsGet    Permission = "billing.accounts.get"
@@ -287,6 +289,8 @@ var catalog = map[Permission]PermissionInfo{
 	VPSStop:      {Title: "Arrêter un VPS", CustomRoles: true},
 	VPSReboot:    {Title: "Redémarrer un VPS", CustomRoles: true},
 	VPSReinstall: {Title: "Réinstaller un VPS (efface son disque)", CustomRoles: true, Sensitive: true},
+	VPSRestore:   {Title: "Restaurer un VPS depuis une sauvegarde ou son snapshot", CustomRoles: true, Sensitive: true},
+	VPSSnapshot:  {Title: "Créer ou supprimer le snapshot d'un VPS", CustomRoles: true},
 
 	PlatformClustersList:           {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
 	PlatformClusterKeysList:        {Title: "Lister les clés de cluster", PlatformOnly: true},

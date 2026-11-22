@@ -9,7 +9,9 @@ page « VPS » du back-office ; **lot 3** — commande payée par le solde,
 création avec la clé SSH du client, remboursement en cas d'échec,
 renouvellement mensuel et suspension ; **lot 4** — actions du client (une
 opération à la fois), permissions `compute.vps.*`, temps réel, suspension
-de l'organisation, pages de la console. La console du serveur (terminal)
+de l'organisation, pages de la console ; **lot 5** — sauvegardes
+automatiques (restauration complète ou montage), option snapshot payante,
+annulation des snapshots bloqués. La console du serveur (terminal)
 viendra plus tard derrière le domaine de la plateforme : l'adresse du
 fournisseur n'est jamais donnée au client.
 
@@ -131,6 +133,39 @@ organisation (solde épuisé, grâce finie) et `ResumeOrganization` à la levée
   tournait) ; mois fini pendant la suspension → reste suspendu pour impayé,
   le renouvellement le relancera après paiement.
 
+## Sauvegardes et snapshot (lot 5)
+
+**Relevé** : l'API n'a pas les clés du fournisseur ; le mode compute relève
+les sauvegardes de chaque VPS (options, points de restauration disponibles,
+sauvegardes montées, snapshot) à chaque réconciliation et après chaque
+opération, dans `compute_vps_backups`. `GET …/vps/:id/backups` lit ce relevé
+(`refreshed_at`). Une sauvegarde montée n'expose que son disque dans le VPS :
+les accès réseau du fournisseur ne sont jamais gardés. La console est
+prévenue (`vps.backups.updated`) seulement si le relevé change.
+
+**Sauvegardes automatiques** : incluses dans les offres (aucune facturation),
+montrées si le fournisseur les active sur le VPS (`BACKUPS_UNAVAILABLE` sinon).
+
+- `full` : le disque est remplacé par le point choisi (`compute.vps.restore`, sensible) ;
+- `mount` : le point est attaché en disque supplémentaire, le VPS tourne ;
+  `unmount` le détache.
+
+**Option snapshot** (un seul snapshot à la fois) :
+
+- prix : prix payé au fournisseur (`snapshot_price_cents`, TTC) × taux ×
+  coefficient de l'offre, arrondi comme l'offre ; réglé par l'équipe
+  (`snapshot_plan_code`, vide : non vendue) ;
+- souscription (`billing.payments.create`) : un mois complet débité tout de
+  suite, puis renouvelé **avec le VPS**, dans la même transaction (un solde
+  qui ne couvre pas les deux suspend le VPS) ; commande de l'option chez le
+  fournisseur (une tentative, prix contrôlé), échec : remboursé ;
+- créer / supprimer (`compute.vps.snapshot`), revenir (`compute.vps.restore`, sensible) ;
+- résiliation : par l'API des services du fournisseur (service du VPS → son option → résiliation), repli sur l'ancienne route du VPS si elle ne la trouve pas ; le snapshot est supprimé, le mois
+  entamé n'est pas remboursé.
+
+**Snapshots bloqués** : pendant la réconciliation, une opération de snapshot
+ou de restauration en cours depuis plus de 6 h est annulée (`abortSnapshot`).
+
 ## Lecture chez le fournisseur (lot 2)
 
 `repository/ovhvps.Provider` implémente `ComputeProvider` en lecture :
@@ -186,12 +221,22 @@ vendables tant que l'équipe n'a pas posé le plan et le prix du fournisseur).
 Prix mensuel prépayé, jamais écrit dans le code :
 
 ```
-prix payé au fournisseur (TTC si TVA) × taux EUR du compte (655,957 en XAF/XOF)
+prix payé au fournisseur (TTC si TVA) × taux EUR de la grille du compte (655,957 en XAF/XOF)
   × coefficient de l'offre (coefficient_bp, 20000 = ×2)
-  arrondi au supérieur à round_to (500 FCFA)
+  arrondi au supérieur au palier de la grille de cette monnaie (domain_round_to : 500 FCFA)
 ```
 
 Exemple : 6,49 € × 655,957 × 2 = 8 514,3 → **9 000 FCFA**.
+
+Le palier vient de la grille de chaque monnaie (réglé dans « Grilles de
+prix ») : un palier exprimé en FCFA ne s'applique jamais à une autre
+monnaie. Le `round_to` de l'offre ne sert que si une grille n'en a pas.
+
+Tout se règle dans le back-office, page **Offres VPS** (`/admin/vps-offers`) :
+plan et prix du fournisseur, coefficient, caractéristiques, emplacements,
+systèmes (nom chez le fournisseur), option snapshot, publication ; le prix de
+vente calculé s'y affiche pour chaque monnaie. La page **VPS** (`/admin/vps`)
+porte la réconciliation et le diagnostic (demande `compute.ping`).
 
 Une offre n'est proposée que si elle est publique, a un plan fournisseur et un
 prix. Emplacements autorisés : `gra`, `rbx`, `sbg` ; images : `ubuntu-24.04`,
@@ -211,6 +256,13 @@ prix. Emplacements autorisés : `gra`, `rbx`, `sbg` ; images : `ubuntu-24.04`,
 | POST | `/organizations/:id/compute/vps/:vpsID/stop` | `compute.vps.stop` |
 | POST | `/organizations/:id/compute/vps/:vpsID/reboot` | `compute.vps.reboot` |
 | POST | `/organizations/:id/compute/vps/:vpsID/reinstall` | `compute.vps.reinstall` |
+| GET | `/organizations/:id/compute/vps/:vpsID/backups` | `compute.vps.get` |
+| POST | `/organizations/:id/compute/vps/:vpsID/backups/restore` | `compute.vps.restore` |
+| POST | `/organizations/:id/compute/vps/:vpsID/backups/unmount` | `compute.vps.restore` |
+| POST, DELETE | `/organizations/:id/compute/vps/:vpsID/snapshot` | `compute.vps.snapshot` |
+| POST | `/organizations/:id/compute/vps/:vpsID/snapshot/revert` | `compute.vps.restore` |
+| POST | `/organizations/:id/compute/vps/:vpsID/snapshot/subscribe` | `billing.payments.create` |
+| POST | `/organizations/:id/compute/vps/:vpsID/snapshot/unsubscribe` | `billing.payments.create` |
 | GET | `/admin/compute/vps` | `platform.compute.get` |
 | POST | `/admin/compute/reconcile` | `platform.compute.manage` |
 | POST | `/admin/compute/ping` | `platform.compute.manage` |
@@ -228,6 +280,7 @@ toucher au fournisseur. Sert à vérifier un déploiement.
 - `compute_secrets` : secrets à usage unique (mot de passe initial), 15 min.
 - `compute_provider_vms` : dernier relevé du fournisseur (état brut, plan, zone, adresses, écart).
 - `compute_reconcile_runs` : passes de réconciliation (compteurs, erreur).
+- `compute_vps_backups` : relevé des sauvegardes de chaque VPS (lot 5).
 
 ## Configuration
 
@@ -236,7 +289,7 @@ toucher au fournisseur. Sert à vérifier un déploiement.
 | `KUBEMANAGER_COMPUTE_ENABLED` | API, worker, compute | routes, relais |
 | `KUBEMANAGER_COMPUTE_TASK_QUEUE` | worker, compute | file Temporal (défaut `compute`) |
 | `KUBEMANAGER_COMPUTE_ORDERING_ENABLED` | API | commandes réelles ouvertes |
-| `KUBEMANAGER_COMPUTE_OVH_*` | **compute seulement** | clés limitées à `/vps/*`, `/order/*`, `/ip/*`, `/me` |
+| `KUBEMANAGER_COMPUTE_OVH_*` | **compute seulement** | clés limitées à `/vps/*`, `/order/*`, `/ip/*`, `/me`, `/services/*` (résiliation de l'option snapshot) |
 
 Local : `make dev-compute` (service `kubemanager-compute`).
 

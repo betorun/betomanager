@@ -108,3 +108,49 @@ func TestReconcile_ProviderDown(t *testing.T) {
 	_, err = (&Reconciler{Store: store}).Run(context.Background())
 	assert.ErrorIs(t, err, ErrNoProvider)
 }
+
+type reconBackups struct {
+	BackupProvider
+	read, aborted []string
+}
+
+func (b *reconBackups) Backups(_ context.Context, pid string) (*ProviderBackups, error) {
+	b.read = append(b.read, pid)
+	return &ProviderBackups{Automated: true}, nil
+}
+func (b *reconBackups) AbortStuck(_ context.Context, pid string, _ time.Duration) (bool, error) {
+	b.aborted = append(b.aborted, pid)
+	return true, nil
+}
+
+type savingStore struct {
+	*reconStore
+	saved map[uuid.UUID]bool
+}
+
+func (s *savingStore) Backups(context.Context, uuid.UUID) (*domain.Backups, error) { return nil, nil }
+func (s *savingStore) SaveBackups(_ context.Context, b *domain.Backups) error {
+	s.saved[b.VPSID] = true
+	return nil
+}
+
+func TestReconcile_BackupsAndStuckSnapshots(t *testing.T) {
+	free, busy, op := uuid.New(), uuid.New(), uuid.New()
+	base := &reconStore{applied: map[uuid.UUID]string{}, vps: []domain.VPS{
+		{ID: free, ProviderID: "p-free", State: domain.StateRunning},
+		{ID: busy, ProviderID: "p-busy", State: domain.StateRunning},
+		{ID: op, ProviderID: "p-op", State: domain.StateRunning, Operation: domain.OpSnapshotting},
+	}}
+	store := &savingStore{reconStore: base, saved: map[uuid.UUID]bool{}}
+	b := &reconBackups{}
+	r := &Reconciler{Store: store, Backups: b, Provider: &fakeProvider{vms: []ProviderVM{
+		{ProviderID: "p-free", State: domain.StateRunning},
+		{ProviderID: "p-busy", State: domain.StateRunning, Busy: true},
+		{ProviderID: "p-op", State: domain.StateRunning},
+	}}}
+	_, err := r.Run(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"p-busy"}, b.aborted, "opération en cours chez le fournisseur : contrôlée (abortSnapshot si bloquée)")
+	assert.Equal(t, []string{"p-free"}, b.read, "relevé seulement des VPS sans opération")
+	assert.True(t, store.saved[free])
+}

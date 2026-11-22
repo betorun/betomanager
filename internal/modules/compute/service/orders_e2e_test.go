@@ -35,8 +35,9 @@ const testKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA74/lOopHYYorBomTQtkD2FGCf
 
 type rates struct{ b *billingSvc.Service }
 
-func (r rates) EURRate(ctx context.Context, org uuid.UUID) (int64, string, error) {
-	return r.b.AccountCatalogRate(ctx, org)
+func (r rates) Rate(ctx context.Context, org uuid.UUID) (domain.Rate, error) {
+	rate, round, currency, err := r.b.AccountCatalogRate(ctx, org)
+	return domain.Rate{Currency: currency, EURMilli: rate, RoundTo: round}, err
 }
 
 func TestE2E_ComputeOrdersAndRenewals(t *testing.T) {

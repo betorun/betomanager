@@ -49,7 +49,7 @@ var (
 		DatabasesConnect, AddonsConnect,
 		SitesCreate, SitesUpdate, SiteDeploymentsCreate, SiteDeploymentsActive,
 		SiteDomainsCreate, SiteDomainsVerify,
-		VPSStart, VPSStop, VPSReboot,
+		VPSStart, VPSStop, VPSReboot, VPSSnapshot,
 		ServiceAccountsActAs,
 	})
 
@@ -61,7 +61,7 @@ var (
 		// Un service occupe des ressources et sa suppression perd des données : éditeur.
 		AddonsCreate, AddonsUpdate, AddonsDelete, AddonsRestore,
 		// Réinstaller efface le disque du VPS : éditeur.
-		VPSReinstall,
+		VPSReinstall, VPSRestore,
 		// Relier un compte GitHub ouvre au projet du code privé : pas un droit de développeur.
 		WorkloadsGitHubManage,
 		// Un jeton de registre ouvre les images privées de l'entreprise : même règle.

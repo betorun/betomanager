@@ -61,14 +61,15 @@ func (s *Service) Order(ctx context.Context, req OrderRequest, by string) (*doma
 		return nil, err
 	}
 	location, image := strings.ToLower(strings.TrimSpace(req.Location)), strings.ToLower(strings.TrimSpace(req.Image))
-	rate, currency, err := s.Catalogs.EURRate(ctx, org)
+	rate, err := s.Catalogs.Rate(ctx, org)
 	if err != nil {
 		return nil, err
 	}
+	currency := rate.Currency
 	if !offer.Sellable(rate) || !offer.Sells(location, image) {
 		return nil, domain.ErrNotSold
 	}
-	price := offer.MonthlyPrice(rate)
+	price := offer.Price(rate)
 	if req.MonthlyPrice != price {
 		return nil, domain.ErrPriceChanged
 	}
@@ -168,10 +169,14 @@ func (s *Service) RenewDue(ctx context.Context) (renewed, suspended int, err err
 func (s *Service) renew(ctx context.Context, v domain.VPS, now time.Time) (renewed, suspended bool, err error) {
 	price := v.MonthlyPrice
 	currency := v.Currency
+	var snapshotPrice int64
 	if o, err := s.Store.Offer(ctx, v.Offer); err == nil {
-		if rate, cur, err := s.Catalogs.EURRate(ctx, v.OrganizationID); err == nil {
-			if p := o.MonthlyPrice(rate); p > 0 {
-				price, currency = p, cur
+		if rate, err := s.Catalogs.Rate(ctx, v.OrganizationID); err == nil {
+			if p := o.Price(rate); p > 0 {
+				price, currency = p, rate.Currency
+			}
+			if v.SnapshotOption == domain.SnapshotActive {
+				snapshotPrice = o.SnapshotPrice(rate)
 			}
 		}
 	}
@@ -193,6 +198,17 @@ func (s *Service) renew(ctx context.Context, v domain.VPS, now time.Time) (renew
 				return errUnpaid
 			}
 			return err
+		}
+		// Option snapshot : renouvelée avec le VPS, dans la même transaction
+		// (un solde qui ne couvre pas les deux suspend le VPS).
+		if snapshotPrice > 0 {
+			if _, err := s.Wallet.ChargeComputeTx(ctx, tx, v.OrganizationID, billingDomain.Milli(snapshotPrice*domain.MilliPerUnit),
+				snapshotPeriod(v.ID, from), "Snapshot du VPS "+v.Name+", 1 mois", "billing"); err != nil {
+				if errors.Is(err, billingDomain.ErrInsufficientFunds) {
+					return errUnpaid
+				}
+				return err
+			}
 		}
 		if err := s.Store.UpdateVPSTx(tx, v.ID, map[string]any{"paid_until": domain.NextPeriod(from),
 			"monthly_price": price, "currency": currency, "failure_code": "", "updated_at": now}); err != nil {

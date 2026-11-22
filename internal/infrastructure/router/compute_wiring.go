@@ -22,6 +22,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/infrastructure/realtime"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/compute"
 	computeDomain "github.com/thekrauss/kubemanager/internal/modules/compute/domain"
 	computeRepo "github.com/thekrauss/kubemanager/internal/modules/compute/repository"
@@ -104,6 +105,14 @@ type VPSEvent struct {
 	VPS  *computeDomain.VPS `json:"vps"`
 }
 
+// BackupsChanged : la console relit GET …/backups.
+func (e *vpsEvents) BackupsChanged(ctx context.Context, v *computeDomain.VPS) {
+	ev := map[string]string{"type": "vps.backups.updated", "vps_id": v.ID.String()}
+	if err := e.pub.Publish(ctx, realtime.VPSChannel(v.ProjectID.String(), v.ID.String()), ev); err != nil {
+		e.log.Warnw("compute: backups event not published", "vps", v.ID, "error", err)
+	}
+}
+
 func (e *vpsEvents) VPSChanged(ctx context.Context, v *computeDomain.VPS) {
 	ev := VPSEvent{Type: "vps.updated", VPS: v}
 	for _, ch := range []string{realtime.VPSChannel(v.ProjectID.String(), v.ID.String()), realtime.ProjectChannel(v.ProjectID.String())} {
@@ -152,12 +161,32 @@ func vpsProject(r *compute.Controller) security.ResourceResolver {
 // computeCatalogs : taux de la grille de l'organisation (module billing).
 type computeCatalogs struct {
 	billing interface {
-		AccountCatalogRate(ctx context.Context, org uuid.UUID) (int64, string, error)
+		AccountCatalogRate(ctx context.Context, org uuid.UUID) (rate, roundTo int64, currency string, err error)
 	}
 }
 
-func (c computeCatalogs) EURRate(ctx context.Context, org uuid.UUID) (int64, string, error) {
-	return c.billing.AccountCatalogRate(ctx, org)
+// Rates : taux euro des grilles en vigueur (aperçu des prix des offres).
+func (c computeCatalogs) Rates(ctx context.Context) ([]computeDomain.Rate, error) {
+	lister, ok := c.billing.(interface {
+		Catalogs(ctx context.Context) (*billingDomain.CatalogsResponse, error)
+	})
+	if !ok {
+		return nil, nil
+	}
+	res, err := lister.Catalogs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]computeDomain.Rate, 0, len(res.Catalogs))
+	for _, cat := range res.Catalogs {
+		out = append(out, computeDomain.Rate{Currency: cat.Currency, EURMilli: cat.EURRateMilli, RoundTo: cat.DomainRoundTo})
+	}
+	return out, nil
+}
+
+func (c computeCatalogs) Rate(ctx context.Context, org uuid.UUID) (computeDomain.Rate, error) {
+	rate, round, currency, err := c.billing.AccountCatalogRate(ctx, org)
+	return computeDomain.Rate{Currency: currency, EURMilli: rate, RoundTo: round}, err
 }
 
 // temporalStarter : WorkflowID = identifiant de la demande, jamais relancé.
@@ -201,6 +230,7 @@ func (a *App) RunCompute(ctx context.Context) error {
 	if provider != nil { // interfaces nil si aucune clé
 		activities.Provider = provider
 		activities.Orderer = provider
+		activities.Backups = provider
 	}
 	if billing := a.billingService(); billing != nil {
 		activities.Wallet = billing
@@ -289,6 +319,24 @@ func addComputeRoutes(app *App) {
 	org.AddRoute("/vps/:vpsID/reboot", http.MethodPost, "Redémarrer un VPS", onVPS(iam.VPSReboot), tonic.Handler(r.Reboot, http.StatusAccepted))
 	org.AddRoute("/vps/:vpsID/reinstall", http.MethodPost, "Réinstaller un VPS avec un système et une clé SSH : son disque est effacé",
 		onVPS(iam.VPSReinstall), tonic.Handler(r.Reinstall, http.StatusAccepted))
+	// Sauvegardes et snapshot (l'option se paie : droit de paiement sur l'organisation).
+	pay := g.Perm(iam.BillingPaymentsCreate, security.OrganizationParam("id"))
+	org.AddRoute("/vps/:vpsID/backups", http.MethodGet, "Sauvegardes d'un VPS : points de restauration, sauvegardes montées, snapshot",
+		onVPS(iam.VPSGet), tonic.Handler(r.Backups, http.StatusOK))
+	org.AddRoute("/vps/:vpsID/backups/restore", http.MethodPost, "Restaurer un VPS depuis une sauvegarde (full : remplace le disque ; mount : disque supplémentaire)",
+		onVPS(iam.VPSRestore), tonic.Handler(r.Restore, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/backups/unmount", http.MethodPost, "Détacher une sauvegarde montée",
+		onVPS(iam.VPSRestore), tonic.Handler(r.Unmount, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/snapshot", http.MethodPost, "Créer le snapshot d'un VPS (un seul à la fois)",
+		onVPS(iam.VPSSnapshot), tonic.Handler(r.CreateSnapshot, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/snapshot", http.MethodDelete, "Supprimer le snapshot d'un VPS",
+		onVPS(iam.VPSSnapshot), tonic.Handler(r.DeleteSnapshot, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/snapshot/revert", http.MethodPost, "Revenir au snapshot : le disque reprend son état",
+		onVPS(iam.VPSRestore), tonic.Handler(r.RevertSnapshot, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/snapshot/subscribe", http.MethodPost, "Souscrire l'option snapshot : un mois débité du solde, renouvelé avec le VPS",
+		pay, tonic.Handler(r.SubscribeSnapshot, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/snapshot/unsubscribe", http.MethodPost, "Résilier l'option snapshot : le snapshot est supprimé, le mois entamé n'est pas remboursé",
+		pay, tonic.Handler(r.UnsubscribeSnapshot, http.StatusAccepted))
 	org.AddRoute("/vps", http.MethodPost, "Commander un VPS : le premier mois est débité du solde, puis le serveur est créé avec la clé SSH fournie",
 		g.Perm(iam.BillingPaymentsCreate, security.OrganizationParam("id")), tonic.Handler(r.Order, http.StatusAccepted))
 

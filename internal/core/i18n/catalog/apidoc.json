@@ -2282,5 +2282,57 @@
  {
   "fr": "Réinstaller un VPS avec un système et une clé SSH : son disque est effacé",
   "en": "Reinstall a VPS with a system and an SSH key: its disk is erased"
+ },
+ {
+  "fr": "full : remplace tout le disque ; mount : attache la sauvegarde en disque supplémentaire",
+  "en": "full: replaces the whole disk; mount: attaches the backup as an extra disk"
+ },
+ {
+  "fr": "Point de restauration (date de la sauvegarde)",
+  "en": "Restore point (date of the backup)"
+ },
+ {
+  "fr": "Point de restauration monté",
+  "en": "Mounted restore point"
+ },
+ {
+  "fr": "Prix mensuel affiché de l'option, dans la monnaie de l'organisation",
+  "en": "Displayed monthly price of the option, in the organization's currency"
+ },
+ {
+  "fr": "Description du snapshot (facultative, 100 caractères au plus)",
+  "en": "Snapshot description (optional, 100 characters at most)"
+ },
+ {
+  "fr": "Sauvegardes d'un VPS : points de restauration, sauvegardes montées, snapshot",
+  "en": "Backups of a VPS: restore points, mounted backups, snapshot"
+ },
+ {
+  "fr": "Restaurer un VPS depuis une sauvegarde (full : remplace le disque ; mount : disque supplémentaire)",
+  "en": "Restore a VPS from a backup (full: replaces the disk; mount: extra disk)"
+ },
+ {
+  "fr": "Détacher une sauvegarde montée",
+  "en": "Detach a mounted backup"
+ },
+ {
+  "fr": "Supprimer le snapshot d'un VPS",
+  "en": "Delete a VPS snapshot"
+ },
+ {
+  "fr": "Créer le snapshot d'un VPS (un seul à la fois)",
+  "en": "Create a VPS snapshot (one at a time)"
+ },
+ {
+  "fr": "Revenir au snapshot : le disque reprend son état",
+  "en": "Revert to the snapshot: the disk returns to its state"
+ },
+ {
+  "fr": "Souscrire l'option snapshot : un mois débité du solde, renouvelé avec le VPS",
+  "en": "Subscribe to the snapshot option: one month debited from the balance, renewed with the VPS"
+ },
+ {
+  "fr": "Résilier l'option snapshot : le snapshot est supprimé, le mois entamé n'est pas remboursé",
+  "en": "Cancel the snapshot option: the snapshot is deleted, the current month is not refunded"
  }
 ]

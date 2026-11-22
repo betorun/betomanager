@@ -30,7 +30,9 @@ const e2eDSN = "postgres://postgres:pw@127.0.0.1:55433/postgres?sslmode=disable"
 
 type fcfa struct{}
 
-func (fcfa) EURRate(context.Context, uuid.UUID) (int64, string, error) { return 655957, "XAF", nil }
+func (fcfa) Rate(context.Context, uuid.UUID) (domain.Rate, error) {
+	return domain.Rate{Currency: "XAF", EURMilli: 655957, RoundTo: 500}, nil
+}
 
 type countingStarter struct {
 	mu    sync.Mutex
