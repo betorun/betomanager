@@ -8,7 +8,10 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -169,4 +172,71 @@ func TestE2E_DomainSales(t *testing.T) {
 	s.Process(ctx) // échec constaté
 	cash3, _, _ := billingRepo.NewLedger(db).Balances(ctx, org)
 	assert.Equal(t, cash, cash3, "remboursé")
+}
+
+// suggestRegistrar : extensions non vendues (.xyzz), noms pris, échec d'un
+// nom (non vérifié), et compte des appels (cache).
+type suggestRegistrar struct {
+	fakeRegistrar
+	mu    sync.Mutex
+	calls int
+}
+
+func (f *suggestRegistrar) Check(_ context.Context, d string) (*registrar.Availability, error) {
+	f.mu.Lock()
+	f.calls++
+	f.mu.Unlock()
+	switch {
+	case strings.HasSuffix(d, ".africa"):
+		return &registrar.Availability{Domain: d, Unsupported: true}, nil
+	case strings.HasSuffix(d, ".net"):
+		return &registrar.Availability{Domain: d, Available: false}, nil
+	case strings.HasPrefix(d, "get"):
+		return nil, errors.New("upstream 500")
+	}
+	return &registrar.Availability{Domain: d, Available: true, PriceCents: 849, RenewCents: 849, Currency: "EUR"}, nil
+}
+
+func TestE2E_DomainSuggestions(t *testing.T) {
+	if os.Getenv("IAM_E2E") == "" {
+		t.Skip("IAM_E2E not set")
+	}
+	db, err := gorm.Open(postgres.Open(e2eDSN), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	ctx := context.Background()
+	org := uuid.New()
+	require.NoError(t, db.Exec(`INSERT INTO organizations (id, display_name) VALUES (?, 'e2e suggestions')`, org).Error)
+	billing := &billingSvc.Service{Store: billingRepo.New(db), Inventory: billingInventory.New(db), Ledger: billingRepo.NewLedger(db),
+		Admin: billingRepo.NewAdmin(db), Phase4: billingRepo.NewPhase4(db), Postpaid: billingRepo.NewPostpaid(db)}
+	reg := &suggestRegistrar{}
+	s := &service.Service{Store: repository.New(db), Registrar: reg, Wallet: billing,
+		SuggestTLDs: []string{"com", "net", "africa", "fr"}}
+	label := "sug" + uuid.NewString()[:6]
+
+	r, err := s.Suggest(ctx, org, " "+strings.ToUpper(label)+" ")
+	require.NoError(t, err)
+	assert.Equal(t, label+".com", r.Query, "mot-clé seul : .com")
+	byName := map[string]domain.Suggestion{}
+	for _, sg := range r.Suggestions {
+		byName[sg.Domain] = sg
+	}
+	assert.NotContains(t, byName, label+".com", "le nom exact n'est pas une suggestion")
+	assert.NotContains(t, byName, label+".africa", "extension non vendue : omise")
+	assert.Equal(t, "taken", byName[label+".net"].Reason)
+	fr := byName[label+".fr"]
+	assert.True(t, fr.Available)
+	assert.Equal(t, int64(7000), fr.Price, "même prix qu'une recherche (grille)")
+	assert.Equal(t, domain.SuggestExtension, fr.Kind)
+	get := byName["get"+label+".com"]
+	assert.Equal(t, "unknown", get.Reason, "non vérifié : jamais l'erreur du fournisseur")
+	assert.Equal(t, domain.SuggestVariant, get.Kind)
+	assert.True(t, byName[label+"app.com"].Available)
+
+	calls := reg.calls
+	_, err = s.Suggest(ctx, org, label)
+	require.NoError(t, err)
+	assert.Equal(t, 1, reg.calls-calls, "seul le nom non vérifié est redemandé ; le reste vient du cache")
+
+	_, err = s.Suggest(ctx, org, "@@@")
+	assert.ErrorIs(t, err, domain.ErrInvalidDomain)
 }

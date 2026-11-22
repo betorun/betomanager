@@ -49,8 +49,12 @@ type Service struct {
 	Workloads Workloads
 	// Ordering : achats réels ouverts (sinon recherche et prix seulement).
 	Ordering bool
-	Now      func() time.Time
-	Logger   *zap.SugaredLogger
+	// SuggestTLDs : extensions proposées en suggestion (nil : domain.DefaultSuggestTLDs).
+	SuggestTLDs []string
+	// cache : disponibilités récentes des suggestions.
+	cache  availabilityCache
+	Now    func() time.Time
+	Logger *zap.SugaredLogger
 }
 
 func (s *Service) now() time.Time {
@@ -96,6 +100,13 @@ func (s *Service) quote(ctx context.Context, org uuid.UUID, name string) (*domai
 	if err != nil {
 		return nil, nil, s.hide("check", err)
 	}
+	priceQuote(q, c, a)
+	return q, a, nil
+}
+
+// priceQuote : vendable ou non, et à quel prix (même règle pour la recherche,
+// les suggestions et l'achat).
+func priceQuote(q *domain.Quote, c billingDomain.Catalog, a *registrar.Availability) {
 	switch {
 	case !a.Available:
 		q.Reason = "taken"
@@ -108,7 +119,6 @@ func (s *Service) quote(ctx context.Context, org uuid.UUID, name string) (*domai
 		q.Price = c.DomainPrice(a.PriceCents)
 		q.RenewPrice = c.DomainPrice(a.RenewCents)
 	}
-	return q, a, nil
 }
 
 // Search : disponibilité et prix d'un nom.

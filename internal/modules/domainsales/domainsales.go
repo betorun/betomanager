@@ -43,6 +43,15 @@ func (h *Controller) Search(c *gin.Context, in *domain.SearchRequest) (*domain.Q
 	return h.Service.Search(c.Request.Context(), org, in.Domain)
 }
 
+// Suggest : le nom sur d'autres extensions et ses variantes, vérifiés et tarifés.
+func (h *Controller) Suggest(c *gin.Context, in *domain.SuggestRequest) (*domain.SuggestionsResponse, error) {
+	org, err := parseOrg(in.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.Suggest(c.Request.Context(), org, in.Domain)
+}
+
 // List : domaines de l'organisation.
 func (h *Controller) List(c *gin.Context, in *domain.OrgPath) (*domain.OrdersResponse, error) {
 	org, err := parseOrg(in.OrganizationID)

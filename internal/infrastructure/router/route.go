@@ -691,6 +691,8 @@ func addDomainSalesRoutes(app *App) {
 		Named("Noms de domaine", "Acheter un nom de domaine payé par le solde, le renouveler chaque année et le brancher sur un conteneur : les DNS sont configurés automatiquement.")
 	d.AddRoute("", http.MethodGet, "Domaines de l'organisation (achetés ou en commande)", g.Perm(iam.BillingAccountsGet, org), tonic.Handler(r.List, http.StatusOK))
 	d.AddRoute("/search", http.MethodGet, "Disponibilité et prix annuel d'un nom", g.Perm(iam.BillingAccountsGet, org), tonic.Handler(r.Search, http.StatusOK))
+	d.AddRoute("/suggestions", http.MethodGet, "Suggestions : le nom sur d'autres extensions et des variantes, avec disponibilité et prix",
+		g.Perm(iam.BillingAccountsGet, org), tonic.Handler(r.Suggest, http.StatusOK))
 	d.AddRoute("", http.MethodPost, "Acheter un domaine : le solde est débité, la commande part aussitôt (remboursé si elle échoue)",
 		g.Perm(iam.BillingPaymentsCreate, org), tonic.Handler(r.Buy, http.StatusCreated))
 	d.AddRoute("/:orderID/auto-renew", http.MethodPut, "Activer ou couper le renouvellement annuel", g.Perm(iam.BillingAccountsUpdate, org), tonic.Handler(r.SetAutoRenew, http.StatusOK))
