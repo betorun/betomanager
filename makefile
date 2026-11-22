@@ -25,6 +25,11 @@ dev-up: ## Lance l'infra dev (postgres, redis, temporal, keycloak, mailhog, cent
 	@docker compose up -d k8sdb redis temporal temporal-ui keycloak mailhog centrifugo jaeger seaweedfs static-edge caddy
 	@echo "✓ Infra up. Attends ~30s que Keycloak démarre, puis : make dev-bootstrap"
 
+.PHONY: dev-platform
+dev-platform: ## Lance l'API du back-office (APP_MODE=platform, 127.0.0.1:8081) ; console : npm run dev:platform dans kweb
+	@docker compose up -d --build kubemanager-platform
+	@echo "✓ API plateforme : http://127.0.0.1:8081 — console : cd ../kweb && npm run dev:platform (http://localhost:3001)"
+
 .PHONY: dev-down
 dev-down: ## Arrête la stack dev (garde les volumes)
 	@docker compose down

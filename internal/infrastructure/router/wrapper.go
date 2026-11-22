@@ -142,11 +142,36 @@ func configureGenerator(router *fizz.Fizz) {
 	stableSchemaNames(router)
 }
 
-func RegisterRoutes(app *fizz.Fizz) {
+// RegisterRoutes : toutes les routes (tests, documentation complète).
+func RegisterRoutes(app *fizz.Fizz) { RegisterRoutesFor(app, "") }
+
+// RegisterRoutesFor : routes servies par un mode ("" : toutes). L'API des
+// clients ne sert pas /admin ; l'API plateforme ne sert que /admin, la
+// connexion et l'IAM (ServedIn).
+func RegisterRoutesFor(app *fizz.Fizz, mode Mode) {
+	servingMode = mode
 	for _, g := range AllGroups {
 		registerGroup(app.Group(g.Path, g.tag.name, g.tag.description), g, g.Path, g.internal)
 	}
 	documentRawRoutes(app.Generator(), AllGroups)
+}
+
+// servingMode : mode en cours d'enregistrement ("" : toutes les routes).
+var servingMode Mode
+
+// ServedIn : un groupe de premier niveau (chemin sous /kmanager/v1) est-il
+// servi dans ce mode ?
+func ServedIn(mode Mode, groupPath string) bool {
+	admin := groupPath == "/admin" || strings.HasPrefix(groupPath, "/admin/")
+	switch mode {
+	case "":
+		return true
+	case ModePlatform:
+		return admin || groupPath == "/identity" || strings.HasPrefix(groupPath, "/identity/") ||
+			groupPath == "/iam" || strings.HasPrefix(groupPath, "/iam/")
+	default:
+		return !admin
+	}
 }
 
 func registerGroup(fg *fizz.RouterGroup, group *RouteGroup, absPath string, internal bool) {
@@ -197,6 +222,9 @@ func registerGroup(fg *fizz.RouterGroup, group *RouteGroup, absPath string, inte
 	}
 
 	for _, child := range group.Groups {
+		if absPath == PathAPIRoot && !ServedIn(servingMode, child.Path) {
+			continue
+		}
 		registerGroup(g.Group(child.Path, child.tag.name, child.tag.description), child, absPath+child.Path, internal || child.internal)
 	}
 }

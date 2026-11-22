@@ -97,7 +97,7 @@ func limitRequestBody(limit int64) gin.HandlerFunc {
 	}
 }
 
-func (a *App) startHTTPServer() {
+func (a *App) startHTTPServer(mode Mode) {
 	if a.Config.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -199,12 +199,14 @@ func (a *App) startHTTPServer() {
 
 	AddAllRoutes(a)
 
-	RegisterRoutes(f)
+	RegisterRoutesFor(f, mode)
 	// Routes déclarées Public() : seules exemptées d'authentification.
 	a.Security.Middleware.SetPublicRoutes(PublicRoutes())
-	// Copilot : outils construits depuis la spécification, rejoués sur ce moteur.
-	if err := a.bindCopilot(f, engine); err != nil {
-		a.Logger.Errorw("copilot disabled: tools", "error", err)
+	// Copilot : outils construits depuis les routes des clients (absent du back-office).
+	if mode != ModePlatform {
+		if err := a.bindCopilot(f, engine); err != nil {
+			a.Logger.Errorw("copilot disabled: tools", "error", err)
+		}
 	}
 
 	addr := fmt.Sprintf(":%d", a.Config.Server.HTTPPort)

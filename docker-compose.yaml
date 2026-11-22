@@ -190,6 +190,33 @@ services:
     networks:
       - backend
 
+  # API du back-office (APP_MODE=platform, docs/architecture/platform-console.md) :
+  # routes /admin, connexion et IAM seulement. L'API des clients (8080) ne sert
+  # plus /admin. Console plateforme : `npm run dev:platform` dans kweb (port 3001).
+  kubemanager-platform:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "127.0.0.1:8081:8080"
+    env_file:
+      - .env
+    environment:
+      - GODEBUG=netdns=go
+      - APP_MODE=platform
+      # L'API des clients reste seule à migrer.
+      - KUBEMANAGER_DATABASE_SKIP_MIGRATIONS=true
+      - KUBEMANAGER_SERVER_ALLOWED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001
+    volumes:
+      - ./internal/core/configs:/app/internal/core/configs:ro
+      - ./k3s-config.yaml:/app/k3s-config.yaml:ro
+    depends_on:
+      kubemanager:
+        condition: service_started
+    restart: always
+    networks:
+      - backend
+
   # Worker Temporal : même image que l'API, sans port publié.
   worker:
     build:
