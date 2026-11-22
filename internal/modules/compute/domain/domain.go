@@ -55,6 +55,8 @@ type VPS struct {
 	ProviderOrderID string `gorm:"not null;default:''" json:"-"`
 	// FailureCode : raison d'un échec ou d'une suspension (domain.Failure*).
 	FailureCode string `gorm:"not null;default:''" json:"failure_code"`
+	// SnapshotOption : option snapshot (domain.Snapshot*), vide si non souscrite.
+	SnapshotOption string `gorm:"not null;default:''" json:"snapshot_option"`
 	// Operation : action en cours demandée par le client (domain.Op*), vide sinon.
 	Operation string `gorm:"not null;default:''" json:"operation"`
 	// ResumeState : état à retrouver quand la suspension de l'organisation
@@ -96,11 +98,15 @@ type Offer struct {
 	Specs     json.RawMessage `gorm:"type:jsonb;not null" json:"specs"`
 	Locations json.RawMessage `gorm:"type:jsonb;not null" json:"locations"`
 	// Images : système de la plateforme → image du fournisseur.
-	Images    json.RawMessage `gorm:"type:jsonb;not null" json:"images"`
-	Public    bool            `gorm:"not null" json:"public"`
-	Position  int             `gorm:"not null" json:"position"`
-	UpdatedBy string          `gorm:"not null;default:''" json:"updated_by"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	Images json.RawMessage `gorm:"type:jsonb;not null" json:"images"`
+	// SnapshotPlanCode / SnapshotPriceCents : option snapshot chez le
+	// fournisseur (même coefficient et même arrondi que l'offre ; 0 : non vendue).
+	SnapshotPlanCode   string    `gorm:"not null;default:''" json:"snapshot_plan_code"`
+	SnapshotPriceCents int64     `gorm:"not null;default:0" json:"snapshot_price_cents"`
+	Public             bool      `gorm:"not null" json:"public"`
+	Position           int       `gorm:"not null" json:"position"`
+	UpdatedBy          string    `gorm:"not null;default:''" json:"updated_by"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 func (Offer) TableName() string { return "compute_offers" }
@@ -108,18 +114,50 @@ func (Offer) TableName() string { return "compute_offers" }
 // MilliPerUnit : millièmes d'une unité de monnaie (comme la facturation).
 const MilliPerUnit = 1000
 
-// MonthlyPrice : prix mensuel de vente, en unités de la monnaie.
-// eurRateMilli : unités de la monnaie pour 1 €, en millièmes (655957 pour le
-// FCFA, parité fixe). 0 : invendable (offre non tarifée ou taux absent).
-func (o Offer) MonthlyPrice(eurRateMilli int64) int64 {
-	if o.ProviderPriceCents <= 0 || eurRateMilli <= 0 || o.CoefficientBP <= 0 {
+// Rate : grille de prix d'une monnaie (module billing) : unités de la
+// monnaie pour 1 €, en millièmes (655957 pour le FCFA, parité fixe), et
+// palier d'arrondi de la grille, en unités de cette monnaie (500 FCFA).
+type Rate struct {
+	Currency string
+	EURMilli int64
+	RoundTo  int64
+}
+
+// Price : prix mensuel de vente dans la monnaie de la grille, en unités.
+// Arrondi au palier de la grille (celui de l'offre si la grille n'en a pas) :
+// un palier exprimé en FCFA ne s'applique jamais à une autre monnaie.
+// 0 : invendable (offre non tarifée ou taux absent).
+func (o Offer) Price(r Rate) int64 {
+	return price(o.ProviderPriceCents, o.CoefficientBP, roundFor(r, o.RoundTo), r.EURMilli)
+}
+
+// SnapshotPrice : prix mensuel de l'option snapshot (0 : non vendue).
+func (o Offer) SnapshotPrice(r Rate) int64 {
+	if o.SnapshotPlanCode == "" {
 		return 0
 	}
-	milli := o.ProviderPriceCents * eurRateMilli / 100 // millièmes d'unité
-	milli = ceilDiv(milli*o.CoefficientBP, 10000)
+	return price(o.SnapshotPriceCents, o.CoefficientBP, roundFor(r, o.RoundTo), r.EURMilli)
+}
+
+func roundFor(r Rate, fallback int64) int64 {
+	if r.RoundTo > 0 {
+		return r.RoundTo
+	}
+	return fallback
+}
+
+// MonthlyPrice : Price avec le palier de l'offre (grille sans palier).
+func (o Offer) MonthlyPrice(eurRateMilli int64) int64 { return o.Price(Rate{EURMilli: eurRateMilli}) }
+
+func price(cents, coefficientBP, roundTo, eurRateMilli int64) int64 {
+	if cents <= 0 || eurRateMilli <= 0 || coefficientBP <= 0 {
+		return 0
+	}
+	milli := cents * eurRateMilli / 100 // millièmes d'unité
+	milli = ceilDiv(milli*coefficientBP, 10000)
 	units := ceilDiv(milli, MilliPerUnit)
-	if o.RoundTo > 1 {
-		units = ceilDiv(units, o.RoundTo) * o.RoundTo
+	if roundTo > 1 {
+		units = ceilDiv(units, roundTo) * roundTo
 	}
 	return units
 }
@@ -140,8 +178,8 @@ func (o Offer) ImageMap() map[string]string {
 }
 
 // Sellable : l'offre est publique, tarifée et rattachée à un plan du fournisseur.
-func (o Offer) Sellable(eurRateMilli int64) bool {
-	return o.Public && o.ProviderPlanCode != "" && o.MonthlyPrice(eurRateMilli) > 0
+func (o Offer) Sellable(r Rate) bool {
+	return o.Public && o.ProviderPlanCode != "" && o.Price(r) > 0
 }
 
 // Sells : l'offre se vend à cet emplacement avec ce système.
@@ -177,7 +215,7 @@ type Request struct {
 	Payload        json.RawMessage `gorm:"type:jsonb;not null" json:"-"`
 	Status         string          `gorm:"not null" json:"status"`
 	Attempts       int             `gorm:"not null;default:0" json:"-"`
-	LastError      string          `gorm:"not null;default:''" json:"-"`
+	LastError      string          `gorm:"not null;default:''" json:"last_error,omitempty"`
 	CreatedBy      string          `gorm:"not null;default:''" json:"-"`
 	CreatedAt      time.Time       `json:"created_at"`
 	StartedAt      *time.Time      `json:"started_at,omitempty"`
@@ -220,6 +258,22 @@ const (
 	OpStopping     = "stopping"
 	OpRebooting    = "rebooting"
 	OpReinstalling = "reinstalling"
+	// Sauvegardes (lot 5).
+	OpRestoring        = "restoring"
+	OpMounting         = "mounting"
+	OpUnmounting       = "unmounting"
+	OpSnapshotting     = "snapshotting"
+	OpReverting        = "reverting"
+	OpDeletingSnapshot = "deleting_snapshot"
+	OpSubscribing      = "subscribing"
+	OpUnsubscribing    = "unsubscribing"
+)
+
+// État de l'option snapshot (SnapshotOption).
+const (
+	SnapshotOrdering  = "ordering"
+	SnapshotActive    = "active"
+	SnapshotReleasing = "releasing"
 )
 
 //  Erreurs
@@ -238,6 +292,12 @@ var (
 	ErrBusy                     = errors.New("an operation is already running on this VPS: wait for it to finish")
 	ErrNotReady                 = errors.New("this VPS is not ready for this action")
 	ErrSuspended                = errors.New("this VPS is suspended: top up the balance to restart it")
+	ErrBackupsUnavailable       = errors.New("automated backups are not active on this VPS")
+	ErrSnapshotNotSubscribed    = errors.New("the snapshot option is not active on this VPS")
+	ErrSnapshotExists           = errors.New("this VPS already has a snapshot: delete it first")
+	ErrNoSnapshot               = errors.New("this VPS has no snapshot")
+	ErrRestorePointNotFound     = errors.New("restore point not found")
+	ErrSnapshotNotSold          = errors.New("the snapshot option is not sold with this offer")
 )
 
 // ValidName : étiquette DNS (le nom devient le nom d'hôte).
@@ -331,7 +391,66 @@ const (
 	KindStop      = "vm.stop"
 	KindReboot    = "vm.reboot"
 	KindReinstall = "vm.reinstall"
+	// Sauvegardes (lot 5).
+	KindRestore         = "vm.backup.restore"
+	KindUnmount         = "vm.backup.unmount"
+	KindSnapshotCreate  = "vm.snapshot.create"
+	KindSnapshotRevert  = "vm.snapshot.revert"
+	KindSnapshotDelete  = "vm.snapshot.delete"
+	KindSnapshotOrder   = "vm.snapshot.subscribe"
+	KindSnapshotRelease = "vm.snapshot.unsubscribe"
 )
+
+// RestorePayload : point de restauration et mode (full : remplace le disque ;
+// mount : attaché en disque supplémentaire).
+type RestorePayload struct {
+	RestorePoint time.Time `json:"restore_point"`
+	Mode         string    `json:"mode"`
+}
+
+// Modes de restauration.
+const (
+	RestoreFull  = "full"
+	RestoreMount = "mount"
+)
+
+// SnapshotPayload : description du snapshot à créer.
+type SnapshotPayload struct {
+	Description string `json:"description"`
+}
+
+// SubscribePayload : mois de l'option débité (remboursé si l'option n'est pas obtenue).
+type SubscribePayload struct {
+	Period      string `json:"period"`
+	AmountMilli int64  `json:"amount_milli"`
+}
+
+// ── Sauvegardes (relevé du fournisseur) ─────────────────────────────────
+
+// Backups : sauvegardes d'un VPS relevées par le mode compute (table
+// compute_vps_backups) ; l'API lit ce relevé, jamais le fournisseur.
+type Backups struct {
+	VPSID         uuid.UUID       `gorm:"column:vps_id;type:uuid;primaryKey" json:"-"`
+	Automated     bool            `gorm:"not null;default:false" json:"automated"`
+	RestorePoints json.RawMessage `gorm:"type:jsonb;not null" json:"-"`
+	Mounted       json.RawMessage `gorm:"type:jsonb;not null" json:"-"`
+	Snapshot      json.RawMessage `gorm:"type:jsonb" json:"-"`
+	RefreshedAt   time.Time       `gorm:"not null" json:"refreshed_at"`
+}
+
+func (Backups) TableName() string { return "compute_vps_backups" }
+
+// MountedBackup : point de restauration attaché au VPS.
+type MountedBackup struct {
+	RestorePoint time.Time `json:"restore_point"`
+	Disk         string    `json:"disk"`
+}
+
+// SnapshotInfo : le snapshot du VPS (un seul).
+type SnapshotInfo struct {
+	CreatedAt   time.Time `json:"created_at"`
+	Description string    `json:"description"`
+}
 
 // ReinstallPayload : système et clé de la réinstallation demandée par le client.
 type ReinstallPayload struct {

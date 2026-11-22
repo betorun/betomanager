@@ -67,13 +67,15 @@ func (s *vmStore) UpdateVPS(_ context.Context, id uuid.UUID, f map[string]any) e
 			v.Image = val.(string)
 		case "ssh_key_fingerprint":
 			v.SSHKeyFingerprint = val.(string)
+		case "snapshot_option":
+			v.SnapshotOption = val.(string)
 		}
 	}
 	v.Version++
 	return nil
 }
 func (s *vmStore) Offer(context.Context, string) (*domain.Offer, error) {
-	return &domain.Offer{Code: "VPS-1", ProviderPlanCode: "vps-2025-model1", ProviderPriceCents: 649,
+	return &domain.Offer{Code: "VPS-1", ProviderPlanCode: "vps-2025-model1", ProviderPriceCents: 649, SnapshotPlanCode: "option-snapshot", SnapshotPriceCents: 120,
 		Images: json.RawMessage(`{"ubuntu-24.04":"Ubuntu 24.04"}`)}, nil
 }
 func (s *vmStore) EnqueueTx(_ *gorm.DB, r *domain.Request) error {

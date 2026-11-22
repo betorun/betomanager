@@ -118,6 +118,108 @@ func (h *Controller) Reinstall(c *gin.Context, in *ReinstallInput) (*domain.VPS,
 	return h.act(c, &in.VPSPath, service.ActionReinstall, &in.ReinstallRequest)
 }
 
+func (h *Controller) ids(c *gin.Context, in *VPSPath) (uuid.UUID, uuid.UUID, string, error) {
+	org, err := uuid.Parse(in.OrganizationID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, "", betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	id, err := uuid.Parse(in.VPSID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, "", domain.ErrVPSNotFound
+	}
+	by := ""
+	if p, ok := security.PrincipalFromContext(c); ok {
+		by = string(p)
+	}
+	return org, id, by, nil
+}
+
+// Backups : dernier relevé des sauvegardes et prix de l'option snapshot.
+func (h *Controller) Backups(c *gin.Context, in *VPSPath) (*service.BackupsView, error) {
+	org, id, _, err := h.ids(c, in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.Backups(c.Request.Context(), org, id)
+}
+
+type RestoreInput struct {
+	VPSPath
+	service.RestoreRequest
+}
+
+// Restore : full remplace le disque ; mount attache la sauvegarde en disque supplémentaire.
+func (h *Controller) Restore(c *gin.Context, in *RestoreInput) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, &in.VPSPath)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.Restore(c.Request.Context(), org, id, in.RestoreRequest, by)
+}
+
+type UnmountInput struct {
+	VPSPath
+	service.UnmountRequest
+}
+
+func (h *Controller) Unmount(c *gin.Context, in *UnmountInput) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, &in.VPSPath)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.Unmount(c.Request.Context(), org, id, in.UnmountRequest, by)
+}
+
+type SnapshotInput struct {
+	VPSPath
+	service.SnapshotRequest
+}
+
+func (h *Controller) CreateSnapshot(c *gin.Context, in *SnapshotInput) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, &in.VPSPath)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.CreateSnapshot(c.Request.Context(), org, id, in.SnapshotRequest, by)
+}
+
+func (h *Controller) RevertSnapshot(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.RevertSnapshot(c.Request.Context(), org, id, by)
+}
+
+func (h *Controller) DeleteSnapshot(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.DeleteSnapshot(c.Request.Context(), org, id, by)
+}
+
+type SubscribeInput struct {
+	VPSPath
+	service.SubscribeRequest
+}
+
+func (h *Controller) SubscribeSnapshot(c *gin.Context, in *SubscribeInput) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, &in.VPSPath)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.SubscribeSnapshot(c.Request.Context(), org, id, in.SubscribeRequest, by)
+}
+
+func (h *Controller) UnsubscribeSnapshot(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.UnsubscribeSnapshot(c.Request.Context(), org, id, by)
+}
+
 // Order : premier mois débité et demande de création déposés ensemble ;
 // le VPS passe de « pending » à « creating » puis « running ».
 func (h *Controller) Order(c *gin.Context, in *service.OrderRequest) (*domain.VPS, error) {
@@ -129,7 +231,7 @@ func (h *Controller) Order(c *gin.Context, in *service.OrderRequest) (*domain.VP
 }
 
 type AdminOffersResponse struct {
-	Offers []domain.Offer `json:"offers"`
+	Offers []service.AdminOffer `json:"offers"`
 }
 
 func (h *Controller) AdminOffers(c *gin.Context) (*AdminOffersResponse, error) {

@@ -58,11 +58,11 @@ func (s *Service) RefundPurchase(ctx context.Context, org uuid.UUID, amount doma
 }
 
 // AccountCatalogRate : taux euro de la grille de l'organisation (millièmes
-// d'unité pour 1 €) et sa monnaie (VPS revendus).
-func (s *Service) AccountCatalogRate(ctx context.Context, org uuid.UUID) (int64, string, error) {
+// d'unité pour 1 €), son palier d'arrondi (unités) et sa monnaie (VPS revendus).
+func (s *Service) AccountCatalogRate(ctx context.Context, org uuid.UUID) (rate, roundTo int64, currency string, err error) {
 	c, err := s.catalog(ctx, org)
 	if err != nil {
-		return 0, "", err
+		return 0, 0, "", err
 	}
-	return int64(c.EURRate), c.Currency, nil
+	return int64(c.EURRate), c.DomainRoundTo, c.Currency, nil
 }

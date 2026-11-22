@@ -15,6 +15,8 @@ import (
 // Events : un VPS a changé (temps réel de la console).
 type Events interface {
 	VPSChanged(ctx context.Context, v *domain.VPS)
+	// BackupsChanged : nouveau relevé des sauvegardes (la console le relit).
+	BackupsChanged(ctx context.Context, v *domain.VPS)
 }
 
 // Notify : relit le VPS et le publie ; sans effet si events est nil.
@@ -72,13 +74,10 @@ func (s *Service) Act(ctx context.Context, org, id uuid.UUID, action string, rei
 	if err != nil {
 		return nil, err
 	}
-	if v.State == domain.StateSuspended {
-		return nil, domain.ErrSuspended
+	if err := ready(v); err != nil {
+		return nil, err
 	}
-	if v.Operation != "" {
-		return nil, domain.ErrBusy
-	}
-	if !allowed(action, v.State) || v.ProviderID == "" {
+	if !allowed(action, v.State) {
 		return nil, domain.ErrNotReady
 	}
 	payload := []byte(`{}`)
@@ -102,12 +101,40 @@ func (s *Service) Act(ctx context.Context, org, id uuid.UUID, action string, rei
 			return nil, err
 		}
 	}
-	now := s.now()
+	return s.enqueueOp(ctx, v, spec.kind, spec.op, payload, by, nil, nil)
+}
+
+// ready : contrôles communs à toute opération du client sur un VPS livré.
+func ready(v *domain.VPS) error {
+	switch {
+	case v.State == domain.StateSuspended:
+		return domain.ErrSuspended
+	case v.Operation != "":
+		return domain.ErrBusy
+	case v.ProviderID == "" || (v.State != domain.StateRunning && v.State != domain.StateStopped):
+		return domain.ErrNotReady
+	}
+	return nil
+}
+
+// enqueueOp : demande (outbox) + opération marquée (+ champs) dans une
+// transaction ; before s'exécute dans la même transaction (débit…).
+func (s *Service) enqueueOp(ctx context.Context, v *domain.VPS, kind, op string, payload []byte, by string,
+	fields map[string]any, before func(tx *gorm.DB) error) (*domain.VPS, error) {
+	f := map[string]any{"operation": op, "updated_at": s.now()}
+	for k, val := range fields {
+		f[k] = val
+	}
 	if err := s.Store.Transaction(ctx, func(tx *gorm.DB) error {
-		if err := s.Store.EnqueueTx(tx, &domain.Request{OrganizationID: org, VPSID: &v.ID, Kind: spec.kind, Payload: payload, CreatedBy: by}); err != nil {
+		if before != nil {
+			if err := before(tx); err != nil {
+				return err
+			}
+		}
+		if err := s.Store.EnqueueTx(tx, &domain.Request{OrganizationID: v.OrganizationID, VPSID: &v.ID, Kind: kind, Payload: payload, CreatedBy: by}); err != nil {
 			return err
 		}
-		return s.Store.UpdateVPSTx(tx, v.ID, map[string]any{"operation": spec.op, "updated_at": now})
+		return s.Store.UpdateVPSTx(tx, v.ID, f)
 	}); err != nil {
 		return nil, err
 	}

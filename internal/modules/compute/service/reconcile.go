@@ -19,7 +19,12 @@ var ErrNoProvider = errors.New("compute: no provider configured")
 type Reconciler struct {
 	Store    Store
 	Provider ComputeProvider
-	Now      func() time.Time
+	// Backups nil : ni relevé des sauvegardes ni annulation des snapshots bloqués.
+	Backups BackupProvider
+	Events  Events
+	// StuckAfter : âge au-delà duquel un snapshot en cours est annulé (0 : 6 h).
+	StuckAfter time.Duration
+	Now        func() time.Time
 }
 
 func (r *Reconciler) now() time.Time {
@@ -97,9 +102,11 @@ func (r *Reconciler) pass(ctx context.Context, run *domain.ReconcileRun) error {
 			m.Drift = domain.DriftOrphan
 			run.Orphans++
 		case vm.Busy:
-			// Opération en cours chez le fournisseur : on relèvera à la passe suivante.
+			// Opération en cours chez le fournisseur : on relèvera à la passe
+			// suivante ; un snapshot bloqué depuis trop longtemps est annulé.
 			id := local.ID
 			m.VPSID = &id
+			r.abortStuck(ctx, vm.ProviderID)
 		case settled(local.State) && settled(vm.State):
 			id := local.ID
 			m.VPSID = &id
@@ -125,6 +132,7 @@ func (r *Reconciler) pass(ctx context.Context, run *domain.ReconcileRun) error {
 		machines = append(machines, m)
 	}
 	run.Seen = len(machines)
+	r.refreshBackups(ctx, locals, present, machines)
 	for _, v := range locals {
 		if !present[v.ProviderID] && expectedAtProvider(v.State) {
 			run.Missing++
@@ -139,4 +147,40 @@ func keep(observed, known string) string {
 		return known
 	}
 	return observed
+}
+
+func (r *Reconciler) abortStuck(ctx context.Context, providerID string) {
+	if r.Backups == nil {
+		return
+	}
+	after := r.StuckAfter
+	if after <= 0 {
+		after = 6 * time.Hour
+	}
+	_, _ = r.Backups.AbortStuck(ctx, providerID, after) // passe suivante si l'appel échoue
+}
+
+// refreshBackups : relevé des sauvegardes des VPS livrés, sans opération en
+// cours ; un échec n'arrête pas la passe (relevé précédent gardé).
+func (r *Reconciler) refreshBackups(ctx context.Context, locals []domain.VPS, present map[string]bool, machines []domain.ProviderMachine) {
+	if r.Backups == nil {
+		return
+	}
+	busy := map[string]bool{}
+	for _, m := range machines {
+		busy[m.ProviderID] = m.Busy
+	}
+	for i := range locals {
+		v := &locals[i]
+		if !present[v.ProviderID] || busy[v.ProviderID] || v.Operation != "" || !expectedAtProvider(v.State) || v.State == domain.StateCreating {
+			continue
+		}
+		pb, err := r.Backups.Backups(ctx, v.ProviderID)
+		if err != nil {
+			continue
+		}
+		if changed, err := SaveBackups(ctx, r.Store, v.ID, pb, r.now()); err == nil && changed && r.Events != nil {
+			r.Events.BackupsChanged(ctx, v)
+		}
+	}
 }

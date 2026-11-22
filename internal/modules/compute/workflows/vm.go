@@ -44,6 +44,10 @@ type VMSpec struct {
 	// Réinstallation : système demandé et empreinte de la nouvelle clé.
 	Image       string
 	Fingerprint string
+	// Sauvegardes : point et mode de restauration, description du snapshot.
+	RestorePoint time.Time
+	Mode         string
+	Description  string
 }
 
 func quick(ctx workflow.Context) workflow.Context {
@@ -297,6 +301,24 @@ func (a *Activities) LoadVM(ctx context.Context, requestID string) (*VMSpec, err
 		}
 		spec.SSHPublicKey, spec.Period, spec.AmountMilli = p.SSHPublicKey, p.Period, p.AmountMilli
 	}
+	switch r.Kind {
+	case domain.KindRestore, domain.KindUnmount:
+		var p domain.RestorePayload
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			return nil, nonRetryable("invalid restore payload", "InvalidRequest", err)
+		}
+		spec.RestorePoint, spec.Mode = p.RestorePoint, p.Mode
+	case domain.KindSnapshotCreate:
+		var p domain.SnapshotPayload
+		_ = json.Unmarshal(r.Payload, &p)
+		spec.Description = p.Description
+	case domain.KindSnapshotOrder:
+		var p domain.SubscribePayload
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			return nil, nonRetryable("invalid subscribe payload", "InvalidRequest", err)
+		}
+		spec.Period, spec.AmountMilli = p.Period, p.AmountMilli
+	}
 	if r.Kind == domain.KindReinstall {
 		var p domain.ReinstallPayload
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
@@ -305,6 +327,14 @@ func (a *Activities) LoadVM(ctx context.Context, requestID string) (*VMSpec, err
 		spec.Image, spec.SSHPublicKey, spec.Fingerprint = p.Image, p.SSHPublicKey, p.Fingerprint
 	}
 	return spec, nil
+}
+
+func parseUUID(s string) (uuid.UUID, error) {
+	u, err := uuid.Parse(s)
+	if err != nil {
+		return uuid.Nil, nonRetryable("invalid VPS id", "InvalidRequest", err)
+	}
+	return u, nil
 }
 
 func (a *Activities) vps(ctx context.Context, id string) (*domain.VPS, error) {

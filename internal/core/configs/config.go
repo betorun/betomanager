@@ -74,7 +74,7 @@ type ComputeConfig struct {
 	OrderingEnabled bool `mapstructure:"ordering_enabled"`
 	// TaskQueue : file Temporal du mode compute (défaut « compute »).
 	TaskQueue string `mapstructure:"task_queue"`
-	// OVH : compte du fournisseur des VPS (clé limitée à /vps/*, /order/*, /ip/*, /me).
+	// OVH : compte du fournisseur des VPS (clé limitée à /vps/*, /order/*, /ip/*, /me, /services/*).
 	OVH ComputeOVHConfig `mapstructure:"ovh"`
 }
 

@@ -254,3 +254,25 @@ func isUniqueViolation(err error, constraint string) bool {
 	var pg *pgconn.PgError
 	return errors.As(err, &pg) && pg.Code == "23505" && (constraint == "" || pg.ConstraintName == constraint)
 }
+
+// ── Sauvegardes ─────────────────────────────────────────────────────────
+
+func (s *GormStore) SaveBackups(ctx context.Context, b *domain.Backups) error {
+	if len(b.RestorePoints) == 0 {
+		b.RestorePoints = []byte(`[]`)
+	}
+	if len(b.Mounted) == 0 {
+		b.Mounted = []byte(`[]`)
+	}
+	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(b).Error
+}
+
+// Backups : nil si jamais relevé.
+func (s *GormStore) Backups(ctx context.Context, vps uuid.UUID) (*domain.Backups, error) {
+	var b domain.Backups
+	err := s.DB.WithContext(ctx).Where("vps_id = ?", vps).First(&b).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &b, err
+}

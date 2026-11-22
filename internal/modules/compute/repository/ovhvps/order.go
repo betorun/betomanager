@@ -84,6 +84,12 @@ func (p *Provider) Order(ctx context.Context, spec service.OrderSpec) (string, e
 	if err := p.api.Call(ctx, http.MethodPost, base+"/assign", nil, nil); err != nil {
 		return "", err
 	}
+	return p.checkout(ctx, base, spec.MaxPriceCents)
+}
+
+// checkout : aperçu (prix TTC ≤ maxPriceCents, sinon rien n'est payé), puis
+// paiement par le moyen par défaut du compte ; rend la commande.
+func (p *Provider) checkout(ctx context.Context, base string, maxPriceCents int64) (string, error) {
 	// Aperçu : le prix du fournisseur ne dépasse pas celui de l'offre.
 	var preview struct {
 		Prices struct {
@@ -95,7 +101,7 @@ func (p *Provider) Order(ctx context.Context, spec service.OrderSpec) (string, e
 	if err := p.api.Call(ctx, http.MethodGet, base+"/checkout", nil, &preview); err != nil {
 		return "", err
 	}
-	if cents := int64(math.Round(preview.Prices.WithTax.Value * 100)); spec.MaxPriceCents > 0 && cents > spec.MaxPriceCents {
+	if cents := int64(math.Round(preview.Prices.WithTax.Value * 100)); maxPriceCents > 0 && cents > maxPriceCents {
 		return "", service.ErrProviderPriceAbove
 	}
 	var order struct {

@@ -82,5 +82,29 @@
  {
   "fr": "Ce VPS est suspendu : rechargez le solde pour le relancer",
   "en": "this VPS is suspended: top up the balance to restart it"
+ },
+ {
+  "fr": "Les sauvegardes automatiques ne sont pas actives sur ce VPS",
+  "en": "automated backups are not active on this VPS"
+ },
+ {
+  "fr": "L'option snapshot n'est pas active sur ce VPS",
+  "en": "the snapshot option is not active on this VPS"
+ },
+ {
+  "fr": "Ce VPS a déjà un snapshot : supprimez-le d'abord",
+  "en": "this VPS already has a snapshot: delete it first"
+ },
+ {
+  "fr": "Ce VPS n'a pas de snapshot",
+  "en": "this VPS has no snapshot"
+ },
+ {
+  "fr": "Point de restauration introuvable",
+  "en": "restore point not found"
+ },
+ {
+  "fr": "L'option snapshot n'est pas vendue avec cette offre",
+  "en": "the snapshot option is not sold with this offer"
  }
 ]

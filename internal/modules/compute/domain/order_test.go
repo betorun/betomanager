@@ -51,7 +51,7 @@ func TestSellsNeedsProviderImage(t *testing.T) {
 	assert.True(t, o.Sells("gra", "ubuntu-24.04"))
 	assert.False(t, o.Sells("gra", "debian-12"), "image du fournisseur pas réglée")
 	assert.False(t, o.Sells("sbg", "ubuntu-24.04"))
-	assert.True(t, o.Sellable(655957))
+	assert.True(t, o.Sellable(Rate{EURMilli: 655957, RoundTo: 500}))
 	o.Public = false
-	assert.False(t, o.Sellable(655957))
+	assert.False(t, o.Sellable(Rate{EURMilli: 655957, RoundTo: 500}))
 }

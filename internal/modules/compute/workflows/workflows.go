@@ -61,6 +61,12 @@ func RequestWorkflow(ctx workflow.Context, in service.RequestInput) error {
 		runErr = rebootVM(ctx, in.RequestID)
 	case KindReinstall:
 		runErr = reinstallVM(ctx, in.RequestID)
+	case domain.KindRestore, domain.KindUnmount, domain.KindSnapshotCreate, domain.KindSnapshotRevert, domain.KindSnapshotDelete:
+		runErr = backupVM(ctx, in.RequestID, in.Kind)
+	case domain.KindSnapshotOrder:
+		runErr = subscribeSnapshot(ctx, in.RequestID)
+	case domain.KindSnapshotRelease:
+		runErr = releaseSnapshot(ctx, in.RequestID)
 	case KindReconcile:
 		runErr = workflow.ExecuteActivity(reconcileOptions(ctx), a.Reconcile).Get(ctx, nil)
 	default:
@@ -96,6 +102,7 @@ type Activities struct {
 	Provider service.ComputeProvider // nil : aucun fournisseur configuré
 	Orderer  service.Orderer         // nil : pas de commande possible
 	Wallet   service.Wallet          // remboursements
+	Backups  service.BackupProvider  // sauvegardes (nil : aucun fournisseur)
 	Events   service.Events          // temps réel (nil : aucun)
 	Now      func() time.Time
 }
@@ -128,7 +135,8 @@ func (a *Activities) Reconcile(ctx context.Context) error {
 	if a.Provider == nil {
 		return temporal.NewNonRetryableApplicationError("no compute provider configured", "NoProvider", nil)
 	}
-	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Now: a.Now}).Run(ctx)
+	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Backups: a.Backups, Events: a.Events,
+		StuckAfter: StuckSnapshotAfter, Now: a.Now}).Run(ctx)
 	return err
 }
 
