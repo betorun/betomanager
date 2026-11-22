@@ -21,12 +21,13 @@ type memStore struct {
 	finished map[uuid.UUID]bool
 }
 
-func (m *memStore) Request(_ context.Context, id uuid.UUID) (*domain.Request, error) { return m.reqs[id], nil }
+func (m *memStore) Request(_ context.Context, id uuid.UUID) (*domain.Request, error) {
+	return m.reqs[id], nil
+}
 func (m *memStore) FinishRequest(_ context.Context, id uuid.UUID, ok bool, _ string, _ time.Time) error {
 	m.finished[id] = ok
 	return nil
 }
-
 
 func run(t *testing.T, store *memStore, in service.RequestInput) error {
 	var s testsuite.WorkflowTestSuite
@@ -50,5 +51,16 @@ func TestRequestWorkflow_UnknownKindFailsAndCloses(t *testing.T) {
 	assert.Error(t, run(t, store, service.RequestInput{RequestID: id.String(), Kind: "vm.explode"}))
 	ok, closed := store.finished[id]
 	assert.True(t, closed, "la demande est close même en échec")
+	assert.False(t, ok)
+}
+
+func TestRequestWorkflow_ReconcileWithoutProviderFails(t *testing.T) {
+	id := uuid.New()
+	store := &memStore{reqs: map[uuid.UUID]*domain.Request{}, finished: map[uuid.UUID]bool{}}
+	err := run(t, store, service.RequestInput{RequestID: id.String(), Kind: KindReconcile})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no compute provider")
+	ok, closed := store.finished[id]
+	assert.True(t, closed)
 	assert.False(t, ok)
 }

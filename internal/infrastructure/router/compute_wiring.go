@@ -10,14 +10,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loopfz/gadgeto/tonic"
+	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/ovh"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/compute"
 	computeRepo "github.com/thekrauss/kubemanager/internal/modules/compute/repository"
+	"github.com/thekrauss/kubemanager/internal/modules/compute/repository/ovhvps"
 	computeSvc "github.com/thekrauss/kubemanager/internal/modules/compute/service"
 	computeWorkflows "github.com/thekrauss/kubemanager/internal/modules/compute/workflows"
 )
@@ -88,14 +91,23 @@ func (a *App) RunCompute(ctx context.Context) error {
 	if a.Temporal.Client == nil {
 		return fmt.Errorf("compute: temporal client not initialized")
 	}
+	provider := a.computeProvider()
 	w := worker.New(a.Temporal.Client, a.computeTaskQueue(), worker.Options{})
 	w.RegisterWorkflowWithOptions(computeWorkflows.RequestWorkflow, workflow.RegisterOptions{Name: computeWorkflows.RequestWorkflowName})
-	w.RegisterActivity(&computeWorkflows.Activities{Store: &computeRepo.GormStore{DB: a.DB}})
+	w.RegisterWorkflowWithOptions(computeWorkflows.ReconcileWorkflow, workflow.RegisterOptions{Name: computeWorkflows.ReconcileWorkflowName})
+	activities := &computeWorkflows.Activities{Store: &computeRepo.GormStore{DB: a.DB}}
+	if provider != nil {
+		activities.Provider = provider // interface nil si aucune clé
+	}
+	w.RegisterActivity(activities)
 	if err := w.Start(); err != nil {
 		return fmt.Errorf("compute worker: %w", err)
 	}
 	defer w.Stop()
-	a.Logger.Infow("compute worker started", "task_queue", a.computeTaskQueue())
+	a.Logger.Infow("compute worker started", "task_queue", a.computeTaskQueue(), "provider", provider != nil)
+	if provider != nil {
+		a.scheduleComputeReconcile(ctx)
+	}
 	healthSrv := a.startHealthServer()
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -105,6 +117,38 @@ func (a *App) RunCompute(ctx context.Context) error {
 		_ = healthSrv.Shutdown(context.Background())
 	}
 	return nil
+}
+
+// computeProvider : OVH si ses clés sont posées ; nil sinon (le mode compute
+// tourne quand même : diagnostic, et plus tard d'autres fournisseurs).
+func (a *App) computeProvider() *ovhvps.Provider {
+	c := a.Config.Compute.OVH
+	p, err := ovhvps.New(ovh.Credentials{Endpoint: c.Endpoint, ApplicationKey: c.ApplicationKey,
+		ApplicationSecret: c.ApplicationSecret, ConsumerKey: c.ConsumerKey})
+	if err != nil {
+		a.Logger.Warnw("compute: no provider credentials, reconciliation disabled", "error", err)
+		return nil
+	}
+	return p
+}
+
+// scheduleComputeReconcile : workflow périodique unique (identifiant fixe) ;
+// déjà planifié par un autre process compute : rien à faire. Pour changer
+// la fréquence, arrêter le workflow compute-reconcile dans Temporal.
+func (a *App) scheduleComputeReconcile(ctx context.Context) {
+	_, err := a.Temporal.Client.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:                                       computeWorkflows.ReconcileWorkflowID,
+		TaskQueue:                                a.computeTaskQueue(),
+		CronSchedule:                             computeWorkflows.ReconcileCron,
+		WorkflowExecutionErrorWhenAlreadyStarted: true,
+	}, computeWorkflows.ReconcileWorkflowName)
+	switch {
+	case err == nil:
+		a.Logger.Infow("compute reconciliation scheduled", "cron", computeWorkflows.ReconcileCron)
+	case temporal.IsAlreadyStarted(err):
+	default:
+		a.Logger.Errorw("compute reconciliation not scheduled", "error", err)
+	}
 }
 
 func (a *App) newComputeController() *compute.Controller {
@@ -128,10 +172,14 @@ func addComputeRoutes(app *App) {
 		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Offers, http.StatusOK))
 
 	admin := RootGroup.NewGroup("/admin/compute", "Admin — VPS").Internal()
-	view := g.Perm(iam.PlatformBillingCatalogsGet, security.PlatformResource)
-	edit := g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource)
-	admin.AddRoute("/offers", http.MethodGet, "Offres de VPS (prix fournisseur, coefficient, emplacements, systèmes)", view, tonic.Handler(r.AdminOffers, http.StatusOK))
-	admin.AddRoute("/offers/:code", http.MethodPut, "Régler une offre de VPS (prix fournisseur, coefficient, palier)", edit, tonic.Handler(r.SaveOffer, http.StatusOK))
-	admin.AddRoute("/ping", http.MethodPost, "Diagnostic : une demande traverse outbox, relais, Temporal et mode compute", edit, tonic.Handler(r.Ping, http.StatusAccepted))
+	prices := g.Perm(iam.PlatformBillingCatalogsGet, security.PlatformResource)
+	setPrices := g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource)
+	view := g.Perm(iam.PlatformComputeGet, security.PlatformResource)
+	manage := g.Perm(iam.PlatformComputeManage, security.PlatformResource)
+	admin.AddRoute("/offers", http.MethodGet, "Offres de VPS (prix fournisseur, coefficient, emplacements, systèmes)", prices, tonic.Handler(r.AdminOffers, http.StatusOK))
+	admin.AddRoute("/offers/:code", http.MethodPut, "Régler une offre de VPS (prix fournisseur, coefficient, palier)", setPrices, tonic.Handler(r.SaveOffer, http.StatusOK))
+	admin.AddRoute("/vps", http.MethodGet, "VPS de tous les clients, relevé du fournisseur, écarts et dernières réconciliations", view, tonic.Handler(r.Fleet, http.StatusOK))
+	admin.AddRoute("/reconcile", http.MethodPost, "Lancer une réconciliation des VPS avec le fournisseur", manage, tonic.Handler(r.Reconcile, http.StatusAccepted))
+	admin.AddRoute("/ping", http.MethodPost, "Diagnostic : une demande traverse outbox, relais, Temporal et mode compute", manage, tonic.Handler(r.Ping, http.StatusAccepted))
 	admin.AddRoute("/requests/:requestID", http.MethodGet, "État d'une demande", view, tonic.Handler(r.Request, http.StatusOK))
 }

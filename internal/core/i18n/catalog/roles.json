@@ -510,5 +510,13 @@
  {
   "fr": "Voir et relâcher les adresses e-mail mises de côté",
   "en": "View and release suppressed email addresses"
+ },
+ {
+  "fr": "Voir les VPS de tous les clients et la réconciliation",
+  "en": "View all customers' VPS and reconciliation"
+ },
+ {
+  "fr": "Lancer une réconciliation ou un diagnostic des VPS",
+  "en": "Run a VPS reconciliation or diagnostic"
  }
 ]

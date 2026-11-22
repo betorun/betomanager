@@ -29,12 +29,36 @@ type ComputeProvider interface {
 	Rebuild(ctx context.Context, providerID, image, sshPublicKey string) error
 	// ConsoleURL : accès console à courte durée.
 	ConsoleURL(ctx context.Context, providerID string) (string, error)
+	// Task : suivi d'une opération lancée chez le fournisseur.
+	Task(ctx context.Context, providerID, taskID string) (*ProviderTask, error)
 }
+
+// ProviderTask : une opération du fournisseur (installation, redémarrage…).
+type ProviderTask struct {
+	ID    string
+	Type  string
+	State string // TaskTodo, TaskDoing, TaskDone, TaskError, TaskCancelled
+	// Progress : 0 à 100.
+	Progress int
+}
+
+// États d'une opération du fournisseur.
+const (
+	TaskTodo      = "todo"
+	TaskDoing     = "doing"
+	TaskDone      = "done"
+	TaskError     = "error"
+	TaskCancelled = "cancelled"
+)
 
 // ProviderVM : un VPS vu par le fournisseur, traduit en termes de la plateforme.
 type ProviderVM struct {
 	ProviderID string
 	State      string // domain.State*
+	// RawState, Plan, Zone : termes du fournisseur (back-office seulement).
+	RawState   string
+	Plan       string
+	Zone       string
 	IPv4, IPv6 string
 	// Busy : une opération du fournisseur est en cours (sauvegarde, installation).
 	Busy bool
@@ -56,6 +80,23 @@ type Store interface {
 	MarkAttemptFailed(tx *gorm.DB, id uuid.UUID, errMsg string) error
 	FinishRequest(ctx context.Context, id uuid.UUID, ok bool, errMsg string, at time.Time) error
 	Request(ctx context.Context, id uuid.UUID) (*domain.Request, error)
+
+	// Réconciliation.
+	// ProviderVPS : VPS de la plateforme créés chez ce fournisseur (identifiant connu).
+	ProviderVPS(ctx context.Context, provider string) ([]domain.VPS, error)
+	// ApplyObserved : état et adresses relevés chez le fournisseur ; rien
+	// n'est écrit si le VPS a changé depuis la lecture (version). Rend vrai si écrit.
+	ApplyObserved(ctx context.Context, id uuid.UUID, version int64, state, ipv4, ipv6 string, at time.Time) (bool, error)
+	// ReplaceMachines : remplace le relevé du fournisseur.
+	ReplaceMachines(ctx context.Context, provider string, ms []domain.ProviderMachine) error
+	SaveRun(ctx context.Context, r *domain.ReconcileRun) error
+
+	// Back-office.
+	ListVPS(ctx context.Context, limit int) ([]domain.VPS, error)
+	Machines(ctx context.Context) ([]domain.ProviderMachine, error)
+	Runs(ctx context.Context, limit int) ([]domain.ReconcileRun, error)
+	// OrganizationNames : nom affiché de chaque organisation.
+	OrganizationNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
 // Starter : lancement d'un workflow (Temporal), identifiant imposé, jamais deux fois.
