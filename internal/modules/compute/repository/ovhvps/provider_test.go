@@ -34,7 +34,7 @@ func fakeOVH(t *testing.T, routes map[string]string) *Provider {
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	p, err := New(ovh.Credentials{Endpoint: srv.URL, ApplicationKey: "ak", ApplicationSecret: "as", ConsumerKey: "ck"})
+	p, err := New(ovh.Credentials{Endpoint: srv.URL, ApplicationKey: "ak", ApplicationSecret: "as", ConsumerKey: "ck"}, "FR")
 	require.NoError(t, err)
 	return p
 }
@@ -100,5 +100,6 @@ func TestTranslateState(t *testing.T) {
 
 func TestActionsNotYet(t *testing.T) {
 	p := fakeOVH(t, nil)
-	assert.ErrorIs(t, p.Start(context.Background(), "x"), ErrNotSupported)
+	_, err := p.ConsoleURL(context.Background(), "x")
+	assert.ErrorIs(t, err, ErrNotSupported)
 }

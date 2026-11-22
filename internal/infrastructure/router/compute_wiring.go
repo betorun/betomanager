@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/loopfz/gadgeto/tonic"
@@ -40,11 +41,39 @@ func (a *App) computeService() *computeSvc.Service {
 	if a.DB == nil || !a.Config.Compute.Enabled {
 		return nil
 	}
-	s := &computeSvc.Service{Store: &computeRepo.GormStore{DB: a.DB}}
+	s := &computeSvc.Service{Store: &computeRepo.GormStore{DB: a.DB}, Ordering: a.Config.Compute.OrderingEnabled}
 	if billing := a.billingService(); billing != nil {
 		s.Catalogs = computeCatalogs{billing: billing}
+		s.Wallet = billing
 	}
 	return s
+}
+
+// startComputeRenewals : débit mensuel des VPS (worker) ; non payé : suspension.
+func (a *App) startComputeRenewals(ctx context.Context) {
+	s := a.computeService()
+	if s == nil || s.Wallet == nil || s.Catalogs == nil {
+		return
+	}
+	log := a.Logger.With("component", "compute-renewals")
+	a.goWith(ctx, "compute-renewals", func(ctx context.Context) {
+		t := time.NewTicker(computeSvc.DefaultRenewEvery)
+		defer t.Stop()
+		for {
+			renewed, suspended, err := s.RenewDue(ctx)
+			switch {
+			case err != nil:
+				log.Errorw("VPS renewals failed", "error", err)
+			case renewed+suspended > 0:
+				log.Infow("VPS renewals", "renewed", renewed, "suspended", suspended)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	})
 }
 
 // computeCatalogs : taux de la grille de l'organisation (module billing).
@@ -96,8 +125,12 @@ func (a *App) RunCompute(ctx context.Context) error {
 	w.RegisterWorkflowWithOptions(computeWorkflows.RequestWorkflow, workflow.RegisterOptions{Name: computeWorkflows.RequestWorkflowName})
 	w.RegisterWorkflowWithOptions(computeWorkflows.ReconcileWorkflow, workflow.RegisterOptions{Name: computeWorkflows.ReconcileWorkflowName})
 	activities := &computeWorkflows.Activities{Store: &computeRepo.GormStore{DB: a.DB}}
-	if provider != nil {
-		activities.Provider = provider // interface nil si aucune clé
+	if provider != nil { // interfaces nil si aucune clé
+		activities.Provider = provider
+		activities.Orderer = provider
+	}
+	if billing := a.billingService(); billing != nil {
+		activities.Wallet = billing
 	}
 	w.RegisterActivity(activities)
 	if err := w.Start(); err != nil {
@@ -124,7 +157,7 @@ func (a *App) RunCompute(ctx context.Context) error {
 func (a *App) computeProvider() *ovhvps.Provider {
 	c := a.Config.Compute.OVH
 	p, err := ovhvps.New(ovh.Credentials{Endpoint: c.Endpoint, ApplicationKey: c.ApplicationKey,
-		ApplicationSecret: c.ApplicationSecret, ConsumerKey: c.ConsumerKey})
+		ApplicationSecret: c.ApplicationSecret, ConsumerKey: c.ConsumerKey}, c.Subsidiary)
 	if err != nil {
 		a.Logger.Warnw("compute: no provider credentials, reconciliation disabled", "error", err)
 		return nil
@@ -170,6 +203,12 @@ func addComputeRoutes(app *App) {
 		Named("Serveurs VPS", "Serveurs privés virtuels : offres et prix mensuels.")
 	org.AddRoute("/offers", http.MethodGet, "Offres de VPS en vente, prix mensuel dans la monnaie de l'organisation",
 		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Offers, http.StatusOK))
+	org.AddRoute("/vps", http.MethodGet, "VPS de l'organisation",
+		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.List, http.StatusOK))
+	org.AddRoute("/vps/:vpsID", http.MethodGet, "Un VPS de l'organisation",
+		g.Perm(iam.BillingAccountsGet, security.OrganizationParam("id")), tonic.Handler(r.Get, http.StatusOK))
+	org.AddRoute("/vps", http.MethodPost, "Commander un VPS : le premier mois est débité du solde, puis le serveur est créé avec la clé SSH fournie",
+		g.Perm(iam.BillingPaymentsCreate, security.OrganizationParam("id")), tonic.Handler(r.Order, http.StatusAccepted))
 
 	admin := RootGroup.NewGroup("/admin/compute", "Admin — VPS").Internal()
 	prices := g.Perm(iam.PlatformBillingCatalogsGet, security.PlatformResource)

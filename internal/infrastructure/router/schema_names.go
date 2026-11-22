@@ -7,6 +7,7 @@ import (
 
 	alertsDomain "github.com/thekrauss/kubemanager/internal/modules/alerts/domain"
 	alertsSvc "github.com/thekrauss/kubemanager/internal/modules/alerts/service"
+	computeDomain "github.com/thekrauss/kubemanager/internal/modules/compute/domain"
 	computeSvc "github.com/thekrauss/kubemanager/internal/modules/compute/service"
 	diskresizeDomain "github.com/thekrauss/kubemanager/internal/modules/diskresize/domain"
 	diskusageDomain "github.com/thekrauss/kubemanager/internal/modules/diskusage/domain"
@@ -22,6 +23,7 @@ func stableSchemaNames(router *fizz.Fizz) {
 		reflect.TypeOf(alertsSvc.Webhook{}):         "AlertsWebhook",
 		reflect.TypeOf(alertsSvc.WebhookList{}):     "AlertsWebhookList",
 		reflect.TypeOf(alertsDomain.Preferences{}):  "AlertsPreferences",
+		reflect.TypeOf(computeDomain.VPS{}):         "ComputeVPS",
 		reflect.TypeOf(computeSvc.OfferView{}):      "ComputeOfferView",
 		reflect.TypeOf(diskresizeDomain.Resize{}):   "DiskresizeResize",
 		reflect.TypeOf(diskusageDomain.Usage{}):     "DiskusageUsage",

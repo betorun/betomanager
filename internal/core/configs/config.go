@@ -69,6 +69,9 @@ type GlobalConfig struct {
 type ComputeConfig struct {
 	// Enabled : relais de l'outbox actif (worker) et routes des offres.
 	Enabled bool `mapstructure:"enabled"`
+	// OrderingEnabled : commandes réelles ouvertes (sinon offres et prix
+	// seulement). À poser sur l'API (commande) ; le mode compute exécute.
+	OrderingEnabled bool `mapstructure:"ordering_enabled"`
 	// TaskQueue : file Temporal du mode compute (défaut « compute »).
 	TaskQueue string `mapstructure:"task_queue"`
 	// OVH : compte du fournisseur des VPS (clé limitée à /vps/*, /order/*, /ip/*, /me).

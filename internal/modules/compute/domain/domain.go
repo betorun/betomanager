@@ -48,13 +48,20 @@ type VPS struct {
 	// plus anciens sont ignorés par la console).
 	Version   int64      `gorm:"not null;default:1" json:"version"`
 	PaidUntil *time.Time `json:"paid_until,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	// MonthlyPrice / Currency : prix du dernier mois débité (unités de la monnaie).
+	MonthlyPrice int64  `gorm:"not null;default:0" json:"monthly_price"`
+	Currency     string `gorm:"not null;default:''" json:"currency"`
+	// ProviderOrderID : commande chez le fournisseur (jamais passée deux fois).
+	ProviderOrderID string `gorm:"not null;default:''" json:"-"`
+	// FailureCode : raison d'un échec ou d'une suspension (domain.Failure*).
+	FailureCode string    `gorm:"not null;default:''" json:"failure_code,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func (VPS) TableName() string { return "compute_vps" }
 
-// ── Offres ──────────────────────────────────────────────────────────────
+//  Offres
 
 // Emplacements et systèmes proposés (codes de la plateforme ; la
 // correspondance avec le fournisseur est dans l'offre).
@@ -127,6 +134,11 @@ func (o Offer) ImageMap() map[string]string {
 	return out
 }
 
+// Sellable : l'offre est publique, tarifée et rattachée à un plan du fournisseur.
+func (o Offer) Sellable(eurRateMilli int64) bool {
+	return o.Public && o.ProviderPlanCode != "" && o.MonthlyPrice(eurRateMilli) > 0
+}
+
 // Sells : l'offre se vend à cet emplacement avec ce système.
 func (o Offer) Sells(location, image string) bool {
 	okLoc := false
@@ -135,12 +147,12 @@ func (o Offer) Sells(location, image string) bool {
 			okLoc = true
 		}
 	}
-	_, okImg := o.ImageMap()[image]
-	return okLoc && okImg
+	// Système sans image du fournisseur : pas encore réglé, invendable.
+	return okLoc && o.ImageMap()[image] != ""
 }
 
-// ── Demandes (outbox) ───────────────────────────────────────────────────
-
+//	Demandes (outbox)
+//
 // États d'une demande.
 const (
 	RequestPending = "pending" // écrite, pas encore lancée (Temporal absent : elle attend)
@@ -169,8 +181,8 @@ type Request struct {
 
 func (Request) TableName() string { return "compute_requests" }
 
-// ── Secrets ─────────────────────────────────────────────────────────────
-
+//	Secrets
+//
 // Secret : mot de passe ou identifiants du mode secours, chiffrés, lus une
 // seule fois puis effacés ; jamais dans l'historique Temporal (seul l'ID y passe).
 type Secret struct {
@@ -188,18 +200,63 @@ func (Secret) TableName() string { return "compute_secrets" }
 // SecretTTL : un secret non lu disparaît après ce délai.
 const SecretTTL = 15 * time.Minute
 
-// ── Erreurs ─────────────────────────────────────────────────────────────
+// Raisons d'un échec ou d'une suspension (FailureCode).
+const (
+	FailureProvider     = "provider"      // commande ou installation refusée par le fournisseur
+	FailurePriceChanged = "price_changed" // le fournisseur facture plus que prévu : rien commandé
+	FailureTimeout      = "timeout"       // livraison trop longue
+	FailureUnpaid       = "unpaid"        // renouvellement non payé (suspendu)
+)
+
+//  Erreurs
 
 var (
-	ErrOfferNotFound = errors.New("VPS offer not found")
-	ErrInvalidOffer  = errors.New("invalid VPS offer: coefficient and rounding must be positive")
-	ErrUnavailable   = errors.New("VPS are not available on this platform for now")
+	ErrOfferNotFound            = errors.New("VPS offer not found")
+	ErrInvalidOffer             = errors.New("invalid VPS offer: coefficient and rounding must be positive")
+	ErrUnavailable              = errors.New("VPS are not available on this platform for now")
+	ErrNotSold                  = errors.New("this VPS offer is not sold with this location and system")
+	ErrPriceChanged             = errors.New("the VPS price has changed: check the new price")
+	ErrInvalidName              = errors.New("invalid VPS name: 1 to 63 lowercase letters, digits or hyphens")
+	ErrNameTaken                = errors.New("a VPS with this name already exists in this project")
+	ErrInvalidSSHKey            = errors.New("invalid SSH public key: ed25519, ecdsa or RSA (2048 bits or more)")
+	ErrVPSNotFound              = errors.New("VPS not found")
+	ErrProjectNotInOrganization = errors.New("project not found in this organization")
 )
+
+// ValidName : étiquette DNS (le nom devient le nom d'hôte).
+func ValidName(name string) bool {
+	if name == "" || len(name) > 63 || name[0] == '-' || name[len(name)-1] == '-' {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// Period : référence du mois qui commence à from (débit idempotent).
+func Period(vps uuid.UUID, from time.Time) string {
+	return "compute:vps:" + vps.String() + ":" + from.UTC().Format("2006-01-02")
+}
+
+// NextPeriod : fin du mois payé qui commence à from, bornée au dernier jour
+// du mois suivant (31 janvier → 28 février, pas 3 mars).
+func NextPeriod(from time.Time) time.Time {
+	y, m, d := from.Date()
+	last := time.Date(y, m+2, 0, 0, 0, 0, 0, from.Location()).Day() // dernier jour du mois suivant
+	if d > last {
+		d = last
+	}
+	h, mi, sec := from.Clock()
+	return time.Date(y, m+1, d, h, mi, sec, from.Nanosecond(), from.Location())
+}
 
 // NormalizeCode : « vps-1 » → « VPS-1 ».
 func NormalizeCode(s string) string { return strings.ToUpper(strings.TrimSpace(s)) }
 
-// ── Réconciliation (base ↔ fournisseur) ────────────────────────────────
+//  Réconciliation (base ↔ fournisseur)
 
 // Écarts relevés par la réconciliation (vue de l'équipe seulement).
 const (
@@ -247,3 +304,21 @@ type ReconcileRun struct {
 }
 
 func (ReconcileRun) TableName() string { return "compute_reconcile_runs" }
+
+//  Types de demande (outbox)
+
+// Opérations sur un VPS, exécutées par le mode compute.
+const (
+	KindCreate = "vm.create"
+	KindStart  = "vm.start"
+	KindStop   = "vm.stop"
+)
+
+// CreatePayload : demande de création. La clé publique n'est pas un secret
+// (elle passe dans l'historique Temporal) ; Period et AmountMilli servent au
+// remboursement en cas d'échec.
+type CreatePayload struct {
+	SSHPublicKey string `json:"ssh_public_key"`
+	Period       string `json:"period"`
+	AmountMilli  int64  `json:"amount_milli"`
+}

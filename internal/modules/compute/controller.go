@@ -44,6 +44,50 @@ func (h *Controller) Offers(c *gin.Context, in *OrgPath) (*OffersResponse, error
 	return &OffersResponse{Offers: list}, nil
 }
 
+type VPSListResponse struct {
+	VPS []domain.VPS `json:"vps"`
+}
+
+// List : VPS de l'organisation (hors résiliés).
+func (h *Controller) List(c *gin.Context, in *OrgPath) (*VPSListResponse, error) {
+	org, err := uuid.Parse(in.OrganizationID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	list, err := h.Service.List(c.Request.Context(), org)
+	if err != nil {
+		return nil, err
+	}
+	return &VPSListResponse{VPS: list}, nil
+}
+
+type VPSPath struct {
+	OrganizationID string `path:"id" description:"Identifiant de l'organisation"`
+	VPSID          string `path:"vpsID" description:"Identifiant du VPS"`
+}
+
+func (h *Controller) Get(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	org, err := uuid.Parse(in.OrganizationID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	id, err := uuid.Parse(in.VPSID)
+	if err != nil {
+		return nil, domain.ErrVPSNotFound
+	}
+	return h.Service.Get(c.Request.Context(), org, id)
+}
+
+// Order : premier mois débité et demande de création déposés ensemble ;
+// le VPS passe de « pending » à « creating » puis « running ».
+func (h *Controller) Order(c *gin.Context, in *service.OrderRequest) (*domain.VPS, error) {
+	by := ""
+	if p, ok := security.PrincipalFromContext(c); ok {
+		by = string(p)
+	}
+	return h.Service.Order(c.Request.Context(), *in, by)
+}
+
 type AdminOffersResponse struct {
 	Offers []domain.Offer `json:"offers"`
 }

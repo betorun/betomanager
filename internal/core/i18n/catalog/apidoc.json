@@ -2230,5 +2230,49 @@
  {
   "fr": "Serveurs privés virtuels : offres et prix mensuels.",
   "en": "Virtual private servers: offers and monthly prices."
+ },
+ {
+  "fr": "Système (ubuntu-24.04, debian-12)",
+  "en": "System (ubuntu-24.04, debian-12)"
+ },
+ {
+  "fr": "Emplacement (gra, rbx, sbg)",
+  "en": "Location (gra, rbx, sbg)"
+ },
+ {
+  "fr": "Prix mensuel affiché au client, dans la monnaie de l'organisation",
+  "en": "Monthly price shown to the customer, in the organization's currency"
+ },
+ {
+  "fr": "Nom du VPS (lettres minuscules, chiffres, tirets ; 63 au plus)",
+  "en": "VPS name (lowercase letters, digits, hyphens; 63 at most)"
+ },
+ {
+  "fr": "Code de l'offre (ex. VPS-1)",
+  "en": "Offer code (e.g. VPS-1)"
+ },
+ {
+  "fr": "Projet qui recevra le VPS",
+  "en": "Project that will receive the VPS"
+ },
+ {
+  "fr": "Clé publique SSH installée sur le VPS (aucun mot de passe n'est créé)",
+  "en": "SSH public key installed on the VPS (no password is created)"
+ },
+ {
+  "fr": "VPS de l'organisation",
+  "en": "The organization's VPS"
+ },
+ {
+  "fr": "Commander un VPS : le premier mois est débité du solde, puis le serveur est créé avec la clé SSH fournie",
+  "en": "Order a VPS: the first month is debited from the balance, then the server is created with the given SSH key"
+ },
+ {
+  "fr": "Un VPS de l'organisation",
+  "en": "One of the organization's VPS"
+ },
+ {
+  "fr": "Identifiant du VPS",
+  "en": "VPS ID"
  }
 ]

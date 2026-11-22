@@ -225,6 +225,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 
 	// VPS : relais de l'outbox vers les workflows du mode compute.
 	a.startComputeRelay(ctx)
+	a.startComputeRenewals(ctx)
 
 	// Domaines revendus : commandes à passer et à suivre, renouvellements.
 	if sales := a.domainSalesService(); sales != nil && sales.Registrar != nil {
