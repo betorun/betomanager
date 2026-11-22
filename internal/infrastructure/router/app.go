@@ -50,7 +50,10 @@ const (
 	// ModePlatform : API du back-office de l'équipe betorun (routes /admin),
 	// hébergée à part de l'API des clients (docs/architecture/platform-console.md).
 	ModePlatform Mode = "platform"
-	EnvAppMode        = "APP_MODE"
+	// ModeCompute : worker Temporal des VPS (file « compute »), seul process
+	// qui charge les clés du fournisseur (docs/modules/compute.md).
+	ModeCompute Mode = "compute"
+	EnvAppMode       = "APP_MODE"
 )
 
 func ResolveMode() Mode {
@@ -59,6 +62,8 @@ func ResolveMode() Mode {
 		return ModeWorker
 	case ModePlatform:
 		return ModePlatform
+	case ModeCompute:
+		return ModeCompute
 	default:
 		return ModeServer
 	}
@@ -217,6 +222,9 @@ func (a *App) RunWorker(ctx context.Context) error {
 		return fmt.Errorf("mail worker: %w", err)
 	}
 	defer stopMail()
+
+	// VPS : relais de l'outbox vers les workflows du mode compute.
+	a.startComputeRelay(ctx)
 
 	// Domaines revendus : commandes à passer et à suivre, renouvellements.
 	if sales := a.domainSalesService(); sales != nil && sales.Registrar != nil {

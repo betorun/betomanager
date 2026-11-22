@@ -26,7 +26,7 @@ func TestNewOVH_RequiresCredentials(t *testing.T) {
 func TestOVH_Signature(t *testing.T) {
 	o, err := NewOVH(OVHConfig{ApplicationKey: "ak", ApplicationSecret: "as", ConsumerKey: "ck", Subsidiary: "FR"})
 	require.NoError(t, err)
-	assert.Equal(t, "$1$"+expectedSHA1, o.sign(http.MethodGet, "https://eu.api.ovh.com/1.0/me", "", 1700000000))
+	assert.Equal(t, "$1$"+expectedSHA1, o.api.Sign(http.MethodGet, "https://eu.api.ovh.com/1.0/me", "", 1700000000))
 }
 
 func fakeOVH(t *testing.T, offers string) (*OVH, *[]string) {
@@ -39,7 +39,7 @@ func fakeOVH(t *testing.T, offers string) (*OVH, *[]string) {
 		assert.Equal(t, "ck", r.Header.Get("X-Ovh-Consumer"))
 		ts := r.Header.Get("X-Ovh-Timestamp")
 		assert.NotEmpty(t, ts)
-		assert.Equal(t, client.sign(r.Method, client.cfg.Endpoint+r.URL.RequestURI(), body, client.now().Unix()), r.Header.Get("X-Ovh-Signature"))
+		assert.Equal(t, client.api.Sign(r.Method, client.cfg.Endpoint+r.URL.RequestURI(), body, client.api.Now().Unix()), r.Header.Get("X-Ovh-Signature"))
 	}
 	handle := func(pattern string, h func(http.ResponseWriter, *http.Request)) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +85,7 @@ func fakeOVH(t *testing.T, offers string) (*OVH, *[]string) {
 	client, err = NewOVH(OVHConfig{Endpoint: srv.URL, ApplicationKey: "ak", ApplicationSecret: "as", ConsumerKey: "ck", Subsidiary: "FR"})
 	require.NoError(t, err)
 	fixed := time.Unix(1700000000, 0)
-	client.now = func() time.Time { return fixed }
+	client.api.Now = func() time.Time { return fixed }
 	return client, &calls
 }
 

@@ -59,6 +59,30 @@ type GlobalConfig struct {
 	// Domains : revente de noms de domaine (registraire). Prod :
 	// KUBEMANAGER_DOMAINS_OVH_*.
 	Domains DomainsConfig `mapstructure:"domains"`
+	// Compute : VPS revendus (docs/modules/compute.md).
+	Compute ComputeConfig `mapstructure:"compute"`
+}
+
+// ComputeConfig : VPS. Les clés du fournisseur ne sont posées que sur le
+// process APP_MODE=compute (seul à les charger) ; l'API et le worker n'en ont
+// pas besoin : ils écrivent des demandes, le mode compute les exécute.
+type ComputeConfig struct {
+	// Enabled : relais de l'outbox actif (worker) et routes des offres.
+	Enabled bool `mapstructure:"enabled"`
+	// TaskQueue : file Temporal du mode compute (défaut « compute »).
+	TaskQueue string `mapstructure:"task_queue"`
+	// OVH : compte du fournisseur des VPS (clé limitée à /vps/*, /order/*, /ip/*, /me).
+	OVH ComputeOVHConfig `mapstructure:"ovh"`
+}
+
+// ComputeOVHConfig : identifiants OVH des VPS (secrets, mode compute seulement).
+type ComputeOVHConfig struct {
+	Endpoint          string `mapstructure:"endpoint"`
+	ApplicationKey    string `mapstructure:"application_key"`
+	ApplicationSecret string `mapstructure:"application_secret"`
+	ConsumerKey       string `mapstructure:"consumer_key"`
+	// Subsidiary : filiale des commandes (FR).
+	Subsidiary string `mapstructure:"subsidiary"`
 }
 
 // DomainsConfig : registraires.

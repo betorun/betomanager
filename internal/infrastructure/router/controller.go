@@ -10,6 +10,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/builds"
 	"github.com/thekrauss/kubemanager/internal/modules/clusters"
 	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
+	"github.com/thekrauss/kubemanager/internal/modules/compute"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	copilotSvc "github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
@@ -85,6 +86,8 @@ type ControllerContainer struct {
 	DomainSales *domainsales.Controller
 	// Mail : webhook SendGrid et adresses mises de côté.
 	Mail *mailmod.Controller
+	// Compute : VPS (offres, réglage, diagnostic).
+	Compute *compute.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -108,4 +111,5 @@ func AddAllRoutes(a *App) {
 	addBillingRoutes(a)
 	addDomainSalesRoutes(a)
 	addMailRoutes(a)
+	addComputeRoutes(a)
 }

@@ -47,6 +47,10 @@ func main() {
 		if err := app.RunWorker(ctx); err != nil {
 			log.Fatalf("worker exited with error: %v", err)
 		}
+	case router.ModeCompute:
+		if err := app.RunCompute(ctx); err != nil {
+			log.Fatalf("compute worker exited with error: %v", err)
+		}
 	case router.ModePlatform:
 		if err := app.RunPlatform(ctx); err != nil {
 			log.Fatalf("platform API exited with error: %v", err)

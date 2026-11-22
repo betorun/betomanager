@@ -39,6 +39,10 @@ type ExecuteOptions struct {
 	TaskQueue           string        // défaut = config.Temporal.TaskQueue
 	WorkflowRunTimeout  time.Duration // défaut = 0 (pas de timeout)
 	WorkflowTaskTimeout time.Duration // défaut = 0 (SDK default)
+	// RejectDuplicate : un identifiant déjà utilisé (même terminé) n'est
+	// jamais relancé : l'opération qu'il porte ne s'exécute qu'une fois
+	// (outbox des VPS : WorkflowID = identifiant de la demande).
+	RejectDuplicate bool
 }
 
 // WorkflowHandle : identifiants retournés après ExecuteWorkflow.
@@ -84,6 +88,9 @@ func (d *TemporalDistributor) ExecuteWorkflow(
 		// Sans cela, une demande se rattache en silence à l'exécution en cours
 		// du même identifiant : l'appelant croit avoir lancé son travail.
 		WorkflowExecutionErrorWhenAlreadyStarted: true,
+	}
+	if opts.RejectDuplicate {
+		startOpts.WorkflowIDReusePolicy = enums.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE
 	}
 
 	run, err := d.client.ExecuteWorkflow(ctx, startOpts, workflow, args...)

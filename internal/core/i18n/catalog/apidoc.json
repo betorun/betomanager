@@ -2218,5 +2218,17 @@
  {
   "fr": "Nom ou mot-clé recherché (ex. mon-site, mon-site.com)",
   "en": "Name or keyword searched (e.g. my-site, my-site.com)"
+ },
+ {
+  "fr": "Offres de VPS en vente, prix mensuel dans la monnaie de l'organisation",
+  "en": "VPS offers for sale, monthly price in the organization's currency"
+ },
+ {
+  "fr": "Serveurs VPS",
+  "en": "VPS servers"
+ },
+ {
+  "fr": "Serveurs privés virtuels : offres et prix mensuels.",
+  "en": "Virtual private servers: offers and monthly prices."
  }
 ]

@@ -1,20 +1,17 @@
 package registrar
 
 import (
-	"bytes"
-	"context"
-	"crypto/sha1" //nolint:gosec // imposé par la signature de l'API OVH
-	"encoding/hex"
-	"encoding/json"
+	"context" //nolint:gosec // imposé par la signature de l'API OVH
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/thekrauss/kubemanager/internal/infrastructure/ovh"
 )
 
 // OVHConfig : identifiants de l'API OVH (https://api.ovh.com). Secrets, hors
@@ -34,81 +31,32 @@ type OVHConfig struct {
 }
 
 const (
-	ovhDefaultEndpoint = "https://eu.api.ovh.com/1.0"
-	ovhTimeout         = 30 * time.Second
-	ovhMaxResponse     = 4 << 20
-	ovhPriceTotal      = "TOTAL"
-	ovhPriceRenew      = "RENEW"
-	ovhCentsPerUnit    = 100
+	ovhPriceTotal   = "TOTAL"
+	ovhPriceRenew   = "RENEW"
+	ovhCentsPerUnit = 100
 )
 
-// OVH : API OVH. État : signature testée, mais aucune de ces routes n'a encore
-// été appelée sur un vrai compte (voir ovh_test.go, API simulée). À valider
-// sur un compte de test avant toute mise en service.
+// OVH : revente de domaines par l'API OVH (client signé commun : infrastructure/ovh).
 type OVH struct {
-	cfg  OVHConfig
-	http *http.Client
-	now  func() time.Time
+	cfg OVHConfig
+	api *ovh.Client
 }
 
 // NewOVH : client ; erreur si un identifiant manque.
 func NewOVH(cfg OVHConfig) (*OVH, error) {
-	if cfg.ApplicationKey == "" || cfg.ApplicationSecret == "" || cfg.ConsumerKey == "" || cfg.Subsidiary == "" {
+	if cfg.Subsidiary == "" {
 		return nil, errors.New("registrar: incomplete OVH configuration")
 	}
-	if cfg.Endpoint == "" {
-		cfg.Endpoint = ovhDefaultEndpoint
+	api, err := ovh.New(ovh.Credentials{Endpoint: cfg.Endpoint, ApplicationKey: cfg.ApplicationKey,
+		ApplicationSecret: cfg.ApplicationSecret, ConsumerKey: cfg.ConsumerKey})
+	if err != nil {
+		return nil, errors.New("registrar: incomplete OVH configuration")
 	}
-	cfg.Endpoint = strings.TrimRight(cfg.Endpoint, "/")
-	return &OVH{cfg: cfg, http: &http.Client{Timeout: ovhTimeout}, now: time.Now}, nil
-}
-
-// sign : "$1$" + SHA1(secret+clé client+méthode+URL+corps+horodatage).
-func (o *OVH) sign(method, fullURL, body string, ts int64) string {
-	h := sha1.New() //nolint:gosec
-	h.Write([]byte(strings.Join([]string{o.cfg.ApplicationSecret, o.cfg.ConsumerKey, method, fullURL, body, strconv.FormatInt(ts, 10)}, "+")))
-	return "$1$" + hex.EncodeToString(h.Sum(nil))
+	return &OVH{cfg: cfg, api: api}, nil
 }
 
 func (o *OVH) call(ctx context.Context, method, path string, in, out any) error {
-	var body []byte
-	if in != nil {
-		var err error
-		if body, err = json.Marshal(in); err != nil {
-			return err
-		}
-	}
-	full := o.cfg.Endpoint + path
-	req, err := http.NewRequestWithContext(ctx, method, full, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	ts := o.now().Unix()
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Ovh-Application", o.cfg.ApplicationKey)
-	req.Header.Set("X-Ovh-Consumer", o.cfg.ConsumerKey)
-	req.Header.Set("X-Ovh-Timestamp", strconv.FormatInt(ts, 10))
-	req.Header.Set("X-Ovh-Signature", o.sign(method, full, string(body), ts))
-	resp, err := o.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, ovhMaxResponse))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		var e struct {
-			Message string `json:"message"`
-		}
-		_ = json.Unmarshal(raw, &e)
-		return fmt.Errorf("registrar: OVH %s %s: %d %s", method, path, resp.StatusCode, e.Message)
-	}
-	if out == nil || len(raw) == 0 {
-		return nil
-	}
-	return json.Unmarshal(raw, out)
+	return o.api.Call(ctx, method, path, in, out)
 }
 
 type ovhCart struct {
