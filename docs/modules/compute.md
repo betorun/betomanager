@@ -5,8 +5,10 @@ jamais côté client (ni dans l'API, ni dans la console, ni dans les messages).
 
 État : **lot 1** — fondations (offres, outbox, mode compute, client du
 fournisseur) ; **lot 2** — lecture chez le fournisseur, réconciliation,
-page « VPS » du back-office. Pas encore de commande ni d'action sur un VPS
-(lots 3+).
+page « VPS » du back-office ; **lot 3** — commande payée par le solde,
+création avec la clé SSH du client, remboursement en cas d'échec,
+renouvellement mensuel et suspension. Pas encore d'action du client sur un
+VPS ni de pages de la console (lot 4).
 
 ## Processus
 
@@ -35,6 +37,59 @@ Temporal, file « compute » ──▶ APP_MODE=compute : RequestWorkflow + acti
   n'ont pas les clés.
 - **Clôture** : l'activité `Finish` passe la demande à `done` / `failed` ;
   idempotente (une demande terminée ne change plus).
+
+## Commande (lot 3)
+
+`POST /organizations/:id/compute/vps` (`billing.payments.create`, sensible :
+double authentification récente) :
+
+1. contrôles, avant tout débit : projet de l'organisation, nom (étiquette
+   DNS, unique dans le projet), clé SSH (ed25519, ecdsa, RSA ≥ 2048 bits ;
+   une seule, commentaire retiré), offre vendable à cet emplacement avec ce
+   système, prix annoncé = prix du moment (`VPS_PRICE_CHANGED` sinon) ;
+2. **une transaction** : VPS `pending`, débit du premier mois sur le solde
+   payé (référence `compute:vps:<id>:<date>`, idempotente ; jamais les
+   crédits offerts ; postpayé : dans le plafond), demande `vm.create`
+   (outbox). Solde insuffisant : rien n'est créé (`INSUFFICIENT_FUNDS`).
+
+Workflow `vm.create` (mode compute) :
+
+```
+PlaceOrder (une seule tentative : jamais deux commandes payées)
+  panier (1 mois) → datacenter et système (valeurs proposées par le fournisseur)
+  → aperçu : prix TTC ≤ prix de l'offre, sinon rien n'est payé (price_changed)
+  → paiement par le moyen par défaut du compte
+OrderState toutes les minutes, 6 h au plus → identifiant du VPS (serviceName)
+Ready (existe, aucune opération en cours), 2 h au plus
+Rebuild : système de l'offre, clé du client, doNotSendPassword (aucun mot de passe par e-mail)
+Task jusqu'à « done », 1 h au plus → running, adresses relevées
+```
+
+Tout échec : mois **remboursé** (référence `…:refund`, une seule fois), VPS
+`failed` avec sa raison (`provider`, `price_changed`, `timeout`). Une
+réponse perdue au paiement peut laisser un VPS payé chez le fournisseur sans
+client : la réconciliation le montre en orphelin.
+
+`KUBEMANAGER_COMPUTE_ORDERING_ENABLED=true` (sur l'API) ouvre les commandes
+réelles ; sans lui, offres et prix seulement (`UNAVAILABLE`).
+
+## Renouvellement et suspension (lot 3)
+
+Le worker (toutes les 15 min) traite les VPS dont le mois payé est fini :
+
+- **payé** : un mois débité au prix de la grille du moment ; il commence à
+  la fin du précédent (`paid_until`) ;
+- **solde insuffisant** : VPS `suspended` (raison `unpaid`) et demande
+  `vm.stop` ; retenté à chaque passage ;
+- **payé après suspension** : le mois commence au paiement (les mois de
+  suspension ne sont pas facturés), demande `vm.start`, le VPS repart ;
+- un VPS suspendu par l'équipe (autre raison) n'est jamais relancé par un paiement.
+
+Un mois se termine le même jour du mois suivant, borné à son dernier jour
+(31 janvier → 28 février).
+
+Le fournisseur renouvelle de son côté chaque mois (paiement automatique du
+compte) : un VPS suspendu reste payé chez lui jusqu'à la résiliation (lot 7).
 
 ## Lecture chez le fournisseur (lot 2)
 
@@ -109,6 +164,9 @@ prix. Emplacements autorisés : `gra`, `rbx`, `sbg` ; images : `ubuntu-24.04`,
 | GET | `/organizations/:id/compute/offers` | `billing.accounts.get` |
 | GET | `/admin/compute/offers` | `platform.billingCatalogs.get` |
 | PUT | `/admin/compute/offers/:code` | `platform.billingCatalogs.update` |
+| GET | `/organizations/:id/compute/vps` | `billing.accounts.get` |
+| GET | `/organizations/:id/compute/vps/:vpsID` | `billing.accounts.get` |
+| POST | `/organizations/:id/compute/vps` | `billing.payments.create` |
 | GET | `/admin/compute/vps` | `platform.compute.get` |
 | POST | `/admin/compute/reconcile` | `platform.compute.manage` |
 | POST | `/admin/compute/ping` | `platform.compute.manage` |
@@ -133,6 +191,7 @@ toucher au fournisseur. Sert à vérifier un déploiement.
 |---|---|---|
 | `KUBEMANAGER_COMPUTE_ENABLED` | API, worker, compute | routes, relais |
 | `KUBEMANAGER_COMPUTE_TASK_QUEUE` | worker, compute | file Temporal (défaut `compute`) |
+| `KUBEMANAGER_COMPUTE_ORDERING_ENABLED` | API | commandes réelles ouvertes |
 | `KUBEMANAGER_COMPUTE_OVH_*` | **compute seulement** | clés limitées à `/vps/*`, `/order/*`, `/ip/*`, `/me` |
 
 Local : `make dev-compute` (service `kubemanager-compute`).

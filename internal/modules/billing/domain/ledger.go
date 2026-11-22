@@ -20,6 +20,7 @@ const (
 	AccountAdjustments = "platform:adjustments" // gestes de l'équipe
 	AccountVAT         = "platform:vat"         // TVA collectée (factures)
 	AccountDomains     = "platform:domains"     // ventes de noms de domaine
+	AccountCompute     = "platform:compute"     // ventes de VPS
 )
 
 // CashAccount : argent payé par le client (peut devenir négatif pendant la grâce).
@@ -30,14 +31,16 @@ func CreditAccount(org uuid.UUID) string { return "customer:" + org.String() + "
 
 // Natures de transaction.
 const (
-	TxTopup        = "topup"         // recharge reçue
-	TxUsage        = "usage"         // débit de l'usage
-	TxCreditGrant  = "credit_grant"  // crédit offert
-	TxCreditExpiry = "credit_expiry" // reste d'un crédit expiré
-	TxAdjustment   = "adjustment"    // geste de l'équipe (crédit ou débit d'argent)
-	TxVAT          = "vat"           // TVA d'une facture, sortie du revenu
-	TxDomain       = "domain"        // achat ou renouvellement d'un domaine
-	TxDomainRefund = "domain_refund" // remboursement d'un domaine non obtenu
+	TxTopup         = "topup"          // recharge reçue
+	TxUsage         = "usage"          // débit de l'usage
+	TxCreditGrant   = "credit_grant"   // crédit offert
+	TxCreditExpiry  = "credit_expiry"  // reste d'un crédit expiré
+	TxAdjustment    = "adjustment"     // geste de l'équipe (crédit ou débit d'argent)
+	TxVAT           = "vat"            // TVA d'une facture, sortie du revenu
+	TxDomain        = "domain"         // achat ou renouvellement d'un domaine
+	TxDomainRefund  = "domain_refund"  // remboursement d'un domaine non obtenu
+	TxCompute       = "compute"        // mois d'un VPS (commande ou renouvellement)
+	TxComputeRefund = "compute_refund" // remboursement d'un VPS non livré
 )
 
 // ErrInsufficientFunds : solde payé insuffisant pour un achat.

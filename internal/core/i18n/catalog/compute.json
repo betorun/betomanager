@@ -30,5 +30,45 @@
  {
   "fr": "Aucun fournisseur de serveurs n'est configuré.",
   "en": "compute: no provider configured"
+ },
+ {
+  "fr": "VPS introuvable",
+  "en": "VPS not found"
+ },
+ {
+  "fr": "Un VPS porte déjà ce nom dans ce projet",
+  "en": "a VPS with this name already exists in this project"
+ },
+ {
+  "fr": "Ce système n'est pas disponible pour ce serveur",
+  "en": "compute: image not available for this VPS"
+ },
+ {
+  "fr": "Le fournisseur facture plus que le prix prévu",
+  "en": "compute: provider price above the expected price"
+ },
+ {
+  "fr": "Renouvellement non payé",
+  "en": "compute: renewal unpaid"
+ },
+ {
+  "fr": "Clé publique SSH invalide : ed25519, ecdsa ou RSA (2048 bits ou plus)",
+  "en": "invalid SSH public key: ed25519, ecdsa or RSA (2048 bits or more)"
+ },
+ {
+  "fr": "Nom de VPS invalide : 1 à 63 lettres minuscules, chiffres ou tirets",
+  "en": "invalid VPS name: 1 to 63 lowercase letters, digits or hyphens"
+ },
+ {
+  "fr": "Projet introuvable dans cette organisation",
+  "en": "project not found in this organization"
+ },
+ {
+  "fr": "Le prix du VPS a changé : vérifiez le nouveau prix",
+  "en": "the VPS price has changed: check the new price"
+ },
+ {
+  "fr": "Cette offre de VPS n'est pas vendue avec cet emplacement et ce système",
+  "en": "this VPS offer is not sold with this location and system"
  }
 ]

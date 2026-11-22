@@ -23,7 +23,7 @@ func TestLiveList(t *testing.T) {
 		ApplicationKey:    os.Getenv("KUBEMANAGER_COMPUTE_OVH_APPLICATION_KEY"),
 		ApplicationSecret: os.Getenv("KUBEMANAGER_COMPUTE_OVH_APPLICATION_SECRET"),
 		ConsumerKey:       os.Getenv("KUBEMANAGER_COMPUTE_OVH_CONSUMER_KEY"),
-	})
+	}, os.Getenv("KUBEMANAGER_COMPUTE_OVH_SUBSIDIARY"))
 	if err != nil {
 		t.Fatal(err)
 	}

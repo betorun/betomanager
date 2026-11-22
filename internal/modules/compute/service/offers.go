@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,6 +34,9 @@ type OfferView struct {
 type Service struct {
 	Store    Store
 	Catalogs Catalogs
+	// Wallet nil ou Ordering faux : commandes fermées (offres et prix seulement).
+	Wallet   Wallet
+	Ordering bool
 	Now      func() time.Time
 }
 
@@ -61,9 +65,12 @@ func (s *Service) Offers(ctx context.Context, org uuid.UUID) ([]OfferView, error
 		}
 		v := OfferView{Code: o.Code, Name: o.Name, Monthly: price, Currency: currency, Specs: o.Specs,
 			Locations: o.LocationList(), Images: []string{}}
-		for img := range o.ImageMap() {
-			v.Images = append(v.Images, img)
+		for img, name := range o.ImageMap() {
+			if name != "" {
+				v.Images = append(v.Images, img)
+			}
 		}
+		sort.Strings(v.Images)
 		out = append(out, v)
 	}
 	return out, nil

@@ -12,6 +12,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
+	"github.com/thekrauss/kubemanager/internal/modules/compute/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/compute/service"
 )
 
@@ -33,6 +34,9 @@ const (
 const (
 	KindPing      = "compute.ping"
 	KindReconcile = "compute.reconcile"
+	KindCreate    = domain.KindCreate
+	KindStart     = domain.KindStart
+	KindStop      = domain.KindStop
 )
 
 // RequestWorkflow : une demande de l'outbox. Chaque étape est une activité ;
@@ -47,6 +51,10 @@ func RequestWorkflow(ctx workflow.Context, in service.RequestInput) error {
 	switch in.Kind {
 	case KindPing:
 		runErr = workflow.ExecuteActivity(ctx, a.Ping, in.RequestID).Get(ctx, nil)
+	case KindCreate:
+		runErr = createVM(ctx, in.RequestID)
+	case KindStart, KindStop:
+		runErr = powerVM(ctx, in.RequestID, in.Kind == KindStart)
 	case KindReconcile:
 		runErr = workflow.ExecuteActivity(reconcileOptions(ctx), a.Reconcile).Get(ctx, nil)
 	default:
@@ -80,6 +88,8 @@ func ReconcileWorkflow(ctx workflow.Context) error {
 type Activities struct {
 	Store    service.Store
 	Provider service.ComputeProvider // nil : aucun fournisseur configuré
+	Orderer  service.Orderer         // nil : pas de commande possible
+	Wallet   service.Wallet          // remboursements
 	Now      func() time.Time
 }
 

@@ -3,8 +3,11 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -169,4 +172,73 @@ func (s *GormStore) OrganizationNames(ctx context.Context, ids []uuid.UUID) (map
 		out[r.ID] = r.DisplayName
 	}
 	return out, nil
+}
+
+// ── VPS des clients ─────────────────────────────────────────────────────
+
+func (s *GormStore) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return s.DB.WithContext(ctx).Transaction(fn)
+}
+
+// CreateVPSTx : nom déjà pris dans le projet → domain.ErrNameTaken.
+func (s *GormStore) CreateVPSTx(tx *gorm.DB, v *domain.VPS) error {
+	err := tx.Create(v).Error
+	if errors.Is(err, gorm.ErrDuplicatedKey) || isUniqueViolation(err, "uq_compute_vps_name") {
+		return domain.ErrNameTaken
+	}
+	return err
+}
+
+func (s *GormStore) UpdateVPSTx(tx *gorm.DB, id uuid.UUID, fields map[string]any) error {
+	f := make(map[string]any, len(fields)+2)
+	for k, v := range fields {
+		f[k] = v
+	}
+	f["version"] = gorm.Expr("version + 1")
+	if _, ok := f["updated_at"]; !ok {
+		f["updated_at"] = time.Now().UTC()
+	}
+	return tx.Model(&domain.VPS{}).Where("id = ?", id).Updates(f).Error
+}
+
+func (s *GormStore) UpdateVPS(ctx context.Context, id uuid.UUID, fields map[string]any) error {
+	return s.UpdateVPSTx(s.DB.WithContext(ctx), id, fields)
+}
+
+func (s *GormStore) VPS(ctx context.Context, id uuid.UUID) (*domain.VPS, error) {
+	var v domain.VPS
+	err := s.DB.WithContext(ctx).Where("id = ?", id).First(&v).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, domain.ErrVPSNotFound
+	}
+	return &v, err
+}
+
+func (s *GormStore) OrganizationVPS(ctx context.Context, org uuid.UUID) ([]domain.VPS, error) {
+	out := []domain.VPS{}
+	return out, s.DB.WithContext(ctx).Where("organization_id = ? AND state <> ?", org, domain.StateDeleted).
+		Order("created_at DESC").Find(&out).Error
+}
+
+func (s *GormStore) DueVPS(ctx context.Context, now time.Time, limit int) ([]domain.VPS, error) {
+	out := []domain.VPS{}
+	return out, s.DB.WithContext(ctx).
+		Where("state IN ? AND paid_until IS NOT NULL AND paid_until <= ?",
+			[]string{domain.StateRunning, domain.StateStopped, domain.StateSuspended}, now).
+		Order("paid_until").Limit(limit).Find(&out).Error
+}
+
+func (s *GormStore) ProjectOrganization(ctx context.Context, project uuid.UUID) (uuid.UUID, error) {
+	var org uuid.UUID
+	err := s.DB.WithContext(ctx).Raw(`SELECT organization_id FROM projects WHERE id = ?`, project).Row().Scan(&org)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, domain.ErrProjectNotInOrganization
+	}
+	return org, err
+}
+
+// isUniqueViolation : code 23505 sur cette contrainte.
+func isUniqueViolation(err error, constraint string) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && pg.Code == "23505" && (constraint == "" || pg.ConstraintName == constraint)
 }

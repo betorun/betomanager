@@ -3,7 +3,8 @@
 // clés. Aucun terme OVH ne sort vers un client : les états sont traduits en
 // domain.State*, les termes bruts ne servent qu'au back-office.
 //
-// Lot 2 : lecture (liste, VPS, adresses, opérations). Les actions arrivent au lot 4.
+// Lecture (liste, VPS, adresses, opérations), commande (order.go), démarrage,
+// arrêt, redémarrage, réinstallation avec la clé SSH du client.
 package ovhvps
 
 import (
@@ -27,18 +28,24 @@ var ErrNotSupported = errors.New("compute: action not supported yet")
 // readConcurrency : lectures en parallèle pendant une liste.
 const readConcurrency = 4
 
-// Provider : VPS d'un compte OVH.
-type Provider struct{ api *ovh.Client }
+// Provider : VPS d'un compte OVH. Subsidiary : filiale des commandes (FR).
+type Provider struct {
+	api        *ovh.Client
+	subsidiary string
+}
 
 var _ service.ComputeProvider = (*Provider)(nil)
 
 // New : erreur si un identifiant manque.
-func New(c ovh.Credentials) (*Provider, error) {
+func New(c ovh.Credentials, subsidiary string) (*Provider, error) {
 	api, err := ovh.New(c)
 	if err != nil {
 		return nil, err
 	}
-	return &Provider{api: api}, nil
+	if subsidiary == "" {
+		subsidiary = "FR"
+	}
+	return &Provider{api: api, subsidiary: subsidiary}, nil
 }
 
 // API : client signé (tests).
@@ -205,11 +212,65 @@ func splitIPs(ips []string) (v4, v6 string) {
 	return v4, v6
 }
 
-// Actions : lot 4.
-func (p *Provider) Start(context.Context, string) error  { return ErrNotSupported }
-func (p *Provider) Stop(context.Context, string) error   { return ErrNotSupported }
-func (p *Provider) Reboot(context.Context, string) error { return ErrNotSupported }
-func (p *Provider) Rebuild(context.Context, string, string, string) error {
-	return ErrNotSupported
+// ── Actions ──────────────────────────────────────────────────────────────
+
+type ovhTask struct {
+	ID int64 `json:"id"`
 }
+
+func (p *Provider) action(ctx context.Context, sn, verb string, body any) (string, error) {
+	var t ovhTask
+	if err := p.api.Call(ctx, http.MethodPost, vpsPath(sn, "/", verb), body, &t); err != nil {
+		return "", err
+	}
+	return strconv.FormatInt(t.ID, 10), nil
+}
+
+func (p *Provider) Start(ctx context.Context, sn string) (string, error) {
+	return p.action(ctx, sn, "start", nil)
+}
+func (p *Provider) Stop(ctx context.Context, sn string) (string, error) {
+	return p.action(ctx, sn, "stop", nil)
+}
+func (p *Provider) Reboot(ctx context.Context, sn string) (string, error) {
+	return p.action(ctx, sn, "reboot", nil)
+}
+
+// ErrImageNotFound : le système demandé n'est pas proposé pour ce VPS.
+var ErrImageNotFound = errors.New("compute: image not available for this VPS")
+
+// Rebuild : réinstallation avec la clé du client, sans mot de passe envoyé
+// par e-mail (doNotSendPassword). image : nom affiché chez le fournisseur
+// (« Ubuntu 24.04 ») ; son identifiant est cherché parmi les images du VPS.
+func (p *Provider) Rebuild(ctx context.Context, sn, image, sshPublicKey string) (string, error) {
+	id, err := p.imageID(ctx, sn, image)
+	if err != nil {
+		return "", err
+	}
+	return p.action(ctx, sn, "rebuild", map[string]any{
+		"imageId": id, "publicSshKey": sshPublicKey, "doNotSendPassword": true,
+	})
+}
+
+func (p *Provider) imageID(ctx context.Context, sn, name string) (string, error) {
+	var ids []string
+	if err := p.api.Call(ctx, http.MethodGet, vpsPath(sn, "/images/available"), nil, &ids); err != nil {
+		return "", err
+	}
+	for _, id := range ids {
+		var img struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := p.api.Call(ctx, http.MethodGet, vpsPath(sn, "/images/available/", url.PathEscape(id)), nil, &img); err != nil {
+			return "", err
+		}
+		if strings.EqualFold(strings.TrimSpace(img.Name), strings.TrimSpace(name)) {
+			return img.ID, nil
+		}
+	}
+	return "", fmt.Errorf("%w: %q", ErrImageNotFound, name)
+}
+
+// ConsoleURL : lot 4.
 func (p *Provider) ConsoleURL(context.Context, string) (string, error) { return "", ErrNotSupported }
