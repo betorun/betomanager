@@ -445,6 +445,11 @@ type MailConfig struct {
 	FromEmail    string `mapstructure:"from_email"`
 	FromName     string `mapstructure:"from_name"`
 	Enabled      bool   `mapstructure:"enabled"`
+	// SendGridWebhookPublicKey : clé de vérification du webhook d'événements
+	// SendGrid (base64, tableau de bord SendGrid) ; vide : webhook désactivé.
+	SendGridWebhookPublicKey string `mapstructure:"sendgrid_webhook_public_key"`
+	// QueueConcurrency : envois menés en parallèle par le worker (défaut 10).
+	QueueConcurrency int `mapstructure:"queue_concurrency"`
 }
 
 type ServerConfig struct {

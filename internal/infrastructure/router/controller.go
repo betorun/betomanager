@@ -18,6 +18,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identity "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
+	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
 	"github.com/thekrauss/kubemanager/internal/modules/projects"
 	projectRepos "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	projectSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
@@ -80,6 +81,8 @@ type ControllerContainer struct {
 	Billing *billing.Controller
 	// DomainSales : revente de noms de domaine.
 	DomainSales *domainsales.Controller
+	// Mail : webhook SendGrid et adresses mises de côté.
+	Mail *mailmod.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -102,4 +105,5 @@ func AddAllRoutes(a *App) {
 	addAlertPreferenceRoutes(a)
 	addBillingRoutes(a)
 	addDomainSalesRoutes(a)
+	addMailRoutes(a)
 }

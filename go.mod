@@ -14,6 +14,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/uuid v1.6.0
+	github.com/hibiken/asynq v0.26.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/lib/pq v1.12.3
 	github.com/loopfz/gadgeto v0.11.6
@@ -174,6 +175,7 @@ require (
 	github.com/quic-go/quic-go v0.64.1 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.23.0 // indirect
 	github.com/robfig/cron v1.2.0 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/rubenv/sql-migrate v1.8.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect

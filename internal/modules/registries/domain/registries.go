@@ -1,5 +1,5 @@
 // Package domain : accès d'un projet à des registres d'images externes
-// (docs/adr/0011-registres-externes.md).
+// (docs/adr/0008-registres-externes.md).
 package domain
 
 import (
@@ -25,7 +25,7 @@ const (
 	maxPassword = 4096
 )
 
-// Credential : ligne chiffrée.
+// Credential : ligne chiffrée.e test qui la génère monte sa propre applicatio
 type Credential struct {
 	ID             uuid.UUID `gorm:"type:uuid;primaryKey"`
 	ProjectID      uuid.UUID `gorm:"type:uuid;not null"`

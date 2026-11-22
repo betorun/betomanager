@@ -2,6 +2,7 @@ package router
 
 import (
 	"errors"
+	mailSvc "github.com/thekrauss/kubemanager/internal/modules/mail/service"
 	"net/http"
 
 	"github.com/thekrauss/kubemanager/internal/auth/sso"
@@ -218,6 +219,8 @@ var sentinelErrors = []sentinelMapping{
 	{iam.ErrDenyPolicyEtag, http.StatusConflict, "ABORTED", false},
 	{iam.ErrDenyPolicyLockout, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{iam.ErrInvalidDenyPermission, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
+	{mailSvc.ErrNotSuppressed, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{mailSvc.ErrNoSuppressions, http.StatusServiceUnavailable, "UNAVAILABLE", false},
 	{iam.ErrMFANotConfigured, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{iam.ErrInvalidDomain, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{sso.ErrNoSSO, http.StatusNotFound, "SSO_NOT_CONFIGURED", false},

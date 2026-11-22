@@ -194,6 +194,7 @@ func (a *App) initDomainLayers() error {
 		Registries:  registriesController,
 		Billing:     a.newBillingController(),
 		DomainSales: a.newDomainSalesController(),
+		Mail:        a.newMailController(),
 		RBAC:        rbacController,
 		APIKey:      apiKeyController,
 		Project:     projectController,
