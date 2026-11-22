@@ -5,6 +5,8 @@ import (
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
 
 	"github.com/thekrauss/kubemanager/internal/middleware"
+	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/auth/service"
 )
 
@@ -16,12 +18,36 @@ type IAPIKeyController interface {
 	RevokeKey(c *gin.Context, in *RevokeKeyInput) error
 }
 
+type IRBACController interface {
+	ListAllRoles(c *gin.Context) ([]domain.RoleDTO, error)
+	AssignRole(c *gin.Context, in *domain.AssignRoleRequest) error
+	ListProjectMembers(c *gin.Context, in *ListMembersInput) ([]domain.ProjectMemberDTO, error)
+	RevokeProjectAccess(c *gin.Context, in *RevokeAccessInput) error
+}
+
 type APIKeyController struct {
 	Service *service.APIKeyService
 }
 
+type RBACController struct {
+	RBACService *service.RBACService
+}
+
 func NewAPIKeyController(s *service.APIKeyService) *APIKeyController {
 	return &APIKeyController{Service: s}
+}
+
+func NewRBACController(s *service.RBACService) *RBACController {
+	return &RBACController{RBACService: s}
+}
+
+type ListMembersInput struct {
+	ProjectID string `path:"projectID" validate:"required,uuid"`
+}
+
+type RevokeAccessInput struct {
+	ProjectID string `path:"projectID" validate:"required,uuid"`
+	UserID    string `path:"userID" validate:"required,uuid"`
 }
 
 func (ctrl *APIKeyController) ListKeys(c *gin.Context) ([]service.APIKeyDTO, error) {
@@ -71,4 +97,28 @@ func (ctrl *APIKeyController) ListAudit(c *gin.Context) ([]service.APIKeyAuditEn
 		return nil, betoerrors.New(betoerrors.CodeUnauthorized, "unauthorized")
 	}
 	return ctrl.Service.ListAudit(c.Request.Context(), userID)
+}
+
+func (ctrl *RBACController) ListAllRoles(c *gin.Context) ([]domain.RoleDTO, error) {
+	return ctrl.RBACService.ListAllRoles(c.Request.Context())
+}
+
+func (ctrl *RBACController) AssignRole(c *gin.Context, in *domain.AssignRoleRequest) error {
+	caller, ok := security.PrincipalFromContext(c)
+	if !ok {
+		return betoerrors.New(betoerrors.CodeUnauthorized, "authentication required")
+	}
+	return ctrl.RBACService.AssignProjectRole(c.Request.Context(), caller, in)
+}
+
+func (ctrl *RBACController) ListProjectMembers(c *gin.Context, in *ListMembersInput) ([]domain.ProjectMemberDTO, error) {
+	return ctrl.RBACService.ListProjectMembers(c.Request.Context(), in.ProjectID)
+}
+
+func (ctrl *RBACController) RevokeProjectAccess(c *gin.Context, in *RevokeAccessInput) error {
+	caller, ok := security.PrincipalFromContext(c)
+	if !ok {
+		return betoerrors.New(betoerrors.CodeUnauthorized, "authentication required")
+	}
+	return ctrl.RBACService.RevokeProjectAccess(c.Request.Context(), caller, in.ProjectID, in.UserID)
 }

@@ -1,27 +1,29 @@
-// static-edge : sert les sites statiques depuis l'object store.
-//
-// Binaire séparé de la plateforme (cmd/gateway) : il est exposé à Internet et
-// ne doit embarquer ni identifiants admin, ni accès en écriture. Il lit :
-//   - nom d'hôte → site + déploiement actif : en production, par l'API
-//     (EDGE_API_URL, clé du compte système du cluster) ; en développement,
-//     Postgres en lecture seule (EDGE_DATABASE_URL) ;
-//   - l'object store en lecture seule (fichiers des déploiements).
-//
-// Production : dans le cluster, derrière Traefik (certificats cert-manager).
-// Développement : derrière Caddy (TLS à la demande validé par /check).
-//
-// Configuration (variables d'environnement) :
-//
-//	EDGE_HTTP_ADDR       port public            (défaut :8090)
-//	EDGE_INTERNAL_ADDR   /check + /healthz      (défaut :8091)
-//	EDGE_API_URL         …/kmanager/v1 : mode cluster, avec EDGE_KEY_FILE
-//	                     (fichier de clé du watcher) ; EDGE_CLUSTER_ID lu
-//	                     dans ce fichier par défaut
-//	EDGE_DATABASE_URL    DSN Postgres lecture seule (sans EDGE_API_URL)
-//	EDGE_BASE_DOMAIN     domaine des sous-domaines de sites (requis)
-//	EDGE_CACHE_TTL       cache nom d'hôte → site (défaut 10s)
-//	EDGE_S3_ENDPOINT, EDGE_S3_ACCESS_KEY, EDGE_S3_SECRET_KEY, EDGE_S3_BUCKET (requis)
-//	EDGE_S3_REGION, EDGE_S3_USE_SSL
+/*
+	 static-edge : sert les sites statiques depuis l'object store.
+
+	 Binaire séparé de la plateforme (cmd/gateway) : il est exposé à Internet et
+	 ne doit embarquer ni identifiants admin, ni accès en écriture. Il lit :
+	   - nom d'hôte → site + déploiement actif : en production, par l'API
+	     (EDGE_API_URL, clé du compte système du cluster) ; en développement,
+	     Postgres en lecture seule (EDGE_DATABASE_URL) ;
+	   - l'object store en lecture seule (fichiers des déploiements).
+
+	 Production : dans le cluster, derrière Traefik (certificats cert-manager).
+	 Développement : derrière Caddy (TLS à la demande validé par /check).
+
+	 Configuration (variables d'environnement) :
+
+		EDGE_HTTP_ADDR       port public            (défaut :8090)
+		EDGE_INTERNAL_ADDR   /check + /healthz      (défaut :8091)
+		EDGE_API_URL         …/kmanager/v1 : mode cluster, avec EDGE_KEY_FILE
+		                     (fichier de clé du watcher) ; EDGE_CLUSTER_ID lu
+		                     dans ce fichier par défaut
+		EDGE_DATABASE_URL    DSN Postgres lecture seule (sans EDGE_API_URL)
+		EDGE_BASE_DOMAIN     domaine des sous-domaines de sites (requis)
+		EDGE_CACHE_TTL       cache nom d'hôte → site (défaut 10s)
+		EDGE_S3_ENDPOINT, EDGE_S3_ACCESS_KEY, EDGE_S3_SECRET_KEY, EDGE_S3_BUCKET (requis)
+		EDGE_S3_REGION, EDGE_S3_USE_SSL
+*/
 package main
 
 import (

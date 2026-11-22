@@ -1,6 +1,8 @@
-// betorun : ligne de commande de la plateforme betorun (binaire distribué aux
-// utilisateurs). Le code est dans internal/cli ; le binaire du serveur
-// l'expose aussi via « kubemanager betocli ».
+/*
+betorun : ligne de commande de la plateforme betorun (binaire distribué aux
+utilisateurs). Le code est dans internal/cli ; le binaire du serveur
+l'expose aussi via  betocli.
+*/
 package main
 
 import (

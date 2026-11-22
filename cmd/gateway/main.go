@@ -14,7 +14,6 @@ import (
 )
 
 func main() {
-	// Sous-commandes qui ne démarrent pas le serveur (ni config, ni base).
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "betocli":
