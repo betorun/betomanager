@@ -54,7 +54,12 @@ type VPS struct {
 	// ProviderOrderID : commande chez le fournisseur (jamais passée deux fois).
 	ProviderOrderID string `gorm:"not null;default:''" json:"-"`
 	// FailureCode : raison d'un échec ou d'une suspension (domain.Failure*).
-	FailureCode string    `gorm:"not null;default:''" json:"failure_code,omitempty"`
+	FailureCode string `gorm:"not null;default:''" json:"failure_code"`
+	// Operation : action en cours demandée par le client (domain.Op*), vide sinon.
+	Operation string `gorm:"not null;default:''" json:"operation"`
+	// ResumeState : état à retrouver quand la suspension de l'organisation
+	// est levée (running ou stopped).
+	ResumeState string    `gorm:"not null;default:''" json:"-"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
@@ -206,6 +211,15 @@ const (
 	FailurePriceChanged = "price_changed" // le fournisseur facture plus que prévu : rien commandé
 	FailureTimeout      = "timeout"       // livraison trop longue
 	FailureUnpaid       = "unpaid"        // renouvellement non payé (suspendu)
+	FailureOrgSuspended = "org_suspended" // organisation suspendue (solde épuisé)
+)
+
+// Opérations en cours (Operation), une à la fois par VPS.
+const (
+	OpStarting     = "starting"
+	OpStopping     = "stopping"
+	OpRebooting    = "rebooting"
+	OpReinstalling = "reinstalling"
 )
 
 //  Erreurs
@@ -221,6 +235,9 @@ var (
 	ErrInvalidSSHKey            = errors.New("invalid SSH public key: ed25519, ecdsa or RSA (2048 bits or more)")
 	ErrVPSNotFound              = errors.New("VPS not found")
 	ErrProjectNotInOrganization = errors.New("project not found in this organization")
+	ErrBusy                     = errors.New("an operation is already running on this VPS: wait for it to finish")
+	ErrNotReady                 = errors.New("this VPS is not ready for this action")
+	ErrSuspended                = errors.New("this VPS is suspended: top up the balance to restart it")
 )
 
 // ValidName : étiquette DNS (le nom devient le nom d'hôte).
@@ -309,10 +326,19 @@ func (ReconcileRun) TableName() string { return "compute_reconcile_runs" }
 
 // Opérations sur un VPS, exécutées par le mode compute.
 const (
-	KindCreate = "vm.create"
-	KindStart  = "vm.start"
-	KindStop   = "vm.stop"
+	KindCreate    = "vm.create"
+	KindStart     = "vm.start"
+	KindStop      = "vm.stop"
+	KindReboot    = "vm.reboot"
+	KindReinstall = "vm.reinstall"
 )
+
+// ReinstallPayload : système et clé de la réinstallation demandée par le client.
+type ReinstallPayload struct {
+	Image        string `json:"image"`
+	SSHPublicKey string `json:"ssh_public_key"`
+	Fingerprint  string `json:"fingerprint"`
+}
 
 // CreatePayload : demande de création. La clé publique n'est pas un secret
 // (elle passe dans l'historique Temporal) ; Period et AmountMilli servent au

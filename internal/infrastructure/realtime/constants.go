@@ -25,6 +25,7 @@ const (
 	projectChannelFormat    = "project:%s:events"
 	workloadChannelFormat   = "project:%s:workload:%s"
 	deploymentChannelFormat = "project:%s:workload:%s:deploy"
+	vpsChannelFormat        = "project:%s:vps:%s"
 )
 
 // En-tête des jetons de connexion signés (HMAC).

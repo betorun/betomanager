@@ -134,6 +134,7 @@ func TestE2E_ComputeOrdersAndRenewals(t *testing.T) {
 
 	// Livré et en marche (le workflow le fait en vrai).
 	require.NoError(t, store.UpdateVPS(ctx, v.ID, map[string]any{"state": domain.StateRunning, "provider_id": "vps-e2e-" + v.ID.String()[:8]}))
+	require.NoError(t, store.FinishRequest(ctx, creates[0].ID, true, "", now))
 
 	// Fin du mois : renouvelé (le mois suivant commence le 28 février).
 	now = time.Date(2030, 2, 28, 11, 0, 0, 0, time.UTC)
@@ -164,6 +165,7 @@ func TestE2E_ComputeOrdersAndRenewals(t *testing.T) {
 	_, suspended, _ = s.RenewDue(ctx)
 	assert.Equal(t, 0, suspended, "déjà suspendu : pas de second arrêt")
 	assert.Len(t, requests(domain.KindStop), 1)
+	require.NoError(t, store.FinishRequest(ctx, requests(domain.KindStop)[0].ID, true, "", now)) // arrêté
 
 	// Recharge deux mois plus tard : un seul mois débité (la suspension n'est
 	// pas facturée), qui commence au paiement ; relance demandée.

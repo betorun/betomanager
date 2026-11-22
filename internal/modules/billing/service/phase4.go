@@ -23,6 +23,13 @@ type Containers interface {
 	Start(ctx context.Context, id uuid.UUID) error
 }
 
+// VPSSuspender : VPS de l'organisation (module compute), arrêtés pendant la
+// suspension et relancés à sa levée.
+type VPSSuspender interface {
+	SuspendOrganization(ctx context.Context, org uuid.UUID) error
+	ResumeOrganization(ctx context.Context, org uuid.UUID) error
+}
+
 // BudgetAlerter : alerte e-mail aux owners d'un projet (80 %, 100 %).
 type BudgetAlerter interface {
 	BudgetAlert(ctx context.Context, project uuid.UUID, level int, spent, limit int64, currency string, stopped bool)
@@ -103,6 +110,14 @@ func (s *Service) suspend(ctx context.Context, org uuid.UUID) error {
 		return err
 	}
 	stopped, err := s.stopAll(ctx, org, nil, domain.StopBalance)
+	if s.VPS != nil {
+		if verr := s.VPS.SuspendOrganization(ctx, org); verr != nil {
+			s.log().Warnw("billing: VPS not all suspended", "organization", org, "error", verr)
+			if err == nil {
+				err = verr
+			}
+		}
+	}
 	s.log().Warnw("billing: organization suspended (balance used up, grace over)", "organization", org, "stopped", stopped)
 	if s.Alerts != nil {
 		w, werr := s.Wallet(ctx, org)
@@ -152,6 +167,11 @@ func (s *Service) resume(ctx context.Context, org uuid.UUID) error {
 		return err
 	}
 	s.startAll(ctx, ids)
+	if s.VPS != nil {
+		if err := s.VPS.ResumeOrganization(ctx, org); err != nil {
+			s.log().Warnw("billing: VPS not all resumed", "organization", org, "error", err)
+		}
+	}
 	s.log().Infow("billing: organization resumed", "organization", org, "restarted", len(ids))
 	return nil
 }

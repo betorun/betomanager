@@ -41,6 +41,9 @@ type VMSpec struct {
 	SSHPublicKey string
 	Period       string
 	AmountMilli  int64
+	// Réinstallation : système demandé et empreinte de la nouvelle clé.
+	Image       string
+	Fingerprint string
 }
 
 func quick(ctx workflow.Context) workflow.Context {
@@ -204,6 +207,55 @@ func powerVM(ctx workflow.Context, requestID string, start bool) error {
 	return workflow.ExecuteActivity(quick(ctx), a.MarkObserved, spec.VPSID, state).Get(ctx, nil)
 }
 
+// rebootVM : redémarrage (le VPS reste en marche).
+func rebootVM(ctx workflow.Context, requestID string) error {
+	var a *Activities
+	var spec VMSpec
+	if err := workflow.ExecuteActivity(quick(ctx), a.LoadVM, requestID).Get(ctx, &spec); err != nil {
+		return err
+	}
+	if spec.ProviderID == "" {
+		return nil
+	}
+	if err := waitReady(ctx, spec.ProviderID); err != nil {
+		return err
+	}
+	var task string
+	if err := workflow.ExecuteActivity(quick(ctx), a.Reboot, spec.ProviderID).Get(ctx, &task); err != nil {
+		return err
+	}
+	if err := waitTask(ctx, spec.ProviderID, task); err != nil {
+		return err
+	}
+	return workflow.ExecuteActivity(quick(ctx), a.MarkObserved, spec.VPSID, domain.StateRunning).Get(ctx, nil)
+}
+
+// reinstallVM : nouveau système avec la clé donnée ; le disque est effacé.
+func reinstallVM(ctx workflow.Context, requestID string) error {
+	var a *Activities
+	var spec VMSpec
+	if err := workflow.ExecuteActivity(quick(ctx), a.LoadVM, requestID).Get(ctx, &spec); err != nil {
+		return err
+	}
+	if spec.ProviderID == "" {
+		return nil
+	}
+	if err := waitReady(ctx, spec.ProviderID); err != nil {
+		return err
+	}
+	var task string
+	if err := workflow.ExecuteActivity(quick(ctx), a.Reinstall, spec.VPSID, spec.ProviderID, spec.Image, spec.SSHPublicKey).Get(ctx, &task); err != nil {
+		return err
+	}
+	if err := waitTask(ctx, spec.ProviderID, task); err != nil {
+		return err
+	}
+	if err := workflow.ExecuteActivity(quick(ctx), a.SetImage, spec.VPSID, spec.Image, spec.Fingerprint).Get(ctx, nil); err != nil {
+		return err
+	}
+	return workflow.ExecuteActivity(quick(ctx), a.MarkObserved, spec.VPSID, domain.StateRunning).Get(ctx, nil)
+}
+
 // ── Activités ───────────────────────────────────────────────────────────
 
 func nonRetryable(msg, typ string, err error) error {
@@ -245,6 +297,13 @@ func (a *Activities) LoadVM(ctx context.Context, requestID string) (*VMSpec, err
 		}
 		spec.SSHPublicKey, spec.Period, spec.AmountMilli = p.SSHPublicKey, p.Period, p.AmountMilli
 	}
+	if r.Kind == domain.KindReinstall {
+		var p domain.ReinstallPayload
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			return nil, nonRetryable("invalid reinstall payload", "InvalidRequest", err)
+		}
+		spec.Image, spec.SSHPublicKey, spec.Fingerprint = p.Image, p.SSHPublicKey, p.Fingerprint
+	}
 	return spec, nil
 }
 
@@ -276,6 +335,7 @@ func (a *Activities) PlaceOrder(ctx context.Context, vpsID string) (string, erro
 	if err := a.Store.UpdateVPS(ctx, v.ID, map[string]any{"state": domain.StateCreating, "updated_at": a.now()}); err != nil {
 		return "", err
 	}
+	service.Notify(ctx, a.Store, a.Events, v.ID)
 	orderID, err := a.Orderer.Order(ctx, service.OrderSpec{Reference: v.ID.String(), PlanCode: o.ProviderPlanCode,
 		Location: v.Location, Image: o.ImageMap()[v.Image], MaxPriceCents: o.ProviderPriceCents})
 	if err != nil {
@@ -310,7 +370,11 @@ func (a *Activities) AttachProvider(ctx context.Context, vpsID, providerID strin
 	if err != nil {
 		return err
 	}
-	return a.Store.UpdateVPS(ctx, v.ID, map[string]any{"provider_id": providerID, "state": domain.StateCreating, "updated_at": a.now()})
+	if err := a.Store.UpdateVPS(ctx, v.ID, map[string]any{"provider_id": providerID, "state": domain.StateCreating, "updated_at": a.now()}); err != nil {
+		return err
+	}
+	service.Notify(ctx, a.Store, a.Events, v.ID)
+	return nil
 }
 
 // Ready : le VPS existe chez le fournisseur et n'a pas d'opération en cours.
@@ -324,6 +388,53 @@ func (a *Activities) Ready(ctx context.Context, providerID string) (bool, error)
 		return false, err
 	}
 	return vm != nil && !vm.Busy, nil
+}
+
+// Reboot : redémarrage chez le fournisseur.
+func (a *Activities) Reboot(ctx context.Context, providerID string) (string, error) {
+	p, err := a.provider()
+	if err != nil {
+		return "", err
+	}
+	return p.Reboot(ctx, providerID)
+}
+
+// Reinstall : système choisi par le client (image de la plateforme), sa clé.
+func (a *Activities) Reinstall(ctx context.Context, vpsID, providerID, image, sshKey string) (string, error) {
+	p, err := a.provider()
+	if err != nil {
+		return "", err
+	}
+	v, err := a.vps(ctx, vpsID)
+	if err != nil {
+		return "", err
+	}
+	o, err := a.Store.Offer(ctx, v.Offer)
+	if err != nil {
+		return "", err
+	}
+	name := o.ImageMap()[image]
+	if name == "" {
+		return "", nonRetryable("image not sold with this offer", errTypeProvider, nil)
+	}
+	task, err := p.Rebuild(ctx, providerID, name, sshKey)
+	if err != nil {
+		return "", nonRetryable(err.Error(), errTypeProvider, err)
+	}
+	return task, nil
+}
+
+// SetImage : système et clé installés.
+func (a *Activities) SetImage(ctx context.Context, vpsID, image, fingerprint string) error {
+	v, err := a.vps(ctx, vpsID)
+	if err != nil {
+		return err
+	}
+	if err := a.Store.UpdateVPS(ctx, v.ID, map[string]any{"image": image, "ssh_key_fingerprint": fingerprint, "updated_at": a.now()}); err != nil {
+		return err
+	}
+	service.Notify(ctx, a.Store, a.Events, v.ID)
+	return nil
 }
 
 // Rebuild : installation du système avec la clé du client.
@@ -411,7 +522,11 @@ func (a *Activities) MarkObserved(ctx context.Context, vpsID, state string) erro
 			fields["ipv6"] = vm.IPv6
 		}
 	}
-	return a.Store.UpdateVPS(ctx, v.ID, fields)
+	if err := a.Store.UpdateVPS(ctx, v.ID, fields); err != nil {
+		return err
+	}
+	service.Notify(ctx, a.Store, a.Events, v.ID)
+	return nil
 }
 
 // FailCreate : VPS en échec, mois remboursé (idempotent par référence).
@@ -426,6 +541,10 @@ func (a *Activities) FailCreate(ctx context.Context, spec VMSpec, code string) e
 			return err
 		}
 	}
-	return a.Store.UpdateVPS(ctx, v.ID, map[string]any{"state": domain.StateFailed, "failure_code": code,
-		"paid_until": nil, "updated_at": a.now()})
+	if err := a.Store.UpdateVPS(ctx, v.ID, map[string]any{"state": domain.StateFailed, "failure_code": code,
+		"paid_until": nil, "updated_at": a.now()}); err != nil {
+		return err
+	}
+	service.Notify(ctx, a.Store, a.Events, v.ID)
+	return nil
 }

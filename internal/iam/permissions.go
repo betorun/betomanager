@@ -129,6 +129,15 @@ const (
 	DenyPoliciesList   Permission = "iam.denyPolicies.list"
 	DenyPoliciesUpdate Permission = "iam.denyPolicies.update"
 
+	// compute : VPS revendus (docs/modules/compute.md). La commande, payée par
+	// le solde, demande billing.payments.create.
+	VPSList      Permission = "compute.vps.list"
+	VPSGet       Permission = "compute.vps.get"
+	VPSStart     Permission = "compute.vps.start"
+	VPSStop      Permission = "compute.vps.stop"
+	VPSReboot    Permission = "compute.vps.reboot"
+	VPSReinstall Permission = "compute.vps.reinstall"
+
 	// billing / logging
 	BillingAccountsGet    Permission = "billing.accounts.get"
 	BillingAccountsUpdate Permission = "billing.accounts.update"
@@ -271,6 +280,13 @@ var catalog = map[Permission]PermissionInfo{
 	BillingAccountsUpdate: {Title: "Modifier la facturation", CustomRoles: true, Sensitive: true},
 	BillingPaymentsCreate: {Title: "Effectuer un paiement", CustomRoles: true, Sensitive: true},
 	AuditLogsRead:         {Title: "Lire le journal d'audit", CustomRoles: true},
+
+	VPSList:      {Title: "Lister les VPS", CustomRoles: true},
+	VPSGet:       {Title: "Voir un VPS", CustomRoles: true},
+	VPSStart:     {Title: "Démarrer un VPS", CustomRoles: true},
+	VPSStop:      {Title: "Arrêter un VPS", CustomRoles: true},
+	VPSReboot:    {Title: "Redémarrer un VPS", CustomRoles: true},
+	VPSReinstall: {Title: "Réinstaller un VPS (efface son disque)", CustomRoles: true, Sensitive: true},
 
 	PlatformClustersList:           {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
 	PlatformClusterKeysList:        {Title: "Lister les clés de cluster", PlatformOnly: true},

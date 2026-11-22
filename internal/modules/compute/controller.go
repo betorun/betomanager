@@ -78,6 +78,46 @@ func (h *Controller) Get(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
 	return h.Service.Get(c.Request.Context(), org, id)
 }
 
+func (h *Controller) act(c *gin.Context, in *VPSPath, action string, re *service.ReinstallRequest) (*domain.VPS, error) {
+	org, err := uuid.Parse(in.OrganizationID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	id, err := uuid.Parse(in.VPSID)
+	if err != nil {
+		return nil, domain.ErrVPSNotFound
+	}
+	by := ""
+	if p, ok := security.PrincipalFromContext(c); ok {
+		by = string(p)
+	}
+	return h.Service.Act(c.Request.Context(), org, id, action, re, by)
+}
+
+// Start / Stop / Reboot : une opération à la fois ; suivre l'état du VPS
+// (champ operation, puis state) ou le canal temps réel du VPS.
+func (h *Controller) Start(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	return h.act(c, in, service.ActionStart, nil)
+}
+
+func (h *Controller) Stop(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	return h.act(c, in, service.ActionStop, nil)
+}
+
+func (h *Controller) Reboot(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	return h.act(c, in, service.ActionReboot, nil)
+}
+
+type ReinstallInput struct {
+	VPSPath
+	service.ReinstallRequest
+}
+
+// Reinstall : nouveau système avec la clé donnée ; le disque est effacé.
+func (h *Controller) Reinstall(c *gin.Context, in *ReinstallInput) (*domain.VPS, error) {
+	return h.act(c, &in.VPSPath, service.ActionReinstall, &in.ReinstallRequest)
+}
+
 // Order : premier mois débité et demande de création déposés ensemble ;
 // le VPS passe de « pending » à « creating » puis « running ».
 func (h *Controller) Order(c *gin.Context, in *service.OrderRequest) (*domain.VPS, error) {

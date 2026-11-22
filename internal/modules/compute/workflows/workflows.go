@@ -37,6 +37,8 @@ const (
 	KindCreate    = domain.KindCreate
 	KindStart     = domain.KindStart
 	KindStop      = domain.KindStop
+	KindReboot    = domain.KindReboot
+	KindReinstall = domain.KindReinstall
 )
 
 // RequestWorkflow : une demande de l'outbox. Chaque étape est une activité ;
@@ -55,6 +57,10 @@ func RequestWorkflow(ctx workflow.Context, in service.RequestInput) error {
 		runErr = createVM(ctx, in.RequestID)
 	case KindStart, KindStop:
 		runErr = powerVM(ctx, in.RequestID, in.Kind == KindStart)
+	case KindReboot:
+		runErr = rebootVM(ctx, in.RequestID)
+	case KindReinstall:
+		runErr = reinstallVM(ctx, in.RequestID)
 	case KindReconcile:
 		runErr = workflow.ExecuteActivity(reconcileOptions(ctx), a.Reconcile).Get(ctx, nil)
 	default:
@@ -90,6 +96,7 @@ type Activities struct {
 	Provider service.ComputeProvider // nil : aucun fournisseur configuré
 	Orderer  service.Orderer         // nil : pas de commande possible
 	Wallet   service.Wallet          // remboursements
+	Events   service.Events          // temps réel (nil : aucun)
 	Now      func() time.Time
 }
 
@@ -131,5 +138,18 @@ func (a *Activities) Finish(ctx context.Context, requestID string, ok bool, msg 
 	if err != nil {
 		return temporal.NewNonRetryableApplicationError("invalid request id", "InvalidRequest", err)
 	}
-	return a.Store.FinishRequest(ctx, id, ok, msg, a.now())
+	if err := a.Store.FinishRequest(ctx, id, ok, msg, a.now()); err != nil {
+		return err
+	}
+	r, err := a.Store.Request(ctx, id)
+	if err != nil || r == nil || r.VPSID == nil {
+		return err
+	}
+	if v, err := a.Store.VPS(ctx, *r.VPSID); err == nil {
+		if err := service.StopIfSuspended(ctx, a.Store, v, r.Kind); err != nil {
+			return err
+		}
+	}
+	service.Notify(ctx, a.Store, a.Events, *r.VPSID) // opération finie : le VPS est libre
+	return nil
 }

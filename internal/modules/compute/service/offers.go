@@ -24,7 +24,7 @@ type OfferView struct {
 	Name      string            `json:"name"`
 	Monthly   int64             `json:"monthly"`
 	Currency  string            `json:"currency"`
-	Specs     json.RawMessage   `json:"specs"`
+	Specs     map[string]any    `json:"specs"`
 	Locations []string          `json:"locations"`
 	Images    []string          `json:"images"`
 	ImageName map[string]string `json:"-"`
@@ -37,7 +37,9 @@ type Service struct {
 	// Wallet nil ou Ordering faux : commandes fermées (offres et prix seulement).
 	Wallet   Wallet
 	Ordering bool
-	Now      func() time.Time
+	// Events nil : aucun événement temps réel.
+	Events Events
+	Now    func() time.Time
 }
 
 func (s *Service) now() time.Time {
@@ -63,8 +65,9 @@ func (s *Service) Offers(ctx context.Context, org uuid.UUID) ([]OfferView, error
 		if !o.Public || price == 0 || o.ProviderPlanCode == "" {
 			continue
 		}
-		v := OfferView{Code: o.Code, Name: o.Name, Monthly: price, Currency: currency, Specs: o.Specs,
+		v := OfferView{Code: o.Code, Name: o.Name, Monthly: price, Currency: currency, Specs: map[string]any{},
 			Locations: o.LocationList(), Images: []string{}}
+		_ = json.Unmarshal(o.Specs, &v.Specs) // illisible : aucune caractéristique
 		for img, name := range o.ImageMap() {
 			if name != "" {
 				v.Images = append(v.Images, img)

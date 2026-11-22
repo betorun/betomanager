@@ -2274,5 +2274,13 @@
  {
   "fr": "Identifiant du VPS",
   "en": "VPS ID"
+ },
+ {
+  "fr": "Clé publique SSH installée (aucun mot de passe n'est créé)",
+  "en": "SSH public key to install (no password is created)"
+ },
+ {
+  "fr": "Réinstaller un VPS avec un système et une clé SSH : son disque est effacé",
+  "en": "Reinstall a VPS with a system and an SSH key: its disk is erased"
  }
 ]
