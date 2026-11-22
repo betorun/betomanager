@@ -15,8 +15,9 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
 )
 
-// mailSender : serveur SMTP de la configuration ; nil si l'envoi est désactivé.
-func (a *App) mailSender() (*mail.SMTP, error) {
+// smtpSender : serveur SMTP de la configuration ; nil si l'envoi est désactivé.
+// Seul le worker l'appelle directement : les modules passent par mailSender.
+func (a *App) smtpSender() (*mail.SMTP, error) {
 	m := a.Config.Mail
 	if !m.Enabled {
 		return nil, nil

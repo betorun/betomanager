@@ -155,6 +155,9 @@ const (
 	// PlatformClustersReport : le watcher d'un cluster rend compte de son
 	// cluster (enrôlement, configuration, événements des pods).
 	PlatformClustersReport Permission = "platform.clusters.report"
+	// PlatformMailSuppressionsManage : adresses e-mail mises de côté (rebonds,
+	// refus) : les voir et les relâcher.
+	PlatformMailSuppressionsManage Permission = "platform.mailSuppressions.manage"
 )
 
 // PermissionInfo : métadonnées d'une permission (doc, UI, rôles personnalisés).
@@ -264,17 +267,18 @@ var catalog = map[Permission]PermissionInfo{
 	BillingPaymentsCreate: {Title: "Effectuer un paiement", CustomRoles: true, Sensitive: true},
 	AuditLogsRead:         {Title: "Lire le journal d'audit", CustomRoles: true},
 
-	PlatformClustersList:          {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
-	PlatformClusterKeysList:       {Title: "Lister les clés de cluster", PlatformOnly: true},
-	PlatformClusterKeysCreate:     {Title: "Créer une clé de cluster", PlatformOnly: true, Sensitive: true},
-	PlatformClusterKeysRotate:     {Title: "Faire tourner une clé de cluster", PlatformOnly: true, Sensitive: true},
-	PlatformClusterKeysRevoke:     {Title: "Révoquer une clé de cluster", PlatformOnly: true, Sensitive: true},
-	PlatformClustersReport:        {Title: "Rendre compte de son cluster (watcher)", PlatformOnly: true},
-	PlatformProjectsSetLimits:     {Title: "Changer les limites de ressources d'un projet", PlatformOnly: true, Sensitive: true},
-	PlatformBillingCatalogsGet:    {Title: "Voir les grilles de prix", PlatformOnly: true},
-	PlatformBillingCatalogsUpdate: {Title: "Modifier les grilles de prix", PlatformOnly: true, Sensitive: true},
-	PlatformBillingAccountsGet:    {Title: "Voir les comptes de facturation des clients", PlatformOnly: true},
-	PlatformBillingAccountsUpdate: {Title: "Offrir un crédit, corriger un solde, activer la facturation", PlatformOnly: true, Sensitive: true},
+	PlatformClustersList:           {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
+	PlatformClusterKeysList:        {Title: "Lister les clés de cluster", PlatformOnly: true},
+	PlatformClusterKeysCreate:      {Title: "Créer une clé de cluster", PlatformOnly: true, Sensitive: true},
+	PlatformClusterKeysRotate:      {Title: "Faire tourner une clé de cluster", PlatformOnly: true, Sensitive: true},
+	PlatformClusterKeysRevoke:      {Title: "Révoquer une clé de cluster", PlatformOnly: true, Sensitive: true},
+	PlatformClustersReport:         {Title: "Rendre compte de son cluster (watcher)", PlatformOnly: true},
+	PlatformProjectsSetLimits:      {Title: "Changer les limites de ressources d'un projet", PlatformOnly: true, Sensitive: true},
+	PlatformBillingCatalogsGet:     {Title: "Voir les grilles de prix", PlatformOnly: true},
+	PlatformBillingCatalogsUpdate:  {Title: "Modifier les grilles de prix", PlatformOnly: true, Sensitive: true},
+	PlatformBillingAccountsGet:     {Title: "Voir les comptes de facturation des clients", PlatformOnly: true},
+	PlatformBillingAccountsUpdate:  {Title: "Offrir un crédit, corriger un solde, activer la facturation", PlatformOnly: true, Sensitive: true},
+	PlatformMailSuppressionsManage: {Title: "Voir et relâcher les adresses e-mail mises de côté", PlatformOnly: true},
 }
 
 // Known : la permission figure au catalogue.

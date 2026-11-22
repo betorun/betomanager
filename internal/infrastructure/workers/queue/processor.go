@@ -6,116 +6,88 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
+// Files, par priorité (stricte) : critical d'abord, puis default, puis low.
 const (
-	QueueCritical = "critical" // payment webhooks, auth events
-	QueueDefault  = "default"  // notifications, mail, reports
-	QueueLow      = "low"      // cleanup, archiving
+	QueueCritical = "critical"
+	QueueDefault  = "default" // e-mails
+	QueueLow      = "low"
 )
 
-// ProcessorConfig holds tunable parameters for the asynq server.
+// ProcessorConfig : réglages du serveur asynq.
 type ProcessorConfig struct {
-	// Concurrency is the number of concurrent worker goroutines (default: 10).
+	// Concurrency : tâches traitées en parallèle (défaut 10).
 	Concurrency int
-	// ShutdownTimeout is how long to wait for in-flight tasks on shutdown (default: 30 s).
+	// ShutdownTimeout : attente des tâches en cours à l'arrêt (défaut 30 s).
 	ShutdownTimeout time.Duration
 }
 
-// RedisTaskProcessor consumes tasks from Redis priority queues via asynq.Server.
+// RedisTaskProcessor : consomme les files (worker).
 type RedisTaskProcessor struct {
 	server *asynq.Server
 	mux    *asynq.ServeMux
 	logger *zap.SugaredLogger
 }
 
-// NewRedisTaskProcessor creates a processor with priority queues:
-//
-//	critical → weight 6  (payment webhooks, auth)
-//	default  → weight 4  (notifications, mail, reports)
-//	low      → weight 2  (cleanup, archiving)
-//
-// A custom RetryDelayFunc caps critical-queue retries at 2 min to keep
-// payment webhook re-delivery latency predictable.
-func NewRedisTaskProcessor(redisOpt asynq.RedisConnOpt, cfg ProcessorConfig, logger *zap.SugaredLogger) *RedisTaskProcessor {
+func NewRedisTaskProcessor(rdb redis.UniversalClient, cfg ProcessorConfig, logger *zap.SugaredLogger) *RedisTaskProcessor {
 	if cfg.Concurrency <= 0 {
-		cfg.Concurrency = 25 // P-3: raised from 10; tune via ProcessorConfig
+		cfg.Concurrency = 10
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		cfg.ShutdownTimeout = 30 * time.Second
 	}
-
-	srv := asynq.NewServer(redisOpt, asynq.Config{
-		Concurrency: cfg.Concurrency,
-		Queues: map[string]int{
-			QueueCritical: 6,
-			QueueDefault:  4,
-			QueueLow:      2,
-		},
-		// P-4: drain all critical tasks before processing default, and all default
-		// before low. Prevents low-priority bursts from delaying payment webhooks.
+	srv := asynq.NewServerFromRedisClient(rdb, asynq.Config{
+		Concurrency:     cfg.Concurrency,
+		Queues:          map[string]int{QueueCritical: 6, QueueDefault: 4, QueueLow: 2},
 		StrictPriority:  true,
 		ShutdownTimeout: cfg.ShutdownTimeout,
-
-		ErrorHandler: asynq.ErrorHandlerFunc(func(_ context.Context, task *asynq.Task, err error) {
-			logger.Errorw("asynq task failed",
-				"type", task.Type(),
-				"error", err,
-			)
+		RetryDelayFunc: func(n int, err error, t *asynq.Task) time.Duration {
+			if t.Type() == TaskSendMail {
+				return MailRetryDelay(n)
+			}
+			return asynq.DefaultRetryDelayFunc(n, err, t)
+		},
+		ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, err error) {
+			retried, _ := asynq.GetRetryCount(ctx)
+			maxRetry, _ := asynq.GetMaxRetry(ctx)
+			logger.Warnw("background task failed", "type", task.Type(), "attempt", retried+1, "max_retry", maxRetry, "error", err)
 		}),
-
 		HealthCheckFunc: func(err error) {
 			if err != nil {
 				logger.Warnw("asynq health check: Redis ping failed", "error", err)
 			}
 		},
-
 		Logger: newAsynqLogger(logger),
 	})
-	return &RedisTaskProcessor{
-		server: srv,
-		mux:    asynq.NewServeMux(),
-		logger: logger,
+	return &RedisTaskProcessor{server: srv, mux: asynq.NewServeMux(), logger: logger}
+}
+
+// Handlers : un champ par type de tâche (nil : non consommée).
+type Handlers struct {
+	HandleSendMail asynq.HandlerFunc
+}
+
+// RegisterHandlers : avant Start.
+func (p *RedisTaskProcessor) RegisterHandlers(h Handlers) {
+	if h.HandleSendMail != nil {
+		p.mux.HandleFunc(TaskSendMail, h.HandleSendMail)
 	}
 }
 
-// RegisterHandlers wires task-type strings to handler functions.
-// Skips nil handlers instead of panicking at task-receipt time.
-// Must be called before Start.
-func (p *RedisTaskProcessor) RegisterHandlers(handlers Handlers) {
-	if handlers.HandleSendPush != nil {
-		p.mux.HandleFunc(TaskSendPush, handlers.HandleSendPush)
-	}
-	if handlers.HandleSendMail != nil {
-		p.mux.HandleFunc(TaskSendMail, handlers.HandleSendMail)
-	}
-
-	if handlers.HandleDocumentCleanup != nil {
-		p.mux.HandleFunc(TaskDocumentCleanup, handlers.HandleDocumentCleanup)
-	}
-
-}
-
-// Start runs the asynq server (blocks until Shutdown is called).
+// Start : démarre sans bloquer.
 func (p *RedisTaskProcessor) Start() error {
-	p.logger.Info("asynq task processor starting")
-	if err := p.server.Run(p.mux); err != nil {
+	p.logger.Info("background task processor starting")
+	if err := p.server.Start(p.mux); err != nil {
 		return fmt.Errorf("asynq processor: %w", err)
 	}
 	return nil
 }
 
-// Shutdown gracefully drains in-flight tasks then stops.
+// Shutdown : termine les tâches en cours puis s'arrête.
 func (p *RedisTaskProcessor) Shutdown() {
-	p.logger.Info("asynq task processor shutting down")
+	p.logger.Info("background task processor shutting down")
 	p.server.Shutdown()
-}
-
-// Handlers groups all task handler functions registered by RegisterHandlers.
-// Nil fields are silently skipped — the task type will not be consumed.
-type Handlers struct {
-	HandleSendPush        asynq.HandlerFunc
-	HandleSendMail        asynq.HandlerFunc
-	HandleDocumentCleanup asynq.HandlerFunc
 }

@@ -2,10 +2,14 @@ package mail
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/base64"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net"
+	"net/mail"
 	"net/textproto"
 	"strings"
 	"testing"
@@ -80,4 +84,38 @@ func TestSMTP_SendMultipart(t *testing.T) {
 func TestNewSMTP_RequiresConfig(t *testing.T) {
 	_, err := NewSMTP(Config{Host: "smtp", Port: 0, FromEmail: "x@y"})
 	assert.Error(t, err)
+}
+
+// Pièce jointe et Reply-To : multipart/mixed lisible par un client de mail.
+func TestSMTP_AttachmentAndReplyTo(t *testing.T) {
+	s, err := NewSMTP(Config{Host: "127.0.0.1", Port: 25, FromEmail: "no-reply@betorun.app"})
+	require.NoError(t, err)
+	to := &mail.Address{Address: "awa@ex.sn"}
+	raw, err := s.compose(to, Message{To: "awa@ex.sn", Subject: "Facture", Text: "Votre facture", HTML: "<p>Votre facture</p>",
+		ReplyTo: "support@betorun.app", Attachments: []Attachment{{Filename: "BTR-2026-0001.pdf", ContentType: "application/pdf", Data: []byte("%PDF-1.7 fake")}}})
+	require.NoError(t, err)
+
+	m, err := mail.ReadMessage(bytes.NewReader(raw))
+	require.NoError(t, err)
+	assert.Equal(t, "<support@betorun.app>", m.Header.Get("Reply-To"))
+	mt, params, err := mime.ParseMediaType(m.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	assert.Equal(t, "multipart/mixed", mt)
+	r := multipart.NewReader(m.Body, params["boundary"])
+	body, err := r.NextPart()
+	require.NoError(t, err)
+	assert.Contains(t, body.Header.Get("Content-Type"), "multipart/alternative")
+	att, err := r.NextPart()
+	require.NoError(t, err)
+	assert.Equal(t, "BTR-2026-0001.pdf", att.FileName())
+	data, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, att))
+	require.NoError(t, err)
+	assert.Equal(t, "%PDF-1.7 fake", string(data))
+
+	_, err = s.compose(to, Message{To: "awa@ex.sn", Attachments: []Attachment{{Filename: "x\r\nBcc: evil@x", Data: []byte("x")}}})
+	assert.True(t, IsInvalid(err), "en-tête injecté par un nom de fichier")
+	_, err = s.compose(to, Message{To: "awa@ex.sn", Attachments: []Attachment{{Filename: "big.bin", Data: make([]byte, MaxAttachmentsBytes+1)}}})
+	assert.ErrorIs(t, err, ErrInvalidAttachment)
+	_, err = s.compose(to, Message{To: "awa@ex.sn", ReplyTo: "pas une adresse"})
+	assert.ErrorIs(t, err, ErrInvalidReplyTo)
 }

@@ -506,5 +506,9 @@
  {
   "fr": "Ajouter un service (Redis, MariaDB, Meilisearch…)",
   "en": "Add a service (Redis, MariaDB, Meilisearch…)"
+ },
+ {
+  "fr": "Voir et relâcher les adresses e-mail mises de côté",
+  "en": "View and release suppressed email addresses"
  }
 ]

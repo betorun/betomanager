@@ -81,6 +81,7 @@ var (
 		PlatformClustersList, PlatformClusterKeysList, PlatformClusterKeysCreate, PlatformClusterKeysRotate,
 		PlatformClusterKeysRevoke, PlatformProjectsSetLimits, PlatformBillingCatalogsGet, PlatformBillingCatalogsUpdate,
 		PlatformBillingAccountsGet, PlatformBillingAccountsUpdate,
+		PlatformMailSuppressionsManage,
 	}
 )
 

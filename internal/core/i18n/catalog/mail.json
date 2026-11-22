@@ -1,0 +1,30 @@
+[
+ {
+  "fr": "E-mail invalide",
+  "en": "mail: invalid message"
+ },
+ {
+  "fr": "Pièce jointe invalide",
+  "en": "mail: invalid attachment"
+ },
+ {
+  "fr": "Adresse de réponse invalide",
+  "en": "mail: invalid reply-to address"
+ },
+ {
+  "fr": "Signature SendGrid invalide",
+  "en": "invalid SendGrid signature"
+ },
+ {
+  "fr": "Les adresses e-mail mises de côté ne sont pas disponibles",
+  "en": "mail suppressions are not available"
+ },
+ {
+  "fr": "Destinataire obligatoire",
+  "en": "mail task: recipient is required"
+ },
+ {
+  "fr": "Cette adresse n'est pas mise de côté",
+  "en": "this address is not suppressed"
+ }
+]

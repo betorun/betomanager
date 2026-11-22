@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/workers/queue"
 	"net/http"
 	"os"
 	"os/signal"
@@ -83,6 +84,8 @@ type App struct {
 	ClusterAgents       *iam.ClusterAgents
 	STS                 *sts.Service
 	OrgPolicies         *iam.OrgPolicyService
+	// mailQueue : file des e-mails (asynq sur Redis), créée au premier envoi.
+	mailQueue *queue.RedisTaskDistributor
 	// SSO : connexion d'entreprise des organisations (nil sans authentification betorun).
 	SSO *sso.Store
 	// GitHub : connexion GitHub (Client nil : désactivée).
@@ -187,6 +190,13 @@ func (a *App) RunWorker(ctx context.Context) error {
 		// attente, crédits expirés, alertes de solde.
 		a.goWith(ctx, "billing-wallet", func(ctx context.Context) { billing.RunWallet(ctx, billingSvc.DefaultWalletEvery) })
 	}
+	// E-mails en file : livrés par le worker (SMTP, reprises espacées).
+	stopMail, err := a.startMailWorker()
+	if err != nil {
+		return fmt.Errorf("mail worker: %w", err)
+	}
+	defer stopMail()
+
 	// Domaines revendus : commandes à passer et à suivre, renouvellements.
 	if sales := a.domainSalesService(); sales != nil && sales.Registrar != nil {
 		a.goWith(ctx, "domain-sales", func(ctx context.Context) { sales.Run(ctx, domainsalesSvc.DefaultEvery) })

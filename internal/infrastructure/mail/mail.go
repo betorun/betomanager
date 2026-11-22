@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -29,6 +30,33 @@ type Message struct {
 	HTML    string
 	// Unsubscribe : URL de désabonnement en un clic (RFC 8058) ; vide : aucune.
 	Unsubscribe string
+	// ReplyTo : adresse de réponse (support, propriétaire…) ; vide : l'expéditeur.
+	ReplyTo string `json:",omitempty"`
+	// Attachments : pièces jointes (factures PDF…).
+	Attachments []Attachment `json:",omitempty"`
+}
+
+// Attachment : pièce jointe ; Data voyage en base64 dans la file d'envoi.
+type Attachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
+// MaxAttachmentsBytes : taille totale des pièces jointes d'un message (la
+// file les garde en mémoire Redis le temps de l'envoi).
+const MaxAttachmentsBytes = 5 << 20
+
+// Message invalide : réessayer ne servirait à rien (IsInvalid).
+var (
+	ErrInvalidMessage    = errors.New("mail: invalid message")
+	ErrInvalidAttachment = errors.New("mail: invalid attachment")
+	ErrInvalidReplyTo    = errors.New("mail: invalid reply-to address")
+)
+
+// IsInvalid : le message lui-même est refusé (en-tête, pièce jointe).
+func IsInvalid(err error) bool {
+	return errors.Is(err, ErrInvalidMessage) || errors.Is(err, ErrInvalidAttachment) || errors.Is(err, ErrInvalidReplyTo)
 }
 
 // Sender : envoi d'un email.
@@ -151,15 +179,31 @@ func (s *SMTP) compose(to *mail.Address, m Message) ([]byte, error) {
 		header("List-Unsubscribe", "<"+m.Unsubscribe+">")
 		header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
 	}
+	if m.ReplyTo != "" {
+		rt, err := mail.ParseAddress(m.ReplyTo)
+		if err != nil {
+			return nil, ErrInvalidReplyTo
+		}
+		header("Reply-To", rt.String())
+	}
 	header("MIME-Version", "1.0")
-	header("Content-Type", `multipart/alternative; boundary="`+boundary+`"`)
-	b.WriteString("\r\n")
+	alt := boundary
+	if len(m.Attachments) > 0 {
+		// multipart/mixed : le corps (alternative texte/HTML), puis les pièces.
+		alt = boundary + "-alt"
+		header("Content-Type", `multipart/mixed; boundary="`+boundary+`"`)
+		b.WriteString("\r\n")
+		fmt.Fprintf(&b, "--%s\r\nContent-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", boundary, alt)
+	} else {
+		header("Content-Type", `multipart/alternative; boundary="`+boundary+`"`)
+		b.WriteString("\r\n")
+	}
 	for _, part := range []struct{ kind, content string }{{"text/plain", m.Text}, {"text/html", m.HTML}} {
 		if part.content == "" {
 			continue
 		}
 		fmt.Fprintf(&b, "--%s\r\nContent-Type: %s; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n",
-			boundary, part.kind)
+			alt, part.kind)
 		qp := quotedprintable.NewWriter(&b)
 		if _, err := qp.Write([]byte(part.content)); err != nil {
 			return nil, err
@@ -168,6 +212,32 @@ func (s *SMTP) compose(to *mail.Address, m Message) ([]byte, error) {
 			return nil, err
 		}
 		b.WriteString("\r\n")
+	}
+	fmt.Fprintf(&b, "--%s--\r\n", alt)
+	if len(m.Attachments) == 0 {
+		return b.Bytes(), nil
+	}
+	total := 0
+	for _, a := range m.Attachments {
+		total += len(a.Data)
+		if a.Filename == "" || len(a.Data) == 0 || strings.ContainsAny(a.Filename, "\r\n\"") || total > MaxAttachmentsBytes {
+			return nil, ErrInvalidAttachment
+		}
+		ct := a.ContentType
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		if _, _, err := mime.ParseMediaType(ct); err != nil {
+			return nil, ErrInvalidAttachment
+		}
+		fmt.Fprintf(&b, "\r\n--%s\r\nContent-Type: %s\r\nContent-Disposition: %s\r\nContent-Transfer-Encoding: base64\r\n\r\n",
+			boundary, ct, mime.FormatMediaType("attachment", map[string]string{"filename": a.Filename}))
+		enc := base64.StdEncoding.EncodeToString(a.Data)
+		for len(enc) > 76 {
+			b.WriteString(enc[:76] + "\r\n")
+			enc = enc[76:]
+		}
+		b.WriteString(enc + "\r\n")
 	}
 	fmt.Fprintf(&b, "--%s--\r\n", boundary)
 	return b.Bytes(), nil
