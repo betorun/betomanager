@@ -78,5 +78,5 @@ SendGrid, cocher au moins Bounced, Dropped et Spam Reports, URL
 - `internal/infrastructure/mail` : multipart, Reply-To, pièce jointe, injection d'en-tête, taille.
 - `domain` : tri des erreurs SMTP, normalisation et masquage des adresses.
 - `service` : mise en file, adresses mises de côté, chaque issue du worker, webhook SendGrid (signature, rejeu, types d'événements).
-- `repository_e2e_test.go` (`IAM_E2E=1`) : table réelle.
+- `repository/repository_e2e_test.go` (`IAM_E2E=1`) : table réelle.
 - `queue_e2e_test.go` (`MAIL_E2E_REDIS=…`) : file asynq réelle, de la mise en file à la livraison.

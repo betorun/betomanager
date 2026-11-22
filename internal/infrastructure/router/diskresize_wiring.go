@@ -13,10 +13,13 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
-	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	addonsdomain "github.com/thekrauss/kubemanager/internal/modules/addons/domain"
+	addonsRepo "github.com/thekrauss/kubemanager/internal/modules/addons/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
+	diskresizeDomain "github.com/thekrauss/kubemanager/internal/modules/diskresize/domain"
+	diskresizeRepo "github.com/thekrauss/kubemanager/internal/modules/diskresize/repository"
+	diskresizeSvc "github.com/thekrauss/kubemanager/internal/modules/diskresize/service"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 	wdomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 )
@@ -24,13 +27,13 @@ import (
 // newDiskResizeController : agrandissement des disques par copie. Sans
 // cluster, les lectures restent possibles et les demandes sont refusées.
 func (a *App) newDiskResizeController() *diskresize.Controller {
-	s := &diskresize.Service{Store: &diskresize.GormStore{DB: a.DB}, Logger: a.Logger.With("component", "disk-resize"),
+	s := &diskresizeSvc.Service{Store: &diskresizeRepo.GormStore{DB: a.DB}, Logger: a.Logger.With("component", "disk-resize"),
 		Spawner: a.spawner()}
 	if a.Services != nil && a.Services.Workload != nil {
 		s.Workloads = &resizeWorkloads{app: a}
 	}
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
-		s.Claims = &diskresize.KubeClaims{Kube: a.K8sProvider.Client, Image: "busybox:1.37.0", Timeout: time.Hour}
+		s.Claims = &diskresizeRepo.KubeClaims{Kube: a.K8sProvider.Client, Image: "busybox:1.37.0", Timeout: time.Hour}
 	}
 	return &diskresize.Controller{Service: s, Addons: &resizeAddons{db: a.DB}}
 }
@@ -41,7 +44,7 @@ type resizeWorkloads struct{ app *App }
 // Utilisateur et groupe par défaut du chart (values.yaml).
 const chartUID, chartGID = 1000, 2000
 
-func (r *resizeWorkloads) Get(ctx context.Context, id uuid.UUID) (*diskresize.Workload, error) {
+func (r *resizeWorkloads) Get(ctx context.Context, id uuid.UUID) (*diskresizeDomain.Workload, error) {
 	w, err := r.app.Repos.Workload.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -53,7 +56,7 @@ func (r *resizeWorkloads) Get(ctx context.Context, id uuid.UUID) (*diskresize.Wo
 	if len(w.Spec) > 0 {
 		_ = json.Unmarshal(w.Spec, &spec)
 	}
-	out := &diskresize.Workload{ID: w.ID, ProjectID: w.ProjectID, Name: w.Name, Namespace: w.Namespace,
+	out := &diskresizeDomain.Workload{ID: w.ID, ProjectID: w.ProjectID, Name: w.Name, Namespace: w.Namespace,
 		Persistent: w.PersistenceEnabled, StorageSize: w.StorageSize, Status: w.Status, Managed: w.ManagedBy != "",
 		UID: spec.RunAsUser, GID: spec.RunAsGroup}
 	if out.UID <= 0 {
@@ -99,16 +102,16 @@ func (r *resizeWorkloads) Storage(ctx context.Context, project uuid.UUID) (int64
 type resizeAddons struct{ db *gorm.DB }
 
 func (r *resizeAddons) Carrier(ctx context.Context, project, id uuid.UUID) (uuid.UUID, []string, error) {
-	a, err := (&addons.GormRepository{DB: r.db}).Get(ctx, project, id)
+	a, err := (&addonsRepo.GormRepository{DB: r.db}).Get(ctx, project, id)
 	if errors.Is(err, addonsdomain.ErrNotFound) {
-		return uuid.Nil, nil, diskresize.ErrNotFound
+		return uuid.Nil, nil, diskresizeDomain.ErrNotFound
 	}
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
 	t, ok := addonsdomain.TemplateByID(a.Template)
 	if !ok {
-		return uuid.Nil, nil, diskresize.ErrNotFound
+		return uuid.Nil, nil, diskresizeDomain.ErrNotFound
 	}
 	return a.WorkloadID, t.Disks, nil
 }

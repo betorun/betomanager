@@ -10,6 +10,8 @@ import (
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
 
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	"github.com/thekrauss/kubemanager/internal/modules/diskresize/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/diskresize/service"
 )
 
 // ErrManaged : le porteur d'un service s'agrandit depuis la page Services.
@@ -22,7 +24,7 @@ type Addons interface {
 
 // Controller : routes d'agrandissement.
 type Controller struct {
-	Service *Service
+	Service *service.Service
 	Addons  Addons
 }
 
@@ -52,21 +54,21 @@ type AddonResizeRequest struct {
 
 // LastResize : réponse des lectures (resize nul : jamais agrandi).
 type LastResize struct {
-	Resize *Resize  `json:"resize"`
-	Sizes  []string `json:"sizes"`
+	Resize *domain.Resize `json:"resize"`
+	Sizes  []string       `json:"sizes"`
 }
 
 func apiError(err error) error {
 	switch {
 	case err == nil:
 		return nil
-	case errors.Is(err, ErrNotFound):
+	case errors.Is(err, domain.ErrNotFound):
 		return betoerrors.New(betoerrors.CodeNotFound, err.Error())
-	case errors.Is(err, ErrInvalidSize), errors.Is(err, ErrNotPersistent), errors.Is(err, ErrQuota), errors.Is(err, ErrResumeSize), errors.Is(err, ErrManaged):
+	case errors.Is(err, domain.ErrInvalidSize), errors.Is(err, domain.ErrNotPersistent), errors.Is(err, domain.ErrQuota), errors.Is(err, domain.ErrResumeSize), errors.Is(err, ErrManaged):
 		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
-	case errors.Is(err, ErrRunning):
+	case errors.Is(err, domain.ErrRunning):
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
-	case errors.Is(err, ErrUnavailable):
+	case errors.Is(err, domain.ErrUnavailable):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	}
 	return err
@@ -79,17 +81,17 @@ func actor(c *gin.Context) string {
 	return ""
 }
 
-func (h *Controller) workload(ctx context.Context, raw string) (*Workload, error) {
+func (h *Controller) workload(ctx context.Context, raw string) (*domain.Workload, error) {
 	id, err := uuid.Parse(raw)
 	if err != nil || h.Service.Workloads == nil {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	w, err := h.Service.Workloads.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if w == nil {
-		return nil, ErrNotFound
+		return nil, domain.ErrNotFound
 	}
 	return w, nil
 }
@@ -98,7 +100,7 @@ func (h *Controller) workload(ctx context.Context, raw string) (*Workload, error
 func sizesAbove(all []string, current string) []string {
 	out := []string{}
 	for _, s := range all {
-		if bytesOf(s) > bytesOf(current) {
+		if domain.BytesOf(s) > domain.BytesOf(current) {
 			out = append(out, s)
 		}
 	}
@@ -114,13 +116,13 @@ func (h *Controller) GetWorkload(c *gin.Context, in *WorkloadPath) (*LastResize,
 	r, err := h.Service.Last(c.Request.Context(), w.ProjectID, w.ID)
 	sizes := []string{}
 	if w.Persistent && !w.Managed {
-		sizes = sizesAbove(Sizes, w.StorageSize)
+		sizes = sizesAbove(domain.Sizes, w.StorageSize)
 	}
 	return &LastResize{Resize: r, Sizes: sizes}, apiError(err)
 }
 
 // ResizeWorkload : agrandit le disque d'un conteneur (en arrière-plan).
-func (h *Controller) ResizeWorkload(c *gin.Context, in *ResizeRequest) (*Resize, error) {
+func (h *Controller) ResizeWorkload(c *gin.Context, in *ResizeRequest) (*domain.Resize, error) {
 	w, err := h.workload(c.Request.Context(), in.ID)
 	if err != nil {
 		return nil, apiError(err)
@@ -136,7 +138,7 @@ func (h *Controller) carrier(ctx context.Context, project, addon string) (uuid.U
 	p, err1 := uuid.Parse(project)
 	a, err2 := uuid.Parse(addon)
 	if err1 != nil || err2 != nil || h.Addons == nil {
-		return uuid.Nil, uuid.Nil, nil, ErrNotFound
+		return uuid.Nil, uuid.Nil, nil, domain.ErrNotFound
 	}
 	w, disks, err := h.Addons.Carrier(ctx, p, a)
 	return p, w, disks, err
@@ -161,13 +163,13 @@ func (h *Controller) GetAddon(c *gin.Context, in *AddonPath) (*LastResize, error
 }
 
 // ResizeAddon : agrandit le disque d'un service (tailles de son modèle).
-func (h *Controller) ResizeAddon(c *gin.Context, in *AddonResizeRequest) (*Resize, error) {
+func (h *Controller) ResizeAddon(c *gin.Context, in *AddonResizeRequest) (*domain.Resize, error) {
 	p, wid, disks, err := h.carrier(c.Request.Context(), in.ProjectID, in.AddonID)
 	if err != nil {
 		return nil, apiError(err)
 	}
 	if in.Size != "" && !slices.Contains(disks, in.Size) {
-		return nil, apiError(ErrInvalidSize)
+		return nil, apiError(domain.ErrInvalidSize)
 	}
 	r, err := h.Service.Start(c.Request.Context(), p, wid, in.Size, actor(c))
 	return r, apiError(err)

@@ -18,107 +18,30 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/redis/go-redis/v9"
-	"go.uber.org/zap"
 
 	"github.com/thekrauss/kubemanager/internal/iam/sts"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/agent"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/store"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 )
 
-// Minter : jetons délégués (*sts.Service).
-type Minter interface {
-	MintDelegated(d sts.Delegation) (string, time.Time, error)
-}
-
-// Config : réglages du Copilot.
-type Config struct {
-	Limits agent.Limits
-	// MessagesPerMinute : messages par personne et par minute (défaut 12).
-	MessagesPerMinute int
-}
-
-// Service : le Copilot. LLM nil = désactivé (llm.enabled=false).
-type Service struct {
-	LLM   llm.Provider
-	STS   Minter
-	Store *store.Store
-	Redis redis.UniversalClient
-	// Proposals : cartes d'action (nil : Redis).
-	Proposals ProposalStore
-	Config    Config
-	Logger    *zap.SugaredLogger
-	Now       func() time.Time
-
-	mu      sync.RWMutex
-	handler http.Handler
-	catalog *tools.Catalog
-}
-
-// Bind : branche le moteur HTTP de l'API et construit les outils depuis la
-// spécification publique (routes marquées ForCopilot). Appelé une fois les
-// routes enregistrées.
-func (s *Service) Bind(h http.Handler, routes []tools.Route, publicSpec []byte) error {
-	cat, err := tools.Build(routes, publicSpec)
-	if err != nil {
-		return err
-	}
-	if err := tools.AddDiagnose(cat); err != nil {
-		return err
-	}
-	s.mu.Lock()
-	s.handler, s.catalog = h, cat
-	s.mu.Unlock()
-	return nil
-}
-
-// Enabled : modèle configuré et outils construits.
-func (s *Service) Enabled() bool {
-	if s == nil || s.LLM == nil {
-		return false
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.catalog != nil && s.handler != nil
-}
-
-func (s *Service) now() time.Time {
-	if s.Now != nil {
-		return s.Now()
-	}
-	return time.Now()
-}
-
 // ── Métriques (labels bornés : nom d'outil = catalogue fixe) ──────────────
-
-var (
-	turnsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "kubemanager", Subsystem: "copilot", Name: "turns_total",
-		Help: "Messages traités par le Copilot, par raison d'arrêt.",
-	}, []string{"stop"})
-	toolCallsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "kubemanager", Subsystem: "copilot", Name: "tool_calls_total",
-		Help: "Appels d'outils du Copilot, par outil et résultat (ok|error).",
-	}, []string{"tool", "outcome"})
-)
 
 // ── Contrôleur ─────────────────────────────────────────────────────────────
 
 type Controller struct {
-	Service *Service
+	Service *service.Service
 }
 
-func NewController(s *Service) *Controller { return &Controller{Service: s} }
+func NewController(s *service.Service) *Controller { return &Controller{Service: s} }
 
 // StatusResponse : disponibilité du Copilot pour la console.
 type StatusResponse struct {
@@ -140,10 +63,10 @@ type PageContext struct {
 
 // ChatRequest : un message, et ses fichiers joints (voir attachments.go).
 type ChatRequest struct {
-	Message        string       `json:"message"`
-	ConversationID string       `json:"conversation_id"`
-	Page           PageContext  `json:"page"`
-	Attachments    []Attachment `json:"attachments"`
+	Message        string              `json:"message"`
+	ConversationID string              `json:"conversation_id"`
+	Page           PageContext         `json:"page"`
+	Attachments    []domain.Attachment `json:"attachments"`
 }
 
 const maxMessageRunes = 4000
@@ -186,10 +109,10 @@ func (h *Controller) Chat(c *gin.Context) {
 		return
 	}
 	var in ChatRequest
-	if err := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, maxChatBody)).Decode(&in); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, domain.MaxChatBody)).Decode(&in); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			jsonError(c, http.StatusRequestEntityTooLarge, codeAttachmentsTooLarge, "attached files must total 128 KB at most")
+			jsonError(c, http.StatusRequestEntityTooLarge, domain.CodeAttachmentsTooLarge, "attached files must total 128 KB at most")
 			return
 		}
 		jsonError(c, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
@@ -203,13 +126,13 @@ func (h *Controller) Chat(c *gin.Context) {
 		jsonError(c, http.StatusBadRequest, "INVALID_REQUEST", "the message must contain 1 to 4000 characters")
 		return
 	}
-	if err := checkAttachments(in.Attachments); err != nil {
-		var ae *attachmentError
+	if err := domain.CheckAttachments(in.Attachments); err != nil {
+		var ae *domain.AttachmentError
 		status := http.StatusBadRequest
-		if errors.As(err, &ae) && ae.code == codeAttachmentsTooLarge {
+		if errors.As(err, &ae) && ae.Code == domain.CodeAttachmentsTooLarge {
 			status = http.StatusRequestEntityTooLarge
 		}
-		jsonError(c, status, ae.code, ae.message)
+		jsonError(c, status, ae.Code, ae.Message)
 		return
 	}
 	convID := in.ConversationID
@@ -217,7 +140,7 @@ func (h *Controller) Chat(c *gin.Context) {
 		convID = uuid.NewString()
 	}
 	ctx := c.Request.Context()
-	if retry, ok := s.allow(ctx, user.String()); !ok {
+	if retry, ok := s.Allow(ctx, user.String()); !ok {
 		c.Header("Retry-After", strconv.Itoa(retry))
 		jsonError(c, http.StatusTooManyRequests, "COPILOT_RATE_LIMITED", "too many messages, please wait a moment")
 		return
@@ -244,28 +167,28 @@ func (h *Controller) Chat(c *gin.Context) {
 	}
 
 	sse := newSSE(c)
-	s.mu.RLock()
-	runner := &boundRunner{cat: s.catalog, inv: tools.Invoker{
-		Handler: s.handler, Token: token, ClientIP: c.ClientIP(),
+	s.Mu.RLock()
+	runner := &service.BoundRunner{Cat: s.Catalog, Inv: tools.Invoker{
+		Handler: s.Handler, Token: token, ClientIP: c.ClientIP(),
 		AcceptLanguage: c.GetHeader("Accept-Language"),
-	}, svc: s, userID: user.String(), conversationID: convID,
-		onProposal: func(v View) { sse.send("action", v) }}
-	s.mu.RUnlock()
+	}, Svc: s, UserID: user.String(), ConversationID: convID,
+		OnProposal: func(v service.View) { sse.send("action", v) }}
+	s.Mu.RUnlock()
 
 	sse.send("meta", gin.H{"conversation_id": convID})
 
 	page := agent.Page{Path: in.Page.Path, ProjectID: in.Page.ProjectID, WorkloadID: in.Page.WorkloadID,
 		BuildID: in.Page.BuildID, SiteID: in.Page.SiteID}
 	turn := agent.Turn{
-		System:  agent.Prompt(s.now(), agent.Language(c.GetHeader("Accept-Language")), "", page),
+		System:  agent.Prompt(s.CurrentTime(), agent.Language(c.GetHeader("Accept-Language")), "", page),
 		History: store.History(stored),
-		Message: withAttachments(in.Message, in.Attachments),
+		Message: domain.WithAttachments(in.Message, in.Attachments),
 		// Budget par personne et par jour (llm.Budget) : pas encore par organisation.
 		Caller: llm.Caller{OrgID: "user:" + user.String(), UserID: user.String(), TurnID: uuid.NewString()},
 	}
 	ag := &agent.Agent{LLM: s.LLM, Limits: lim}
 	res, err := ag.Run(ctx, turn, runner, sse)
-	turnsTotal.WithLabelValues(string(res.Stop)).Inc()
+	service.TurnsTotal.WithLabelValues(string(res.Stop)).Inc()
 	if err != nil {
 		code, msg := errorCode(err)
 		s.Logger.Warnw("copilot: no answer", "kind", llm.KindOf(err), "error", err)
@@ -274,7 +197,7 @@ func (h *Controller) Chat(c *gin.Context) {
 	}
 	if res.Answer != "" {
 		// Contexte détaché : la personne a pu fermer l'onglet, l'échange a eu lieu.
-		if err := s.Store.Append(context.WithoutCancel(ctx), user.String(), convID, historyNote(in.Message, in.Attachments), res.Answer); err != nil {
+		if err := s.Store.Append(context.WithoutCancel(ctx), user.String(), convID, domain.HistoryNote(in.Message, in.Attachments), res.Answer); err != nil {
 			s.Logger.Warnw("copilot: history not saved", "error", err)
 		}
 	}
@@ -292,64 +215,6 @@ func errorCode(err error) (string, string) {
 		return "COPILOT_CANCELED", "the request was canceled"
 	}
 	return "COPILOT_UNAVAILABLE", "the Copilot is temporarily unavailable"
-}
-
-// allow : quota de messages par personne et par minute (Redis, fenêtre fixe).
-// Redis injoignable : on refuse (même règle que le rate limit global, ADR 0006).
-func (s *Service) allow(ctx context.Context, userID string) (retryAfter int, ok bool) {
-	limit := s.Config.MessagesPerMinute
-	if limit <= 0 {
-		limit = 12
-	}
-	now := s.now().UTC()
-	key := "betorun:copilot:rl:" + userID + ":" + now.Format("200601021504")
-	n, err := s.Redis.Incr(ctx, key).Result()
-	if err != nil {
-		return 60, false
-	}
-	if n == 1 {
-		s.Redis.Expire(ctx, key, 2*time.Minute)
-	}
-	if n > int64(limit) {
-		return 60 - now.Second(), false
-	}
-	return 0, true
-}
-
-// boundRunner : le catalogue lié à la personne de la requête.
-type boundRunner struct {
-	cat *tools.Catalog
-	inv tools.Invoker
-	// Écritures : propositions (cartes), une par message au plus.
-	svc            *Service
-	userID         string
-	conversationID string
-	onProposal     func(View)
-	proposed       int
-}
-
-func (r *boundRunner) Definitions() []llm.Tool { return r.cat.Definitions() }
-
-func (r *boundRunner) Run(ctx context.Context, name string, args json.RawMessage) tools.Result {
-	if t, ok := r.cat.Lookup(name); ok && t.Write {
-		res := r.propose(ctx, t, args)
-		outcome := "proposed"
-		if res.IsError {
-			outcome = "error"
-		}
-		toolCallsTotal.WithLabelValues(name, outcome).Inc()
-		return res
-	}
-	res := r.cat.Call(ctx, r.inv, name, args)
-	outcome := "ok"
-	if res.IsError {
-		outcome = "error"
-	}
-	if _, known := r.cat.Lookup(name); !known {
-		name = "unknown" // label borné
-	}
-	toolCallsTotal.WithLabelValues(name, outcome).Inc()
-	return res
 }
 
 // ── SSE ────────────────────────────────────────────────────────────────────

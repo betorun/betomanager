@@ -139,6 +139,7 @@ func configureGenerator(router *fizz.Fizz) {
 	// Sans cela, un UUID apparaît comme un tableau de 16 entiers.
 	_ = router.Generator().OverrideDataType(reflect.TypeOf(uuid.UUID{}), "string", "uuid")
 	_ = router.Generator().OverrideDataType(reflect.TypeOf(&uuid.UUID{}), "string", "uuid")
+	stableSchemaNames(router)
 }
 
 func RegisterRoutes(app *fizz.Fizz) {

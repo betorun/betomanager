@@ -12,30 +12,33 @@ import (
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
 
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	"github.com/thekrauss/kubemanager/internal/modules/alerts/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/alerts/repository"
+	"github.com/thekrauss/kubemanager/internal/modules/alerts/service"
 )
 
 // Controller : préférences d'e-mail de la personne connectée et lien de
 // désabonnement.
 type Controller struct {
-	Prefs *PreferenceStore
+	Prefs *repository.PreferenceStore
 	// Key : clé des liens de désabonnement (la même que Notifier.UnsubscribeKey).
 	Key []byte
 	// Webhooks : webhooks des projets (nil : routes indisponibles).
-	Webhooks    *WebhookService
+	Webhooks    *service.WebhookService
 	ProjectName func(ctx context.Context, project uuid.UUID) (string, error)
 	ConsoleURL  string
 }
 
 func prefError(err error) error {
 	switch {
-	case errors.Is(err, ErrUnknownCategory), errors.Is(err, ErrInvalidLocale), errors.Is(err, ErrInvalidToken):
+	case errors.Is(err, domain.ErrUnknownCategory), errors.Is(err, domain.ErrInvalidLocale), errors.Is(err, domain.ErrInvalidToken):
 		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
 	}
 	return err
 }
 
 // GetPreferences : GET /identity/me/preferences.
-func (c *Controller) GetPreferences(ctx *gin.Context) (*Preferences, error) {
+func (c *Controller) GetPreferences(ctx *gin.Context) (*domain.Preferences, error) {
 	id, ok := security.InternalUserID(ctx)
 	if !ok {
 		return nil, betoerrors.New(betoerrors.CodeUnauthorized, "authenticated user context missing")
@@ -45,7 +48,7 @@ func (c *Controller) GetPreferences(ctx *gin.Context) (*Preferences, error) {
 }
 
 // UpdatePreferences : PATCH /identity/me/preferences.
-func (c *Controller) UpdatePreferences(ctx *gin.Context, in *PreferencesUpdate) (*Preferences, error) {
+func (c *Controller) UpdatePreferences(ctx *gin.Context, in *domain.PreferencesUpdate) (*domain.Preferences, error) {
 	id, ok := security.InternalUserID(ctx)
 	if !ok {
 		return nil, betoerrors.New(betoerrors.CodeUnauthorized, "authenticated user context missing")
@@ -78,7 +81,7 @@ func (c *Controller) Unsubscribe(ctx *gin.Context) {
 		}
 		token = in.Token
 	}
-	user, category, err := ParseUnsubscribeToken(c.Key, token)
+	user, category, err := service.ParseUnsubscribeToken(c.Key, token)
 	if err == nil {
 		err = c.Prefs.Mute(ctx.Request.Context(), user, category)
 	}
@@ -107,16 +110,16 @@ type WebhookPath struct {
 // CreateWebhookInput : projet et webhook.
 type CreateWebhookInput struct {
 	WebhookProjectPath
-	CreateWebhookRequest
+	service.CreateWebhookRequest
 }
 
 func webhookError(err error) error {
 	switch {
-	case errors.Is(err, ErrWebhookURL), errors.Is(err, ErrWebhookKind), errors.Is(err, ErrWebhookName):
+	case errors.Is(err, service.ErrWebhookURL), errors.Is(err, service.ErrWebhookKind), errors.Is(err, service.ErrWebhookName):
 		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
-	case errors.Is(err, ErrWebhookLimit):
+	case errors.Is(err, service.ErrWebhookLimit):
 		return betoerrors.New(betoerrors.CodeUnprocessable, err.Error())
-	case errors.Is(err, ErrWebhookNotFound):
+	case errors.Is(err, service.ErrWebhookNotFound):
 		return betoerrors.New(betoerrors.CodeNotFound, err.Error())
 	}
 	return err
@@ -132,7 +135,7 @@ func parseIDs(project, webhook string) (uuid.UUID, uuid.UUID, error) {
 	}
 	w, err := uuid.Parse(webhook)
 	if err != nil {
-		return uuid.Nil, uuid.Nil, betoerrors.New(betoerrors.CodeNotFound, ErrWebhookNotFound.Error())
+		return uuid.Nil, uuid.Nil, betoerrors.New(betoerrors.CodeNotFound, service.ErrWebhookNotFound.Error())
 	}
 	return p, w, nil
 }
@@ -145,7 +148,7 @@ func (c *Controller) webhooksReady() error {
 }
 
 // ListWebhooks : GET /projects/:id/alert-webhooks.
-func (c *Controller) ListWebhooks(ctx *gin.Context, in *WebhookProjectPath) (*WebhookList, error) {
+func (c *Controller) ListWebhooks(ctx *gin.Context, in *WebhookProjectPath) (*service.WebhookList, error) {
 	if err := c.webhooksReady(); err != nil {
 		return nil, err
 	}
@@ -157,7 +160,7 @@ func (c *Controller) ListWebhooks(ctx *gin.Context, in *WebhookProjectPath) (*We
 }
 
 // CreateWebhook : POST /projects/:id/alert-webhooks.
-func (c *Controller) CreateWebhook(ctx *gin.Context, in *CreateWebhookInput) (*CreatedWebhook, error) {
+func (c *Controller) CreateWebhook(ctx *gin.Context, in *CreateWebhookInput) (*service.CreatedWebhook, error) {
 	if err := c.webhooksReady(); err != nil {
 		return nil, err
 	}
@@ -174,7 +177,7 @@ func (c *Controller) CreateWebhook(ctx *gin.Context, in *CreateWebhookInput) (*C
 }
 
 // TestWebhook : POST /projects/:id/alert-webhooks/:webhookID/test.
-func (c *Controller) TestWebhook(ctx *gin.Context, in *WebhookPath) (*Webhook, error) {
+func (c *Controller) TestWebhook(ctx *gin.Context, in *WebhookPath) (*service.Webhook, error) {
 	if err := c.webhooksReady(); err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
+	"github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
@@ -30,7 +31,6 @@ import (
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	controller "github.com/thekrauss/kubemanager/internal/modules/auth"
 	"github.com/thekrauss/kubemanager/internal/modules/builds"
-	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/github"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identity "github.com/thekrauss/kubemanager/internal/modules/identity"
@@ -66,7 +66,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 					realtimeCtrl.IRealtimeController
 				}{},
 				Clusters: struct {
-					clustersCtrl.IClusterController
+					clusters.IClusterController
 				}{},
 				Site:        struct{ sites.ISiteController }{},
 				IAM:         &iamapi.Controller{},

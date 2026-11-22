@@ -10,6 +10,8 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
+	addonsRepo "github.com/thekrauss/kubemanager/internal/modules/addons/repository"
+	addonsSvc "github.com/thekrauss/kubemanager/internal/modules/addons/service"
 	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 	workloadsDomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
@@ -20,8 +22,8 @@ import (
 // newAddonsController : services additionnels (ADR 0013). Sans module des
 // conteneurs, le contrôleur existe mais répond « indisponible ».
 func (a *App) newAddonsController() *addons.Controller {
-	s := &addons.Service{Repo: &addons.GormRepository{DB: a.DB}, Projects: a.Repos.Project, Logger: a.Logger,
-		Waitlists: &addons.GormWaitlist{DB: a.DB}, Spawner: a.spawner()}
+	s := &addonsSvc.Service{Repo: &addonsRepo.GormRepository{DB: a.DB}, Projects: a.Repos.Project, Logger: a.Logger,
+		Waitlists: &addonsSvc.GormWaitlist{DB: a.DB}, Spawner: a.spawner()}
 	if a.Services != nil && a.Services.Workload != nil && a.Repos.Workload != nil && a.Variables != nil {
 		s.Workloads = &addonWorkloads{repo: a.Repos.Workload, svc: a.Services.Workload, vars: a.Variables}
 	}
@@ -36,7 +38,7 @@ func (a *App) newAddonsController() *addons.Controller {
 // addonBackups : sauvegardes des services (MariaDB). Il faut le cluster, le
 // stockage d'objets, l'API joignable des pods et le secret de signature des
 // builds ; sinon les sauvegardes sont indisponibles.
-func (a *App) addonBackups() *addons.BackupConfig {
+func (a *App) addonBackups() *addonsSvc.BackupConfig {
 	c := a.Config.Builds.WithDefaults()
 	if a.K8sProvider == nil || a.K8sProvider.Client == nil || a.ObjectStore == nil || c.Secret == "" || c.PublicAPIURL == "" {
 		return nil
@@ -45,16 +47,16 @@ func (a *App) addonBackups() *addons.BackupConfig {
 	if fetch == "" {
 		fetch = defaultImportFetchImage
 	}
-	return &addons.BackupConfig{
-		Store: &addons.GormRepository{DB: a.DB}, Objects: a.ObjectStore,
-		Signer: registry.Credentials{Secret: []byte(c.Secret)}, Runner: &addons.KubeBackups{Kube: a.K8sProvider.Client},
+	return &addonsSvc.BackupConfig{
+		Store: &addonsRepo.GormRepository{DB: a.DB}, Objects: a.ObjectStore,
+		Signer: registry.Credentials{Secret: []byte(c.Secret)}, Runner: &addonsRepo.KubeBackups{Kube: a.K8sProvider.Client},
 		PublicAPIURL: c.PublicAPIURL, FetchImage: fetch, EgressAllow: c.EgressAllowCIDRs,
 	}
 }
 
 // addonBackupService : passage nocturne (worker).
-func (a *App) addonBackupService() *addons.Service {
-	s := &addons.Service{Repo: &addons.GormRepository{DB: a.DB}, Projects: a.Repos.Project,
+func (a *App) addonBackupService() *addonsSvc.Service {
+	s := &addonsSvc.Service{Repo: &addonsRepo.GormRepository{DB: a.DB}, Projects: a.Repos.Project,
 		Logger: a.Logger.With("component", "addon-backups"), Backups: a.addonBackups(), Spawner: a.spawner()}
 	if a.Services != nil && a.Services.Workload != nil && a.Repos.Workload != nil && a.Variables != nil {
 		s.Workloads = &addonWorkloads{repo: a.Repos.Workload, svc: a.Services.Workload, vars: a.Variables}
@@ -71,7 +73,7 @@ type addonWorkloads struct {
 	vars workloadsRepo.VariableStore
 }
 
-func (w *addonWorkloads) Deploy(ctx context.Context, c addons.Carrier) (uuid.UUID, error) {
+func (w *addonWorkloads) Deploy(ctx context.Context, c addonsSvc.Carrier) (uuid.UUID, error) {
 	req := workloadsDomain.CreateWorkloadRequest{
 		ProjectID: c.ProjectID.String(), Name: c.Name, Image: c.Image, Replicas: 1,
 		Kind: workloadsDomain.KindService, Command: c.Command, HealthCommand: c.Health,
@@ -99,14 +101,14 @@ func (w *addonWorkloads) SetImage(ctx context.Context, id uuid.UUID, image strin
 	return w.svc.Update(ctx, id.String(), workloadsDomain.UpdateWorkloadRequest{Image: image})
 }
 
-func (w *addonWorkloads) States(ctx context.Context, projectID uuid.UUID) (map[uuid.UUID]addons.CarrierState, error) {
+func (w *addonWorkloads) States(ctx context.Context, projectID uuid.UUID) (map[uuid.UUID]addonsSvc.CarrierState, error) {
 	list, err := w.svc.List(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[uuid.UUID]addons.CarrierState, len(list))
+	out := make(map[uuid.UUID]addonsSvc.CarrierState, len(list))
 	for _, wl := range list {
-		out[wl.ID] = addons.CarrierState{Status: wl.Status, Phase: wl.CurrentPhase}
+		out[wl.ID] = addonsSvc.CarrierState{Status: wl.Status, Phase: wl.CurrentPhase}
 	}
 	return out, nil
 }

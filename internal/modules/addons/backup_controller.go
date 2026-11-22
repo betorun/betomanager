@@ -10,6 +10,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/addons/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/addons/repository"
 )
 
 // backupError : erreurs des sauvegardes → statut HTTP.
@@ -25,7 +26,7 @@ func backupError(err error) error {
 		return betoerrors.New(betoerrors.CodeConflict, err.Error())
 	case errors.Is(err, domain.ErrBackupsUnavailable):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
-	case errors.Is(err, ErrBackupTimeout):
+	case errors.Is(err, repository.ErrBackupTimeout):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	}
 	return apiError(err)

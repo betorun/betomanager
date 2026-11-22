@@ -12,6 +12,9 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/thekrauss/kubemanager/internal/modules/databases/repository"
+	"github.com/thekrauss/kubemanager/internal/modules/databases/service"
 )
 
 // TestE2E_CNPGOnRealCluster : le vrai code contre un vrai cluster avec
@@ -43,12 +46,12 @@ func TestE2E_CNPGOnRealCluster(t *testing.T) {
 		_ = kube.CoreV1().Namespaces().Delete(context.Background(), ns, metav1.DeleteOptions{})
 	})
 
-	c := &CNPG{Dynamic: dyn, Kube: kube}
-	spec := ClusterSpec{Name: "db-smoke", DatabaseID: "e2e", ProjectID: "e2e", Storage: "1Gi"}
+	c := &repository.CNPG{Dynamic: dyn, Kube: kube}
+	spec := service.ClusterSpec{Name: "db-smoke", DatabaseID: "e2e", ProjectID: "e2e", Storage: "1Gi"}
 	if err := c.Create(ctx, ns, spec); err != nil {
 		t.Fatalf("création : %v", err)
 	}
-	var st ClusterState
+	var st service.ClusterState
 	for {
 		st, err = c.State(ctx, ns, spec.Name)
 		if err != nil {
@@ -68,7 +71,7 @@ func TestE2E_CNPGOnRealCluster(t *testing.T) {
 	if err != nil || !strings.HasPrefix(uri, "postgresql://app:") || !strings.Contains(uri, "db-smoke-rw") {
 		t.Fatalf("URI : err=%v préfixe=%q", err, firstChars(uri, 18))
 	}
-	t.Logf("version : %s", imageVersion(st.Image))
+	t.Logf("version : %s", service.ImageVersion(st.Image))
 	if err := c.Delete(ctx, ns, spec.Name); err != nil {
 		t.Fatalf("suppression : %v", err)
 	}

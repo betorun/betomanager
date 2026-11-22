@@ -10,6 +10,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/infrastructure/workers/queue"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
+	mailRepo "github.com/thekrauss/kubemanager/internal/modules/mail/repository"
 	mailSvc "github.com/thekrauss/kubemanager/internal/modules/mail/service"
 )
 
@@ -37,7 +38,7 @@ func (a *App) mailSuppressions() mailSvc.Suppressions {
 	if a.DB == nil {
 		return nil
 	}
-	return &mailmod.GormRepository{DB: a.DB}
+	return &mailRepo.GormRepository{DB: a.DB}
 }
 
 // startMailWorker : livraison des e-mails en file (worker). Rend la fonction

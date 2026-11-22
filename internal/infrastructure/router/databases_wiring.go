@@ -14,6 +14,8 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	databasesDomain "github.com/thekrauss/kubemanager/internal/modules/databases/domain"
+	databasesRepo "github.com/thekrauss/kubemanager/internal/modules/databases/repository"
+	databasesSvc "github.com/thekrauss/kubemanager/internal/modules/databases/service"
 	workloadsDomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
@@ -22,8 +24,8 @@ import (
 // newDatabasesController : bases gérées. Sans accès au cluster, le contrôleur
 // existe mais répond « indisponible » (Clusters nil).
 func (a *App) newDatabasesController() *databases.Controller {
-	repo := &databases.GormRepository{DB: a.DB}
-	s := &databases.Service{Repo: repo, Projects: a.Repos.Project, Attachments: repo, Logger: a.Logger}
+	repo := &databasesRepo.GormRepository{DB: a.DB}
+	s := &databasesSvc.Service{Repo: repo, Projects: a.Repos.Project, Attachments: repo, Logger: a.Logger}
 	if a.Services != nil && a.Services.Workload != nil && a.Repos.Workload != nil {
 		s.Workloads = &databaseWorkloads{repo: a.Repos.Workload, svc: a.Services.Workload}
 	}
@@ -32,8 +34,8 @@ func (a *App) newDatabasesController() *databases.Controller {
 		if err != nil {
 			a.Logger.Errorw("databases disabled: dynamic client", "error", err)
 		} else {
-			cnpg := &databases.CNPG{Dynamic: dyn, Kube: a.K8sProvider.Client, StorageClass: a.Config.Databases.StorageClass}
-			if target, err := databases.BackupTargetFrom(a.Config.Databases.Backup); err != nil {
+			cnpg := &databasesRepo.CNPG{Dynamic: dyn, Kube: a.K8sProvider.Client, StorageClass: a.Config.Databases.StorageClass}
+			if target, err := databasesRepo.BackupTargetFrom(a.Config.Databases.Backup); err != nil {
 				a.Logger.Errorw("databases: backups disabled (configuration)", "error", err)
 			} else if target != nil {
 				cnpg.Backup = target
@@ -60,7 +62,7 @@ const defaultImportFetchImage = "curlimages/curl:8.11.1"
 // databaseImports : import de dumps. Il faut le stockage d'objets (le dump y
 // attend le Job), l'API joignable des pods et le secret de signature des
 // builds (URL signées) ; sinon la fonction est indisponible.
-func (a *App) databaseImports(importer databases.Importer) *databases.ImportConfig {
+func (a *App) databaseImports(importer databasesSvc.Importer) *databasesSvc.ImportConfig {
 	c := a.Config.Builds.WithDefaults()
 	if a.ObjectStore == nil || c.Secret == "" || c.PublicAPIURL == "" {
 		a.Logger.Warnw("databases: dump import disabled (object store, builds.secret or builds.public_api_url missing)")
@@ -70,8 +72,8 @@ func (a *App) databaseImports(importer databases.Importer) *databases.ImportConf
 	if fetch == "" {
 		fetch = defaultImportFetchImage
 	}
-	return &databases.ImportConfig{
-		Store: &databases.GormRepository{DB: a.DB}, Dumps: a.ObjectStore,
+	return &databasesSvc.ImportConfig{
+		Store: &databasesRepo.GormRepository{DB: a.DB}, Dumps: a.ObjectStore,
 		Signer: registry.Credentials{Secret: []byte(c.Secret)}, Importer: importer,
 		PublicAPIURL: c.PublicAPIURL, FetchImage: fetch, EgressAllow: c.EgressAllowCIDRs,
 		MaxBytes: a.Config.Databases.ImportMaxBytes,

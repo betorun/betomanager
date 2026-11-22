@@ -13,6 +13,8 @@ import (
 	"github.com/thekrauss/kubemanager/internal/infrastructure/mail"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
+	alertsRepo "github.com/thekrauss/kubemanager/internal/modules/alerts/repository"
+	alertsSvc "github.com/thekrauss/kubemanager/internal/modules/alerts/service"
 )
 
 // smtpSender : serveur SMTP de la configuration ; nil si l'envoi est désactivé.
@@ -28,7 +30,7 @@ func (a *App) smtpSender() (*mail.SMTP, error) {
 
 // alertNotifier : alertes email (incidents de conteneurs, builds échoués) ;
 // nil sans envoi d'emails ou sans URL de la console pour les liens.
-func (a *App) alertNotifier() *alerts.Notifier {
+func (a *App) alertNotifier() *alertsSvc.Notifier {
 	sender, err := a.mailSender()
 	if err != nil {
 		a.Logger.Warnw("alerts disabled: mail configuration invalid", "error", err)
@@ -38,7 +40,7 @@ func (a *App) alertNotifier() *alerts.Notifier {
 		a.Logger.Warnw("alerts disabled: mail or console URL not configured")
 		return nil
 	}
-	n := &alerts.Notifier{Store: alerts.NewStore(a.DB), Mail: sender, ConsoleURL: a.Config.Frontend.BaseURL,
+	n := &alertsSvc.Notifier{Store: alertsRepo.NewStore(a.DB), Mail: sender, ConsoleURL: a.Config.Frontend.BaseURL,
 		Logger: a.Logger.With("component", "alerts"), UnsubscribeKey: a.unsubscribeKey(), APIURL: a.Config.Builds.PublicAPIURL,
 		Spawner: a.spawner()}
 	if w := a.alertWebhooks(); w != nil { // pas d'interface non nulle autour d'un nil
@@ -48,12 +50,12 @@ func (a *App) alertNotifier() *alerts.Notifier {
 }
 
 // alertWebhooks : webhooks d'alertes des projets ; nil sans clé de chiffrement.
-func (a *App) alertWebhooks() *alerts.WebhookService {
+func (a *App) alertWebhooks() *alertsSvc.WebhookService {
 	sealer, err := auth.NewSealer(a.Config.IAM.STSKeyEncryptionKey)
 	if err != nil {
 		return nil
 	}
-	return &alerts.WebhookService{DB: a.DB, Sealer: sealer, Client: alerts.PublicHTTPClient()}
+	return &alertsSvc.WebhookService{DB: a.DB, Sealer: sealer, Client: alertsSvc.PublicHTTPClient()}
 }
 
 // unsubscribeKey : clé des liens de désabonnement, dérivée du poivre des clés
@@ -69,8 +71,8 @@ func (a *App) unsubscribeKey() []byte {
 }
 
 func (a *App) newAlertsController() *alerts.Controller {
-	c := &alerts.Controller{Prefs: &alerts.PreferenceStore{DB: a.DB}, Key: a.unsubscribeKey(),
-		Webhooks: a.alertWebhooks(), ProjectName: alerts.NewStore(a.DB).ProjectName, ConsoleURL: a.Config.Frontend.BaseURL}
+	c := &alerts.Controller{Prefs: &alertsRepo.PreferenceStore{DB: a.DB}, Key: a.unsubscribeKey(),
+		Webhooks: a.alertWebhooks(), ProjectName: alertsRepo.NewStore(a.DB).ProjectName, ConsoleURL: a.Config.Frontend.BaseURL}
 	return c
 }
 

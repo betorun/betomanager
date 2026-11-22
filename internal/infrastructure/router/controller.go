@@ -8,8 +8,10 @@ import (
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	"github.com/thekrauss/kubemanager/internal/modules/builds"
-	clustersCtrl "github.com/thekrauss/kubemanager/internal/modules/clusters"
+	"github.com/thekrauss/kubemanager/internal/modules/clusters"
+	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot"
+	copilotSvc "github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
@@ -45,10 +47,10 @@ type ServiceContainer struct {
 	Project  projectSvc.IProjectService
 	Workload workloadsSvc.IWorkloadService
 	Identity identitySvc.Service
-	Clusters clustersCtrl.IClusterService
+	Clusters clustersSvc.IClusterService
 	Site     sitesSvc.ISiteService // nil si sites désactivés
 	// Copilot : toujours présent ; LLM nil = désactivé.
-	Copilot *copilot.Service
+	Copilot *copilotSvc.Service
 }
 
 type ControllerContainer struct {
@@ -60,7 +62,7 @@ type ControllerContainer struct {
 	// Auth : connexion, sessions, second facteur, emails (nil sans annuaire).
 	Auth     *identity.AuthController
 	Realtime realtimeCtrl.IRealtimeController
-	Clusters clustersCtrl.IClusterController
+	Clusters clusters.IClusterController
 	Site     sites.ISiteController // nil si sites désactivés
 	IAM      *iamapi.Controller
 	Builds   *builds.Controller // nil si builds désactivés

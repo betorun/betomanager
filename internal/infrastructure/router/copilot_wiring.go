@@ -12,8 +12,8 @@ import (
 	"github.com/thekrauss/kubemanager/internal/core/i18n"
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm/llmsetup"
-	"github.com/thekrauss/kubemanager/internal/modules/copilot"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/agent"
+	copilotSvc "github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/store"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 )
@@ -75,12 +75,12 @@ func CopilotRoutes(groups []*RouteGroup) []tools.Route {
 
 // newCopilotService : le Copilot, désactivé (LLM nil) si llm.enabled=false
 // ou si la pile llm ne se construit pas (erreur journalisée, l'API démarre).
-func (a *App) newCopilotService() *copilot.Service {
-	s := &copilot.Service{
+func (a *App) newCopilotService() *copilotSvc.Service {
+	s := &copilotSvc.Service{
 		STS:    a.STS,
 		Redis:  a.Redis,
 		Logger: a.Logger,
-		Config: copilot.Config{Limits: agent.Limits{Timeout: 120 * time.Second}},
+		Config: copilotSvc.Config{Limits: agent.Limits{Timeout: 120 * time.Second}},
 	}
 	if a.Redis != nil {
 		s.Store = store.New(a.Redis)

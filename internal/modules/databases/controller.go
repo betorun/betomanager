@@ -13,6 +13,8 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/databases/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/databases/repository"
+	"github.com/thekrauss/kubemanager/internal/modules/databases/service"
 )
 
 // Authorizer : décision IAM (iam.Engine).
@@ -22,12 +24,12 @@ type Authorizer interface {
 
 // Controller : routes /projects/:id/databases.
 type Controller struct {
-	Service *Service
+	Service *service.Service
 	// IAM : second contrôle de l'attache (variables du conteneur).
 	IAM Authorizer
 }
 
-func NewController(s *Service) *Controller { return &Controller{Service: s} }
+func NewController(s *service.Service) *Controller { return &Controller{Service: s} }
 
 // apiError : erreurs du service → statut HTTP et message stable.
 func apiError(err error) error {
@@ -60,9 +62,9 @@ func apiError(err error) error {
 		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
 	case errors.Is(err, domain.ErrNoSnapshot):
 		return betoerrors.New(betoerrors.CodeNotFound, err.Error())
-	case errors.Is(err, ErrTaskTimeout):
+	case errors.Is(err, repository.ErrTaskTimeout):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
-	case errors.As(err, new(*TaskError)):
+	case errors.As(err, new(*repository.TaskError)):
 		// Journal de psql ou pg_dump : la base est celle du projet.
 		return betoerrors.New(betoerrors.CodeUnprocessable, err.Error())
 	case errors.Is(err, domain.ErrUnavailable):

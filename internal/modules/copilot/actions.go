@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/iam/sts"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 )
 
@@ -23,102 +23,6 @@ var actionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "kubemanager", Subsystem: "copilot", Name: "actions_total",
 	Help: "Cartes d'action du Copilot, par outil et issue (approved|rejected|failed|conflict).",
 }, []string{"tool", "outcome"})
-
-// awaiting : ce que le modèle reçoit quand il propose une action.
-const awaiting = `{"status":"awaiting_validation","note":"A card was shown to the person. NOTHING has been done yet: ` +
-	`it only runs if they validate it. Briefly tell them what the card will do and why; never say it is done."}`
-
-// propose : fige la requête, vérifie la ressource visée (elle existe et la
-// personne y a accès), garde la proposition et la montre en carte.
-func (r *boundRunner) propose(ctx context.Context, t *tools.Tool, args json.RawMessage) tools.Result {
-	if r.proposed >= 1 {
-		return toolError("only one action can be proposed per message; wait for the person to validate the first one")
-	}
-	prepared, err := r.cat.Prepare(t.Name, args)
-	if err != nil {
-		return toolError(err.Error())
-	}
-	target, err := r.target(ctx, t, prepared)
-	if err != nil {
-		return toolError(err.Error())
-	}
-	token, err := newToken()
-	if err != nil {
-		return toolError("the action could not be prepared")
-	}
-	now := r.svc.now().UTC()
-	p := &Proposal{Token: token, UserID: r.userID, ConversationID: r.conversationID, Request: *prepared,
-		Risk: t.Risk, Target: target, CreatedAt: now, ExpiresAt: now.Add(ProposalTTL)}
-	if err := r.svc.proposals().save(ctx, p, ProposalTTL); err != nil {
-		r.svc.Logger.Warnw("copilot: proposal not saved", "error", err)
-		return toolError("the action could not be prepared")
-	}
-	r.proposed++
-	if r.onProposal != nil {
-		r.onProposal(p.view(t.PathParams()))
-	}
-	return tools.Result{Status: http.StatusAccepted, Content: awaiting}
-}
-
-// target : nom lisible de la ressource visée, lu avec les droits de la
-// personne. Une ressource introuvable ou interdite : pas de carte.
-func (r *boundRunner) target(ctx context.Context, t *tools.Tool, p *tools.Prepared) (string, error) {
-	var tool string
-	args := map[string]any{}
-	switch {
-	case strings.Contains(t.Path, "/workloads/:id"):
-		tool, args["id"] = tools.ToolGetWorkload, p.Args["id"]
-	case strings.Contains(t.Path, ":siteID"):
-		tool, args["id"], args["siteID"] = "get_site", p.Args["id"], p.Args["siteID"]
-	case strings.Contains(t.Path, ":databaseID"):
-		tool, args["id"], args["databaseID"] = "get_database", p.Args["id"], p.Args["databaseID"]
-	case strings.Contains(t.Path, ":buildID"):
-		tool, args["id"], args["buildID"] = "get_build", p.Args["id"], p.Args["buildID"]
-	default:
-		// Création (build, conteneur) : la ressource n'existe pas encore ; son
-		// nom suffit, la route vérifiera les droits sur le projet.
-		if name := scalarString(p.Args["name"]); name != "" {
-			return name, nil
-		}
-		return "", nil
-	}
-	raw, _ := json.Marshal(args)
-	res := r.cat.Call(ctx, r.inv, tool, raw)
-	if res.IsError {
-		return "", fmt.Errorf("the target resource was not found or is not accessible (HTTP %d)", res.Status)
-	}
-	var v struct {
-		Name     string `json:"name"`
-		Hostname string `json:"hostname"`
-	}
-	_ = json.Unmarshal([]byte(res.Content), &v)
-	if v.Name != "" {
-		return v.Name, nil
-	}
-	return v.Hostname, nil
-}
-
-func toolError(msg string) tools.Result {
-	raw, _ := json.Marshal(map[string]string{"message": msg})
-	return tools.Result{Content: string(raw), IsError: true}
-}
-
-func (s *Service) proposals() ProposalStore {
-	if s.Proposals != nil {
-		return s.Proposals
-	}
-	return &proposals{rdb: s.Redis}
-}
-
-// note : constat dans la conversation (sans mémoire configurée : rien).
-func (s *Service) note(ctx context.Context, userID, conversationID, text string) {
-	if s.Store == nil {
-		return
-	}
-	if err := s.Store.AppendNote(ctx, userID, conversationID, text); err != nil {
-		s.Logger.Warnw("copilot: action note not saved", "error", err)
-	}
-}
 
 // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -128,7 +32,7 @@ type ActionResult struct {
 	HTTPStatus int    `json:"http_status,omitempty"`
 	Message    string `json:"message,omitempty"`
 	// Undo : carte inverse, prête à être validée (ex. redémarrer après un arrêt).
-	Undo *View `json:"undo,omitempty"`
+	Undo *service.View `json:"undo,omitempty"`
 	// Result : réponse JSON de la route en cas de succès (ex. le build lancé,
 	// que la console suit en direct), bornée.
 	Result json.RawMessage `json:"result,omitempty"`
@@ -162,18 +66,18 @@ func writeActionError(c *gin.Context, err error) {
 }
 
 // take : charge la carte de la personne et la réserve (une seule issue).
-func (h *Controller) take(c *gin.Context, token, userID string) (*Proposal, error) {
+func (h *Controller) take(c *gin.Context, token, userID string) (*service.Proposal, error) {
 	s := h.Service
 	ctx := c.Request.Context()
-	p, err := s.proposals().load(ctx, token, userID)
+	p, err := s.ProposalsStore().Load(ctx, token, userID)
 	switch {
-	case errors.Is(err, errProposalNotFound):
+	case errors.Is(err, service.ErrProposalNotFound):
 		return nil, &actionError{http.StatusGone, "ACTION_EXPIRED", "this card has expired or does not exist"}
 	case err != nil:
 		return nil, err
 	}
-	if err := s.proposals().claim(ctx, token); err != nil {
-		if errors.Is(err, errProposalHandled) {
+	if err := s.ProposalsStore().Claim(ctx, token); err != nil {
+		if errors.Is(err, service.ErrProposalHandled) {
 			actionsTotal.WithLabelValues(p.Request.Tool, "conflict").Inc()
 			return nil, &actionError{http.StatusConflict, "ACTION_ALREADY_HANDLED", "this card has already been handled"}
 		}
@@ -203,7 +107,7 @@ func (h *Controller) Approve(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	defer s.proposals().drop(context.WithoutCancel(ctx), p.Token)
+	defer s.ProposalsStore().Drop(context.WithoutCancel(ctx), p.Token)
 
 	token, _, err := s.STS.MintDelegated(sts.Delegation{UserID: user, SessionID: session, ACR: acr,
 		Actor: sts.ActorCopilot, Scope: sts.ScopeWrite, TTL: 2 * time.Minute})
@@ -212,9 +116,9 @@ func (h *Controller) Approve(c *gin.Context) {
 		writeActionError(c, err)
 		return
 	}
-	s.mu.RLock()
-	cat, handler := s.catalog, s.handler
-	s.mu.RUnlock()
+	s.Mu.RLock()
+	cat, handler := s.Catalog, s.Handler
+	s.Mu.RUnlock()
 	inv := tools.Invoker{Handler: handler, Token: token, ClientIP: c.ClientIP(), AcceptLanguage: c.GetHeader("Accept-Language")}
 
 	res := cat.Execute(ctx, inv, &p.Request, p.Token)
@@ -232,7 +136,7 @@ func (h *Controller) Approve(c *gin.Context) {
 	if id := resultID(out.Result); id != "" {
 		note += ", resource id " + id // pour les outils de lecture du tour suivant
 	}
-	s.note(context.WithoutCancel(ctx), userID, p.ConversationID, note+".]")
+	s.Note(context.WithoutCancel(ctx), userID, p.ConversationID, note+".]")
 
 	if !res.IsError {
 		if inverse := cat.Inverse(&p.Request); inverse != nil {
@@ -245,22 +149,22 @@ func (h *Controller) Approve(c *gin.Context) {
 }
 
 // saveUndo : carte inverse d'une action faite, valable UndoTTL.
-func (h *Controller) saveUndo(ctx context.Context, done *Proposal, inverse *tools.Prepared, cat *tools.Catalog) (*View, error) {
+func (h *Controller) saveUndo(ctx context.Context, done *service.Proposal, inverse *tools.Prepared, cat *tools.Catalog) (*service.View, error) {
 	t, ok := cat.Lookup(inverse.Tool)
 	if !ok {
 		return nil, errors.New("unknown inverse")
 	}
-	token, err := newToken()
+	token, err := service.NewToken()
 	if err != nil {
 		return nil, err
 	}
-	now := h.Service.now().UTC()
-	p := &Proposal{Token: token, UserID: done.UserID, ConversationID: done.ConversationID, Request: *inverse,
-		Risk: t.Risk, Target: done.Target, CreatedAt: now, ExpiresAt: now.Add(UndoTTL), UndoOf: done.Token}
-	if err := h.Service.proposals().save(ctx, p, UndoTTL); err != nil {
+	now := h.Service.CurrentTime().UTC()
+	p := &service.Proposal{Token: token, UserID: done.UserID, ConversationID: done.ConversationID, Request: *inverse,
+		Risk: t.Risk, Target: done.Target, CreatedAt: now, ExpiresAt: now.Add(service.UndoTTL), UndoOf: done.Token}
+	if err := h.Service.ProposalsStore().Save(ctx, p, service.UndoTTL); err != nil {
 		return nil, err
 	}
-	v := p.view(t.PathParams())
+	v := p.View(t.PathParams())
 	return &v, nil
 }
 
@@ -279,9 +183,9 @@ func (h *Controller) Reject(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	s.proposals().drop(ctx, p.Token)
+	s.ProposalsStore().Drop(ctx, p.Token)
 	actionsTotal.WithLabelValues(p.Request.Tool, "rejected").Inc()
-	s.note(context.WithoutCancel(ctx), userID, p.ConversationID,
+	s.Note(context.WithoutCancel(ctx), userID, p.ConversationID,
 		fmt.Sprintf("[The person declined the action %s on %q. Nothing was done.]", p.Request.Tool, p.Target))
 	c.JSON(http.StatusOK, ActionResult{Status: "rejected"})
 }
@@ -314,9 +218,4 @@ func errorMessage(content string) string {
 		return e.Message
 	}
 	return e.Code
-}
-
-func scalarString(v any) string {
-	s, _ := v.(string)
-	return strings.TrimSpace(s)
 }
