@@ -321,3 +321,31 @@ func TestOnPodEvent_AlertsOnTransitionOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, alerts.statuses, 1, "pas de nouvelle alerte sans changement de statut")
 }
+
+// Lot 2c : le watcher d'un cluster ne parle que des workloads des projets
+// placés sur son cluster (projet sans cluster : le cluster par défaut).
+func TestOnPodEvent_OtherClusterProject_Ignored(t *testing.T) {
+	onGra, onDefault := uuid.New(), uuid.New()
+	wGra, wDefault := uuid.New(), uuid.New()
+	repo := &fakeWorkloadRepo{byID: map[uuid.UUID]*domain.Workload{
+		wGra:     {ID: wGra, ProjectID: onGra, Name: "api", Namespace: "km-gra"},
+		wDefault: {ID: wDefault, ProjectID: onDefault, Name: "web", Namespace: "km-main"},
+	}}
+	pub := &capturePublisher{}
+	places := &placements{byProject: map[uuid.UUID]string{onGra: "gra-1", onDefault: ""}}
+	svc := NewService(repo, newFakeClusterRepo(), pub, zap.NewNop().Sugar(), WithPlacement(places, "main"))
+	event := func(cluster string, w uuid.UUID, ns string) string {
+		ack, err := svc.OnPodEvent(context.Background(), cluster, clustersDomain.PodEvent{EventID: "e", Name: "p",
+			Namespace: ns, Reason: "CrashLoopBackOff", Labels: map[string]string{"km-workload-id": w.String()}})
+		require.NoError(t, err)
+		return ack.Status
+	}
+
+	assert.Equal(t, "ignored", event("main", wGra, "km-gra"), "le cluster par défaut ne parle pas d'un projet de gra-1")
+	assert.Equal(t, "ignored", event("gra-1", wDefault, "km-main"), "gra-1 ne parle pas d'un projet du défaut")
+	assert.Empty(t, repo.statusUpdates)
+	assert.Empty(t, pub.published)
+
+	assert.Equal(t, "mapped", event("gra-1", wGra, "km-gra"))
+	assert.Equal(t, "mapped", event("main", wDefault, "km-main"), "projet sans cluster : le défaut")
+}

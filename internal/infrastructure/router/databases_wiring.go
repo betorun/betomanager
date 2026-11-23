@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/loopfz/gadgeto/tonic"
-	"k8s.io/client-go/dynamic"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
@@ -30,24 +29,21 @@ func (a *App) newDatabasesController() *databases.Controller {
 		s.Workloads = &databaseWorkloads{repo: a.Repos.Workload, svc: a.Services.Workload}
 	}
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil && a.K8sProvider.Config != nil {
-		dyn, err := dynamic.NewForConfig(a.K8sProvider.Config)
-		if err != nil {
-			a.Logger.Errorw("databases disabled: dynamic client", "error", err)
+		// Chaque base sur le cluster de son projet (lot 2b).
+		cnpg := &databasesRepo.CNPG{Clients: a.cnpgClients(), StorageClass: a.Config.Databases.StorageClass,
+			StorageFor: a.storageFor()}
+		if target, err := databasesRepo.BackupTargetFrom(a.Config.Databases.Backup); err != nil {
+			a.Logger.Errorw("databases: backups disabled (configuration)", "error", err)
+		} else if target != nil {
+			cnpg.Backup = target
 		} else {
-			cnpg := &databasesRepo.CNPG{Dynamic: dyn, Kube: a.K8sProvider.Client, StorageClass: a.Config.Databases.StorageClass}
-			if target, err := databasesRepo.BackupTargetFrom(a.Config.Databases.Backup); err != nil {
-				a.Logger.Errorw("databases: backups disabled (configuration)", "error", err)
-			} else if target != nil {
-				cnpg.Backup = target
-			} else {
-				a.Logger.Warnw("databases: no backup storage configured (databases.backup.*): new databases will have NO backups")
-			}
-			s.Clusters = cnpg
-			s.Shell = cnpg
-			s.Snapshots = repo
-			s.Archives = repo
-			s.Imports = a.databaseImports(cnpg)
+			a.Logger.Warnw("databases: no backup storage configured (databases.backup.*): new databases will have NO backups")
 		}
+		s.Clusters = cnpg
+		s.Shell = cnpg
+		s.Snapshots = repo
+		s.Archives = repo
+		s.Imports = a.databaseImports(cnpg)
 	}
 	ctl := databases.NewController(s)
 	if a.IAM != nil { // pas d'interface non nulle autour d'un *Engine nil

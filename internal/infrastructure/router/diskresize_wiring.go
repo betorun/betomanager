@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	addonsdomain "github.com/thekrauss/kubemanager/internal/modules/addons/domain"
 	addonsRepo "github.com/thekrauss/kubemanager/internal/modules/addons/repository"
@@ -33,7 +34,7 @@ func (a *App) newDiskResizeController() *diskresize.Controller {
 		s.Workloads = &resizeWorkloads{app: a}
 	}
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
-		s.Claims = &diskresizeRepo.KubeClaims{Kube: a.K8sProvider.Client, Image: "busybox:1.37.0", Timeout: time.Hour}
+		s.Claims = &diskresizeRepo.KubeClaims{Kube: k8sprovider.ByNamespace(a.kube()), Image: "busybox:1.37.0", Timeout: time.Hour}
 	}
 	return &diskresize.Controller{Service: s, Addons: &resizeAddons{db: a.DB}}
 }

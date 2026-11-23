@@ -152,6 +152,10 @@ func (c *CNPG) ensureImportPolicy(ctx context.Context, ns string, egressAllow []
 }
 
 func (c *CNPG) StartImport(ctx context.Context, ns string, spec service.ImportJobSpec) error {
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return err
+	}
 	if err := c.ensureImportPolicy(ctx, ns, spec.EgressAllow); err != nil {
 		return err
 	}
@@ -162,6 +166,10 @@ func (c *CNPG) StartImport(ctx context.Context, ns string, spec service.ImportJo
 }
 
 func (c *CNPG) ImportState(ctx context.Context, ns, importID string) (service.ImportJobState, error) {
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return service.ImportJobState{}, err
+	}
 	job, err := c.Kube.BatchV1().Jobs(ns).Get(ctx, importJobName(importID), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return service.ImportJobState{}, nil

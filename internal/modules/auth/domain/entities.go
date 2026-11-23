@@ -30,6 +30,11 @@ type Project struct {
 	// OrganizationID : organisation parente (hiérarchie IAM, cf. docs/architecture/iam.md).
 	OrganizationID uuid.UUID `gorm:"type:uuid;not null;index"`
 
+	// ClusterID : cluster qui porte le projet, choisi à la création (région
+	// puis capacité) ; nil : cluster par défaut. Jamais montré au client
+	// (marque blanche : l'identifiant peut nommer le fournisseur).
+	ClusterID *string `gorm:"column:cluster_id;type:varchar(100)" json:"-"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`

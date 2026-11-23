@@ -133,3 +133,8 @@ func (ctrl *Controller) RegistryNodes(c *gin.Context, in *ClusterPath) ([]domain
 func (ctrl *Controller) RegistryDelete(c *gin.Context, in *ClusterPath) error {
 	return ctrl.Registry.Delete(c.Request.Context(), in.ClusterID)
 }
+
+// Regions : régions proposées à la création d'un projet (clients).
+func (ctrl *Controller) Regions(c *gin.Context) ([]domain.Region, error) {
+	return ctrl.Registry.Regions(c.Request.Context())
+}

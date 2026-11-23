@@ -7,10 +7,9 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	authdomain "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	typesproject "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
@@ -44,18 +43,28 @@ type IProjectService interface {
 var _ IProjectService = (*ProjectService)(nil)
 
 type ProjectService struct {
-	Distributor  temporal.TaskDistributor
-	Config       *configs.GlobalConfig
-	Logger       *zap.SugaredLogger
-	Repos        repository.ProjectRepository
-	K8sClient    *kubernetes.Clientset
-	K8sConfig    *rest.Config
+	Distributor temporal.TaskDistributor
+	Config      *configs.GlobalConfig
+	Logger      *zap.SugaredLogger
+	Repos       repository.ProjectRepository
+	// Kube : clients du cluster de chaque projet.
+	Kube         k8sprovider.Resolver
 	WorkloadRepo workloadRepo.WorkloadRepository
 	// Images : place des images du projet au registre ; nil si les builds
 	// ne sont pas activés.
 	Images ImageUsage
 	// Databases : disques des bases gérées du projet ; nil : non comptés.
 	Databases DatabaseStorage
+	// Placer : cluster d'un nouveau projet (région puis capacité) ; nil :
+	// cluster par défaut.
+	Placer Placer
+}
+
+// Placer : choix du cluster d'un nouveau projet (registre des clusters).
+type Placer interface {
+	// Place : "" : cluster par défaut ; ErrNoClusterInRegion si la région
+	// demandée n'a pas de place.
+	Place(ctx context.Context, region string) (string, error)
 }
 
 // DatabaseStorage : octets de disque réservés par les bases d'un projet.
@@ -73,8 +82,7 @@ func NewProjectService(
 	cfg *configs.GlobalConfig,
 	log *zap.SugaredLogger,
 	repo repository.ProjectRepository,
-	k8s *kubernetes.Clientset,
-	k8sCfg *rest.Config,
+	kube k8sprovider.Resolver,
 	workloadRepo workloadRepo.WorkloadRepository,
 ) IProjectService {
 	return &ProjectService{
@@ -82,8 +90,7 @@ func NewProjectService(
 		Config:       cfg,
 		Logger:       log.With("service", "ProjectService"),
 		Repos:        repo,
-		K8sClient:    k8s,
-		K8sConfig:    k8sCfg,
+		Kube:         kube,
 		WorkloadRepo: workloadRepo,
 	}
 }
@@ -116,11 +123,22 @@ func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.Cre
 			return nil, ErrInvalidOrganization
 		}
 	}
+	var cluster *string
+	if s.Placer != nil {
+		c, err := s.Placer.Place(ctx, req.Region)
+		if err != nil {
+			return nil, err // région inconnue ou sans place : classé par le routeur
+		}
+		if c != "" {
+			cluster = &c
+		}
+	}
 	id := uuid.New()
 	projectID := id.String()
 	description := strings.TrimSpace(req.Description)
 	namespace := utils.NewProjectNamespace(id)
 	if err := s.Repos.CreateProject(ctx, &authdomain.Project{
+		ClusterID:      cluster,
 		ID:             id,
 		Name:           name,
 		Description:    description,

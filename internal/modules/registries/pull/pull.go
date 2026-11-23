@@ -14,8 +14,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/modules/builds/registry"
 	"github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -37,7 +37,8 @@ type Auths interface {
 
 // Secrets : écrit le Secret de pull d'un projet.
 type Secrets struct {
-	K8s      kubernetes.Interface
+	// K8s : client du cluster de chaque projet.
+	K8s      k8sprovider.ProjectClient
 	Platform *Platform
 	External Auths
 }
@@ -83,7 +84,11 @@ func (s *Secrets) Sync(ctx context.Context, namespace string, project uuid.UUID)
 	if err != nil {
 		return err
 	}
-	api := s.K8s.CoreV1().Secrets(namespace)
+	kube, err := s.K8s(ctx, project)
+	if err != nil {
+		return err
+	}
+	api := kube.CoreV1().Secrets(namespace)
 	if raw == nil {
 		if err := api.Delete(ctx, SecretName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
 			return err
@@ -109,7 +114,11 @@ func (s *Secrets) Sync(ctx context.Context, namespace string, project uuid.UUID)
 // Refresh : réécrit le Secret s'il existe déjà (un accès a changé). Un
 // namespace sans Secret n'a encore rien déployé : rien à faire.
 func (s *Secrets) Refresh(ctx context.Context, namespace string, project uuid.UUID) error {
-	if _, err := s.K8s.CoreV1().Secrets(namespace).Get(ctx, SecretName, metav1.GetOptions{}); err != nil {
+	kube, err := s.K8s(ctx, project)
+	if err != nil {
+		return err
+	}
+	if _, err := kube.CoreV1().Secrets(namespace).Get(ctx, SecretName, metav1.GetOptions{}); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}

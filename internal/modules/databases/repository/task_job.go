@@ -198,6 +198,10 @@ func (c *CNPG) Dump(ctx context.Context, ns string, t service.TaskTarget, up *se
 // runTask : crée le Job, attend sa fin, rend le journal du conteneur « main »
 // (ou l'erreur du conteneur en échec), puis supprime le Job.
 func (c *CNPG) runTask(ctx context.Context, ns string, job *batchv1.Job, egressAllow []string, timeout time.Duration) (string, error) {
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return "", err
+	}
 	if err := c.ensureImportPolicy(ctx, ns, egressAllow); err != nil {
 		return "", err
 	}

@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage/domain"
 )
 
@@ -42,14 +43,28 @@ const (
 // lance du -sk. Il tourne avec l'utilisateur du pod qui utilise le disque :
 // il lit ce que l'application peut lire, sans être root.
 type KubeMeasurer struct {
-	Kube    kubernetes.Interface
+	// Kube : client du cluster du namespace de chaque projet.
+	Kube    k8sprovider.NamespaceClient
 	Image   string        // busybox figé
 	Timeout time.Duration // démarrage du pod compris
 	Poll    time.Duration
 }
 
+// client : client du cluster du namespace.
+func (m *KubeMeasurer) client(ctx context.Context, ns string) (kubernetes.Interface, error) {
+	kube, err := m.Kube(ctx, ns)
+	if err != nil {
+		return nil, fmt.Errorf("project cluster: %w", err)
+	}
+	return kube, nil
+}
+
 func (m *KubeMeasurer) Disks(ctx context.Context, ns string) ([]domain.Disk, error) {
-	list, err := m.Kube.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{})
+	kube, err := m.client(ctx, ns)
+	if err != nil {
+		return nil, err
+	}
+	list, err := kube.CoreV1().PersistentVolumeClaims(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -80,12 +95,12 @@ func (m *KubeMeasurer) Disks(ctx context.Context, ns string) ([]domain.Disk, err
 }
 
 // owner : utilisateur et groupe du pod qui utilise le disque.
-func (m *KubeMeasurer) owner(ctx context.Context, d domain.Disk) (uid, group int64) {
+func owner(ctx context.Context, kube kubernetes.Interface, d domain.Disk) (uid, group int64) {
 	uid, group = defaultWorkloadUID, defaultWorkloadGroup
 	if d.Kind == domain.KindDatabase {
 		uid, group = postgresUID, postgresUID
 	}
-	pods, err := m.Kube.CoreV1().Pods(d.Namespace).List(ctx, metav1.ListOptions{})
+	pods, err := kube.CoreV1().Pods(d.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return uid, group
 	}
@@ -179,9 +194,13 @@ func measureJob(d domain.Disk, image string, uid, group int64, deadline time.Dur
 }
 
 func (m *KubeMeasurer) Measure(ctx context.Context, d domain.Disk) (int64, error) {
-	uid, group := m.owner(ctx, d)
+	kube, err := m.client(ctx, d.Namespace)
+	if err != nil {
+		return 0, err
+	}
+	uid, group := owner(ctx, kube, d)
 	job := measureJob(d, m.Image, uid, group, m.Timeout)
-	jobs := m.Kube.BatchV1().Jobs(d.Namespace)
+	jobs := kube.BatchV1().Jobs(d.Namespace)
 	if _, err := jobs.Create(ctx, job, metav1.CreateOptions{}); err != nil {
 		return 0, err
 	}
@@ -196,7 +215,7 @@ func (m *KubeMeasurer) Measure(ctx context.Context, d domain.Disk) (int64, error
 			return 0, err
 		}
 		if j.Status.Succeeded > 0 {
-			return m.result(ctx, d.Namespace, job.Name)
+			return result(ctx, kube, d.Namespace, job.Name)
 		}
 		if j.Status.Failed > 0 {
 			return 0, fmt.Errorf("disk usage job failed for %s/%s", d.Namespace, d.PVC)
@@ -213,12 +232,12 @@ func (m *KubeMeasurer) Measure(ctx context.Context, d domain.Disk) (int64, error
 }
 
 // result : la sortie de du (Kio) en octets.
-func (m *KubeMeasurer) result(ctx context.Context, ns, job string) (int64, error) {
-	pods, err := m.Kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + job})
+func result(ctx context.Context, kube kubernetes.Interface, ns, job string) (int64, error) {
+	pods, err := kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + job})
 	if err != nil || len(pods.Items) == 0 {
 		return 0, errors.New("disk usage pod not found")
 	}
-	stream, err := m.Kube.CoreV1().Pods(ns).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{Container: "du"}).Stream(ctx)
+	stream, err := kube.CoreV1().Pods(ns).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{Container: "du"}).Stream(ctx)
 	if err != nil {
 		return 0, err
 	}

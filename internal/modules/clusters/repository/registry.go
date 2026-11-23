@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -118,4 +119,47 @@ func (s *RegistryStore) Healths(ctx context.Context) (map[string]*domain.Health,
 // SaveHealth : remplace le relevé du cluster.
 func (s *RegistryStore) SaveHealth(ctx context.Context, h *domain.Health) error {
 	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(h).Error
+}
+
+// ProjectCounts : projets (non supprimés) par cluster ; sans cluster : sous
+// defaultID (le cluster par défaut les porte).
+func (s *RegistryStore) ProjectCounts(ctx context.Context, defaultID string) (map[string]int, error) {
+	var rows []struct {
+		ClusterID string
+		N         int
+	}
+	if err := s.DB.WithContext(ctx).Raw(`SELECT COALESCE(cluster_id, ?) AS cluster_id, COUNT(*) AS n
+		FROM projects WHERE deleted_at IS NULL GROUP BY 1`, defaultID).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(rows))
+	for _, r := range rows {
+		out[r.ClusterID] = r.N
+	}
+	return out, nil
+}
+
+// ProjectCluster : cluster d'un projet, supprimé compris ("" : défaut).
+func (s *RegistryStore) ProjectCluster(ctx context.Context, project uuid.UUID) (string, bool, error) {
+	return s.lookup(ctx, "id = ?", project)
+}
+
+// NamespaceCluster : cluster du projet de ce namespace, supprimé compris.
+func (s *RegistryStore) NamespaceCluster(ctx context.Context, namespace string) (string, bool, error) {
+	return s.lookup(ctx, "namespace = ?", namespace)
+}
+
+func (s *RegistryStore) lookup(ctx context.Context, where string, arg any) (string, bool, error) {
+	var rows []struct{ ClusterID *string }
+	if err := s.DB.WithContext(ctx).Raw(`SELECT cluster_id FROM projects WHERE `+where+` ORDER BY deleted_at NULLS FIRST LIMIT 1`, arg).
+		Scan(&rows).Error; err != nil {
+		return "", false, err
+	}
+	if len(rows) == 0 {
+		return "", false, nil
+	}
+	if rows[0].ClusterID == nil {
+		return "", true, nil
+	}
+	return *rows[0].ClusterID, true, nil
 }

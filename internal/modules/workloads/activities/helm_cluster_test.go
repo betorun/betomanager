@@ -10,10 +10,36 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/rest"
+
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 )
+
+// clusters : résolveur de test, cluster de chaque namespace de projet.
+type clusters map[string]*k8sprovider.ProviderK8s
+
+func (c clusters) ForProject(context.Context, uuid.UUID) (*k8sprovider.ProviderK8s, error) {
+	return nil, fmt.Errorf("unexpected project lookup")
+}
+func (c clusters) ForNamespace(_ context.Context, ns string) (*k8sprovider.ProviderK8s, error) {
+	if p, ok := c[ns]; ok {
+		return p, nil
+	}
+	return nil, fmt.Errorf("unknown namespace %s", ns)
+}
+func (c clusters) ForCluster(context.Context, string) (*k8sprovider.ProviderK8s, error) {
+	return nil, fmt.Errorf("unexpected cluster lookup")
+}
+
+func providerAt(t *testing.T, url string) *k8sprovider.ProviderK8s {
+	t.Helper()
+	p, err := k8sprovider.FromConfig("", &rest.Config{Host: url})
+	require.NoError(t, err)
+	return p
+}
 
 // fakeAPIServer : juste assez de l'API Kubernetes pour que Helm conclue
 // « aucune release » ; compte les appels reçus.
@@ -56,9 +82,23 @@ users:
 `, other.URL)), 0o600))
 	t.Setenv("KUBECONFIG", kubeconfig)
 
-	a := &WorkloadActivities{K8sConfig: &rest.Config{Host: configured.URL}}
+	a := &WorkloadActivities{Kube: clusters{"km-x": providerAt(t, configured.URL)}}
 	require.NoError(t, a.UninstallChart(context.Background(), "km-x", "web"))
 
 	assert.Positive(t, configuredCalls.Load(), "appels vers le cluster configuré")
 	assert.Zero(t, otherCalls.Load(), "aucun appel vers le cluster de KUBECONFIG")
+}
+
+// Lot 2b : chaque release part vers le cluster du projet de son namespace.
+func TestHelmUsesProjectCluster(t *testing.T) {
+	first, firstCalls := fakeAPIServer(t)
+	second, secondCalls := fakeAPIServer(t)
+	a := &WorkloadActivities{Kube: clusters{"km-a": providerAt(t, first.URL), "km-b": providerAt(t, second.URL)}}
+
+	require.NoError(t, a.UninstallChart(context.Background(), "km-b", "web"))
+	assert.Zero(t, firstCalls.Load(), "aucun appel vers le cluster de l'autre projet")
+	assert.Positive(t, secondCalls.Load(), "appels vers le cluster du projet")
+
+	require.NoError(t, a.UninstallChart(context.Background(), "km-a", "web"))
+	assert.Positive(t, firstCalls.Load())
 }

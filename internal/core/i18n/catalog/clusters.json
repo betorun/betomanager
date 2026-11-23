@@ -82,5 +82,29 @@
  {
   "fr": "Le cluster refuse de lister les nœuds ou les pods avec ce kubeconfig",
   "en": "the cluster refused to list nodes or pods with this kubeconfig"
+ },
+ {
+  "fr": "Plus de place dans cette région pour le moment : choisissez-en une autre",
+  "en": "no capacity available in this region, choose another region"
+ },
+ {
+  "fr": "Région invalide",
+  "en": "invalid region"
+ },
+ {
+  "fr": "Ce cluster porte encore des projets",
+  "en": "this cluster still hosts projects"
+ },
+ {
+  "fr": "Réglage du cluster invalide : minuscules, chiffres, points ou tirets",
+  "en": "invalid cluster setting: lowercase letters, digits, dots or dashes"
+ },
+ {
+  "fr": "Aucun projet ne porte cet identifiant ou ce namespace",
+  "en": "no project for this id or namespace"
+ },
+ {
+  "fr": "Aucun cluster Kubernetes configuré",
+  "en": "no Kubernetes cluster configured"
  }
 ]

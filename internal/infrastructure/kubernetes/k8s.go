@@ -3,6 +3,7 @@ package kubernetes
 import (
 	"fmt"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -10,9 +11,13 @@ import (
 )
 
 type ProviderK8s struct {
+	// ClusterID : cluster du registre ("" : celui de la configuration).
+	ClusterID     string
 	Client        *kubernetes.Clientset
 	Config        *rest.Config
 	MetricsClient *metricsv1.Clientset
+	// Dynamic : ressources personnalisées (CloudNativePG…).
+	Dynamic dynamic.Interface
 }
 
 func NewKubernetesProvider(kubeConfigPath string) (*ProviderK8s, error) {
@@ -40,10 +45,15 @@ func NewKubernetesProvider(kubeConfigPath string) (*ProviderK8s, error) {
 		return nil, fmt.Errorf("failed to create metrics clientset: %w", err)
 	}
 
+	dyn, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
+	}
 	return &ProviderK8s{
 		Client:        clientset,
 		Config:        config,
 		MetricsClient: mClient,
+		Dynamic:       dyn,
 	}, nil
 }
 

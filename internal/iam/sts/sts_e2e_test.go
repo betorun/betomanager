@@ -46,7 +46,11 @@ func db(t *testing.T) *gorm.DB {
 	if os.Getenv("IAM_E2E") == "" {
 		t.Skip("IAM_E2E not set")
 	}
-	d, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	target := dsn
+	if v := os.Getenv("IAM_E2E_DSN"); v != "" {
+		target = v
+	}
+	d, err := gorm.Open(postgres.Open(target), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	return d
 }

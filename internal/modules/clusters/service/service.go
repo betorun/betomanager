@@ -36,6 +36,10 @@ type service struct {
 	publisher realtime.Publisher
 	logger    *zap.SugaredLogger
 	alerts    IncidentAlerter
+	// projects, defaultID : cluster qui porte chaque projet (lot 2c) ; nil :
+	// pas de contrôle (installation à un cluster).
+	projects  ProjectClusters
+	defaultID string
 }
 
 // IncidentAlerter : prévient les owners qu'un conteneur passe en incident
@@ -50,6 +54,12 @@ type Option func(*service)
 // WithAlerts : alertes email sur les incidents.
 func WithAlerts(a IncidentAlerter) Option {
 	return func(s *service) { s.alerts = a }
+}
+
+// WithPlacement : un événement n'est retenu que s'il vient du cluster qui
+// porte le projet du workload (defaultID : projets sans cluster).
+func WithPlacement(p ProjectClusters, defaultID string) Option {
+	return func(s *service) { s.projects, s.defaultID = p, defaultID }
 }
 
 // Defaults RemoteConfig — valeurs saines pour un watcher single-cluster.
@@ -211,6 +221,18 @@ func (s *service) OnPodEvent(ctx context.Context, clusterID string, event domain
 		return &domain.PodEventAck{EventID: event.EventID, Status: domain.AckStatusIgnored}, nil
 	}
 
+	// Multi-cluster (lot 2c) : la clé d'un watcher ne vaut que pour son
+	// cluster ; un cluster ne parle jamais des workloads d'un autre (même
+	// namespace recréé ailleurs, client qui recopie les labels).
+	if ok, err := s.placedOn(ctx, wl.ProjectID, clusterID); err != nil {
+		return nil, fmt.Errorf("project cluster lookup: %w", err)
+	} else if !ok {
+		s.logger.Warnw("pod event from a cluster that does not hold the project — ignored",
+			"cluster", clusterID, "workload", workloadID, "project", wl.ProjectID, "pod", event.Name)
+		observability.PodEventsIngested.WithLabelValues(clusterID, domain.MetricStatusRejected).Inc()
+		return &domain.PodEventAck{EventID: event.EventID, Status: domain.AckStatusIgnored}, nil
+	}
+
 	newStatus, mapped := reasonToWorkloadStatus[event.Reason]
 	if mapped {
 		phase := utils.PhasePodEventPrefix + event.Reason
@@ -248,6 +270,24 @@ func (s *service) OnPodEvent(ctx context.Context, clusterID string, event domain
 	}
 	observability.PodEventsIngested.WithLabelValues(clusterID, ack.Status).Inc()
 	return ack, nil
+}
+
+// placedOn : le projet est porté par ce cluster (sans contrôle configuré : oui).
+func (s *service) placedOn(ctx context.Context, project uuid.UUID, clusterID string) (bool, error) {
+	if s.projects == nil {
+		return true, nil
+	}
+	cluster, found, err := s.projects.ProjectCluster(ctx, project)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+	if cluster == "" {
+		cluster = s.defaultID
+	}
+	return cluster == "" || cluster == clusterID, nil
 }
 
 // publishPodEvent : push l'event sur le channel deploy du workload.

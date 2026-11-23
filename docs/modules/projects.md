@@ -17,7 +17,7 @@ Sous `/kmanager/v1`. Voir `addProjectRoutes` dans [route.go](../../internal/infr
 
 | Méthode | Chemin | Permission | Description |
 |---------|--------|-----------|-------------|
-| `POST` | `/projects` | `resourcemanager.projects.create` sur l'organisation choisie (`organization_id`, vide = organisation personnelle) | Créer un projet (déclenche `CreateProjectWorkflow`), toujours avec les limites par défaut ; 409 `PROJECT_LIMIT_REACHED` au-delà du plafond, 409 si le nom existe déjà dans l'organisation |
+| `POST` | `/projects` | `resourcemanager.projects.create` sur l'organisation choisie (`organization_id`, vide = organisation personnelle) | Créer un projet (déclenche `CreateProjectWorkflow`), toujours avec les limites par défaut ; 409 `PROJECT_LIMIT_REACHED` au-delà du plafond, 409 si le nom existe déjà dans l'organisation ; `region` facultatif (voir `GET /regions`) : le projet est placé sur un cluster de cette région (409 `NO_CAPACITY_IN_REGION` sinon), voir [clusters.md](clusters.md#placement-des-projets-lot-2a) |
 | `GET` | `/projects` | authentifié (filtré par les droits) | Projets accessibles (200 plus récents) + `organizations` : organisations où l'appelant peut créer, avec `projects` / `max_projects` |
 | `GET` | `/projects/:id` | `resourcemanager.projects.get` | Résumé + limites |
 | `PATCH` | `/projects/:id` | `resourcemanager.projects.update` | Renommer / changer la description (`{name?, description?}`) ; l'espace Kubernetes ne change pas |

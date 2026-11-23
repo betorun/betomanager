@@ -89,8 +89,9 @@ type Service struct {
 	DB     *gorm.DB
 	// Federation : émetteurs OIDC externes (nil : fédération désactivée).
 	Federation *Issuers
-	// WorkloadClusterID : cluster des workloads betorun (vide : identité des
-	// workloads désactivée).
+	// WorkloadClusterID : cluster par défaut (projets sans cluster) ; vide :
+	// identité des workloads désactivée. Les clés de chaque cluster sont
+	// celles que son watcher publie (cluster_oidc_keys).
 	WorkloadClusterID string
 	workloadKeys      workloadKeys
 	now               func() time.Time

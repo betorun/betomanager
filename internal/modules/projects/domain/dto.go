@@ -8,6 +8,8 @@ type CreateProjectRequest struct {
 	// OrganizationID : organisation du projet (vide : organisation
 	// personnelle). Il faut y détenir resourcemanager.projects.create.
 	OrganizationID string `json:"organization_id" description:"Organisation du projet (vide : votre organisation personnelle)"`
+	// Region : région du projet (GET /regions) ; vide : choisie par la plateforme.
+	Region string `json:"region" description:"Région du projet (voir GET /regions) ; vide : choisie par la plateforme"`
 	// Pas de limites : elles sont fixées par la plateforme, jamais par le
 	// client (sinon chacun se donnerait les ressources qu'il veut).
 }

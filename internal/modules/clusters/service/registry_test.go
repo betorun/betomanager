@@ -14,9 +14,20 @@ import (
 )
 
 type memRegistry struct {
-	mu sync.Mutex
-	cs map[string]*domain.Cluster
-	hs map[string]*domain.Health
+	mu       sync.Mutex
+	cs       map[string]*domain.Cluster
+	hs       map[string]*domain.Health
+	projects map[string]int
+}
+
+func (m *memRegistry) ProjectCounts(context.Context, string) (map[string]int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[string]int{}
+	for k, v := range m.projects {
+		out[k] = v
+	}
+	return out, nil
 }
 
 func newMemRegistry() *memRegistry {
@@ -241,4 +252,24 @@ func TestRegistry_CheckAll(t *testing.T) {
 	assert.Equal(t, domain.HealthUnknown, store.hs["sans-acces"].State)
 	assert.Contains(t, []string(store.hs["sans-acces"].Reasons), domain.ReasonNoAccess)
 	assert.NotContains(t, store.hs, "eteint", "hors service : plus sondé")
+}
+
+// Un cluster qui porte des projets ne se retire pas.
+func TestRegistry_DeleteKeepsHostingClusters(t *testing.T) {
+	ctx := context.Background()
+	store := newMemRegistry()
+	r := newRegistry(store, nil)
+	_, err := r.Declare(ctx, DeclareInput{ClusterID: "occupe", Provider: domain.ProviderOVH, Distribution: domain.DistributionK3s, Region: "eu-west-gra"}, "")
+	require.NoError(t, err)
+	store.projects = map[string]int{"occupe": 2}
+	assert.ErrorIs(t, r.Delete(ctx, "occupe"), domain.ErrClusterHasProjects)
+	v, err := r.Get(ctx, "occupe")
+	require.NoError(t, err)
+	assert.Equal(t, 2, v.Projects)
+
+	_, err = r.Place(ctx, "EU WEST")
+	assert.ErrorIs(t, err, domain.ErrInvalidRegionCode)
+	bad := "Not Valid"
+	_, err = r.Update(ctx, "occupe", UpdateInput{IngressClass: &bad})
+	assert.ErrorIs(t, err, domain.ErrInvalidSetting)
 }

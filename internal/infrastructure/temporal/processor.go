@@ -9,11 +9,10 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	metricsv1 "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
 	idempotency "github.com/thekrauss/kubemanager/internal/infrastructure/idempotence"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/objectstore"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/realtime"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
@@ -32,11 +31,13 @@ import (
 )
 
 type WorkerConfig struct {
-	Client      client.Client
-	Config      *configs.GlobalConfig
-	Logger      *zap.SugaredLogger
-	K8sClient   *kubernetes.Clientset
-	K8sConfig   *rest.Config
+	Client client.Client
+	Config *configs.GlobalConfig
+	Logger *zap.SugaredLogger
+	// K8sClient : cluster de la configuration (domaines de la passerelle).
+	K8sClient *kubernetes.Clientset
+	// Kube : clients du cluster de chaque projet (namespaces, Helm, Secrets).
+	Kube        k8sprovider.Resolver
 	DB          *gorm.DB
 	RBACSvc     authSvc.IRBACService
 	Idempotency idempotency.AtomicManager
@@ -77,22 +78,16 @@ func (p *TemporalProcessor) Start() (<-chan error, error) {
 	worker.SetStickyWorkflowCacheSize(tc.StickyCacheSize)
 	w := worker.New(p.cfg.Client, tc.TaskQueue, workerOptions(tc))
 
-	metricsClient, err := metricsv1.NewForConfig(p.cfg.K8sConfig)
-	if err != nil {
-		return nil, fmt.Errorf("metrics client: %w", err)
-	}
-
 	projDBActs := &projectActivities.ProjectDBActivities{
 		Repo:         projectRepo.NewProjectRepository(p.cfg.DB),
 		WorkloadRepo: workloadRepository.NewWorkloadRepository(p.cfg.DB),
 		Logger:       p.cfg.Logger,
 	}
 	projK8sActs := &projectActivities.ProjectK8sActivities{
-		K8sClient:     p.cfg.K8sClient,
-		MetricsClient: metricsClient,
-		Logger:        p.cfg.Logger,
-		Rbac:          p.cfg.RBACSvc,
-		Idempotency:   p.cfg.Idempotency,
+		Kube:        p.cfg.Kube,
+		Logger:      p.cfg.Logger,
+		Rbac:        p.cfg.RBACSvc,
+		Idempotency: p.cfg.Idempotency,
 	}
 	workloadDBActs := &workloadActivities.WorkloadDBActivities{
 		DB:        p.cfg.DB,
@@ -101,8 +96,7 @@ func (p *TemporalProcessor) Start() (<-chan error, error) {
 		Publisher: p.cfg.Publisher,
 	}
 	helmActs := &workloadActivities.WorkloadActivities{
-		K8sConfig:   p.cfg.K8sConfig,
-		K8sClient:   p.cfg.K8sClient,
+		Kube:        p.cfg.Kube,
 		Idempotency: p.cfg.Idempotency,
 		Pull:        p.cfg.Pull,
 		Variables:   p.cfg.Variables,

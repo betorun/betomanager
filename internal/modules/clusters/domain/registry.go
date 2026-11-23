@@ -144,6 +144,8 @@ type ClusterView struct {
 	// déploiement (aucun kubeconfig déposé).
 	FromConfig bool    `json:"from_config"`
 	Health     *Health `json:"health,omitempty"`
+	// Projects : projets portés (non supprimés).
+	Projects int `json:"projects"`
 }
 
 // Node : un nœud (lecture à la demande, back-office).

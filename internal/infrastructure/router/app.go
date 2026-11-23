@@ -78,7 +78,9 @@ type App struct {
 	Redis       *redis.Client
 	K8sProvider *k8sprovider.ProviderK8s
 	// clusters : registre des clusters (clusterRegistry, construit une fois).
-	clusters            *clustersSvc.Registry
+	clusters *clustersSvc.Registry
+	// kubeResolver : client du cluster de chaque projet (kube()).
+	kubeResolver        k8sprovider.Resolver
 	Cache               cache.CacheRedis
 	AuthCache           cache.AuthCache
 	Temporal            TemporalComponents
@@ -175,7 +177,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 		Config:      a.Config,
 		Logger:      a.Logger,
 		K8sClient:   a.K8sProvider.Client,
-		K8sConfig:   a.K8sProvider.Config,
+		Kube:        a.kube(),
 		DB:          a.DB,
 		RBACSvc:     a.Services.RBAC,
 		Idempotency: a.Idempotency,
@@ -202,7 +204,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 	if a.K8sProvider != nil && a.K8sProvider.Client != nil {
 		recoverer := &workloadsSvc.Recoverer{
 			Store:     workloadsRepo.NewIncidentStore(a.DB),
-			K8s:       a.K8sProvider.Client,
+			K8s:       k8sprovider.ByProject(a.kube()),
 			Publisher: a.Publisher,
 			Logger:    a.Logger.With("component", "workload-recovery"),
 		}
