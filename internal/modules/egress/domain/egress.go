@@ -74,6 +74,9 @@ type AdminAddress struct {
 	Address
 	ProjectName string `json:"project_name,omitempty"`
 	Assigned    bool   `json:"assigned"`
+	// Mounted : portée par son nœud passerelle (nil : inconnu, pas d'agent
+	// réseau sur le cluster ; l'équipe la monte à la main).
+	Mounted *bool `json:"mounted,omitempty"`
 }
 
 // Binding : règle à poser sur le cluster (projet → IP par la passerelle).

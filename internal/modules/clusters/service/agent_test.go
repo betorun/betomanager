@@ -16,6 +16,8 @@ type fakeInstaller struct {
 	agentErr    error
 	agents      []domain.AgentSpec
 	platform    int
+	egressRBAC  int
+	egressImage string
 }
 
 func (f *fakeInstaller) Platform(context.Context) ([]byte, []byte, error) {
@@ -26,6 +28,15 @@ func (f *fakeInstaller) Platform(context.Context) ([]byte, []byte, error) {
 	return []byte("tok"), []byte("ca"), nil
 }
 func (f *fakeInstaller) AgentRBAC(context.Context) error { return nil }
+func (f *fakeInstaller) EgressAgentRBAC(context.Context) error {
+	f.egressRBAC++
+	return nil
+}
+func (f *fakeInstaller) EgressAgent(_ context.Context, image string) error {
+	f.egressImage = image
+	return nil
+}
+func (f *fakeInstaller) EgressAgentImage(context.Context) (string, error) { return f.egressImage, nil }
 func (f *fakeInstaller) Agent(_ context.Context, s domain.AgentSpec) error {
 	if f.agentErr != nil {
 		return f.agentErr
@@ -167,4 +178,31 @@ func TestAgents_Update(t *testing.T) {
 	c, _ = store.Get(ctx, "gra-1")
 	assert.Equal(t, "gra-1-k2", c.AgentKeyID)
 	assert.Equal(t, []string{"gra-1-k1"}, keys.revoked)
+}
+
+// Agent réseau : rôle posé à la préparation, DaemonSet seulement avec une
+// image configurée ; suivi à chaque mise à jour.
+func TestAgents_EgressAgent(t *testing.T) {
+	ctx := context.Background()
+	ag, _, admin, restricted, _ := newAgents(t)
+	_, err := ag.Bootstrap(ctx, "gra-1", BootstrapInput{Kubeconfig: []byte("admin")}, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, admin.egressRBAC)
+	assert.Empty(t, admin.egressImage, "sans image : pas de DaemonSet")
+
+	ag.EgressImage = "thekrauss/egress-agent:abc"
+	_, err = ag.Bootstrap(ctx, "gra-1", BootstrapInput{Kubeconfig: []byte("admin")}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "thekrauss/egress-agent:abc", admin.egressImage)
+
+	ag.EgressImage = "thekrauss/egress-agent:def"
+	st, err := ag.Update(ctx, "gra-1", AgentInput{}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "thekrauss/egress-agent:def", restricted.egressImage, "mise à jour par le compte restreint")
+	assert.Equal(t, 0, restricted.egressRBAC, "jamais de RBAC hors préparation")
+	_ = st
+
+	ag.EgressImage = "Bad Image"
+	_, err = ag.Update(ctx, "gra-1", AgentInput{}, "")
+	assert.ErrorIs(t, err, domain.ErrInvalidAgentImage)
 }

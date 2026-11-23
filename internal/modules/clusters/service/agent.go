@@ -17,6 +17,10 @@ type AgentInstaller interface {
 	AgentRBAC(ctx context.Context) error
 	Agent(ctx context.Context, spec domain.AgentSpec) error
 	State(ctx context.Context) (*domain.AgentState, error)
+	// Agent réseau des IP de sortie (ADR 0014) : rôle (administrateur), DaemonSet.
+	EgressAgentRBAC(ctx context.Context) error
+	EgressAgent(ctx context.Context, image string) error
+	EgressAgentImage(ctx context.Context) (string, error)
 }
 
 // AgentKeys : fichiers de clé du compte système du cluster (iam.ClusterAgents).
@@ -31,6 +35,9 @@ type Agents struct {
 	Keys     AgentKeys // nil : installation impossible (pas de STS)
 	// Image : image par défaut de l'agent (kubernetes.agent_image).
 	Image string
+	// EgressImage : image de l'agent réseau des IP de sortie
+	// (kubernetes.egress_agent_image ; vide : pas posé).
+	EgressImage string
 	// APIURL : …/kmanager/v1/clusters vu depuis les clusters.
 	APIURL string
 	// Prepare : installateur d'un kubeconfig de préparation (contrôlé comme
@@ -120,8 +127,14 @@ func (a *Agents) Bootstrap(ctx context.Context, clusterID string, in BootstrapIn
 	if err := inst.AgentRBAC(ctx); err != nil {
 		return nil, err
 	}
+	if err := inst.EgressAgentRBAC(ctx); err != nil {
+		return nil, err
+	}
 	keyID, err := a.install(ctx, inst, c, img, true, by)
 	if err != nil {
+		return nil, err
+	}
+	if err := a.egress(ctx, inst); err != nil {
 		return nil, err
 	}
 	// Agent enregistré d'abord : sa clé est suivie même si la suite échoue.
@@ -166,6 +179,11 @@ func (a *Agents) Update(ctx context.Context, clusterID string, in AgentInput, by
 	if keyID == "" {
 		keyID = c.AgentKeyID
 	}
+	// Agent réseau : son rôle n'est posé qu'à la préparation (compte
+	// administrateur) ; le DaemonSet suit l'image de la configuration.
+	if err := a.egress(ctx, inst); err != nil {
+		return nil, err
+	}
 	return a.finish(ctx, c, inst, img, keyID, by)
 }
 
@@ -184,7 +202,22 @@ func (a *Agents) State(ctx context.Context, clusterID string) (*domain.AgentStat
 		return nil, err
 	}
 	st.LastSeenAt, st.InstalledAt = c.LastSeenAt, c.AgentInstalledAt
+	if img, err := inst.EgressAgentImage(ctx); err == nil {
+		st.EgressAgentImage = img
+	}
 	return st, nil
+}
+
+// egress : DaemonSet de l'agent réseau, si une image est configurée.
+func (a *Agents) egress(ctx context.Context, inst AgentInstaller) error {
+	img := strings.TrimSpace(a.EgressImage)
+	if img == "" {
+		return nil
+	}
+	if !domain.ValidAgentImage(img) {
+		return domain.ErrInvalidAgentImage
+	}
+	return inst.EgressAgent(ctx, img)
 }
 
 // install : nouvelle clé au besoin puis agent ; clé révoquée si l'agent n'a

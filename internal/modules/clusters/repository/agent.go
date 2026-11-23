@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
+	"github.com/thekrauss/kubemanager/internal/egressagent"
 	"github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 )
@@ -60,11 +61,12 @@ func PlatformRules() []rbacv1.PolicyRule {
 	crud := []string{"get", "list", "watch", "create", "update", "patch", "delete"}
 	read := []string{"get", "list", "watch"}
 	return []rbacv1.PolicyRule{
-		{APIGroups: []string{""}, Resources: []string{"namespaces", "resourcequotas", "secrets", "services", "serviceaccounts", "persistentvolumeclaims"}, Verbs: crud},
+		{APIGroups: []string{""}, Resources: []string{"namespaces", "resourcequotas", "secrets", "configmaps", "services", "serviceaccounts", "persistentvolumeclaims"}, Verbs: crud},
 		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch", "delete"}},
 		{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: read},
 		{APIGroups: []string{""}, Resources: []string{"pods/log", "events"}, Verbs: read},
 		{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: crud},
+		{APIGroups: []string{"apps"}, Resources: []string{"daemonsets"}, Verbs: crud},
 		{APIGroups: []string{"apps"}, Resources: []string{"deployments/scale"}, Verbs: []string{"get", "update", "patch"}},
 		{APIGroups: []string{"apps"}, Resources: []string{"replicasets"}, Verbs: read},
 		{APIGroups: []string{"batch"}, Resources: []string{"jobs"}, Verbs: crud},
@@ -337,4 +339,98 @@ func upsert[T object](ctx context.Context, c client[T], obj T, apply func(T)) er
 	apply(cur)
 	_, err = c.Update(ctx, cur, metav1.UpdateOptions{})
 	return denied(err)
+}
+
+// ── Agent réseau des IP de sortie (ADR 0014, lot 2) ─────────────────────
+
+// EgressAgentRBAC : rôle du namespace de l'agent réseau (lire la consigne,
+// publier son statut : ConfigMap de betorun-system seulement). Administrateur.
+func (i *Installer) EgressAgentRBAC(ctx context.Context) error {
+	if err := i.namespace(ctx); err != nil {
+		return err
+	}
+	name := egressagent.Name
+	role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: domain.AgentNamespace, Labels: labels(name)},
+		Rules: []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"configmaps"},
+			Verbs: []string{"get", "list", "watch", "create", "update", "patch"}}}}
+	if err := upsert(ctx, i.Client.RbacV1().Roles(domain.AgentNamespace), role, func(cur *rbacv1.Role) {
+		cur.Rules, cur.Labels = role.Rules, role.Labels
+	}); err != nil {
+		return admin(fmt.Errorf("role %s: %w", name, err))
+	}
+	binding := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: domain.AgentNamespace, Labels: labels(name)},
+		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "Role", Name: name},
+		Subjects: []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Name: name, Namespace: domain.AgentNamespace}}}
+	if err := upsert(ctx, i.Client.RbacV1().RoleBindings(domain.AgentNamespace), binding, func(cur *rbacv1.RoleBinding) {
+		cur.Subjects, cur.Labels = binding.Subjects, binding.Labels
+	}); err != nil {
+		return admin(fmt.Errorf("role binding %s: %w", name, err))
+	}
+	return nil
+}
+
+// EgressAgent : compte et DaemonSet de l'agent réseau (un pod par nœud,
+// réseau de l'hôte, NET_ADMIN seulement). Possible avec le compte plateforme.
+func (i *Installer) EgressAgent(ctx context.Context, image string) error {
+	if err := i.namespace(ctx); err != nil {
+		return err
+	}
+	if err := i.serviceAccount(ctx, egressagent.Name, true); err != nil {
+		return err
+	}
+	ds := egressAgentDaemonSet(image)
+	return upsert(ctx, i.Client.AppsV1().DaemonSets(domain.AgentNamespace), ds, func(cur *appsv1.DaemonSet) {
+		cur.Labels = ds.Labels
+		cur.Spec.Template = ds.Spec.Template
+	})
+}
+
+// EgressAgentImage : image de l'agent réseau en place ("" : absent).
+func (i *Installer) EgressAgentImage(ctx context.Context) (string, error) {
+	ds, err := i.Client.AppsV1().DaemonSets(domain.AgentNamespace).Get(ctx, egressagent.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", denied(err)
+	}
+	if len(ds.Spec.Template.Spec.Containers) == 0 {
+		return "", nil
+	}
+	return ds.Spec.Template.Spec.Containers[0].Image, nil
+}
+
+func egressAgentDaemonSet(image string) *appsv1.DaemonSet {
+	no := false
+	lbl := labels(egressagent.Name)
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Name: egressagent.Name, Namespace: domain.AgentNamespace, Labels: lbl},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app.kubernetes.io/name": egressagent.Name}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbl},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: egressagent.Name,
+					HostNetwork:        true,
+					DNSPolicy:          corev1.DNSClusterFirstWithHostNet,
+					// Tous les nœuds, plan de contrôle compris (le nœud
+					// passerelle d'un cluster à un nœud l'est).
+					Tolerations: []corev1.Toleration{{Operator: corev1.TolerationOpExists}},
+					Containers: []corev1.Container{{
+						Name:            "agent",
+						Image:           image,
+						ImagePullPolicy: corev1.PullIfNotPresent,
+						Env: []corev1.EnvVar{{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}}},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("10m"), corev1.ResourceMemory: resource.MustParse("16Mi")},
+							Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("64Mi")},
+						},
+						SecurityContext: &corev1.SecurityContext{AllowPrivilegeEscalation: &no, Privileged: &no,
+							Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"NET_ADMIN"}}},
+					}},
+				},
+			},
+		},
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/thekrauss/kubemanager/internal/egressagent"
 	"github.com/thekrauss/kubemanager/internal/modules/egress/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/egress/repository"
 )
@@ -20,10 +21,19 @@ type Store interface {
 	Delete(ctx context.Context, clusterID string, id uuid.UUID) error
 	ForProject(ctx context.Context, project uuid.UUID) (*domain.Address, error)
 	FreeCount(ctx context.Context, clusterID string) (int, error)
-	Assign(ctx context.Context, clusterID string, project uuid.UUID, by string, now time.Time) (*domain.Address, error)
+	Assign(ctx context.Context, clusterID string, project uuid.UUID, by string, now time.Time, only []string) (*domain.Address, error)
 	Release(ctx context.Context, id uuid.UUID, now time.Time) error
 	Place(ctx context.Context, project uuid.UUID, defaultCluster string) (*repository.ProjectPlace, error)
 	Orphans(ctx context.Context) ([]repository.Orphan, error)
+	Clusters(ctx context.Context) ([]string, error)
+}
+
+// Nodes : consigne des agents réseau et ce qu'ils portent (lot 2,
+// repository.Nodes). nil : IP montées à la main (lot 1).
+type Nodes interface {
+	Publish(ctx context.Context, clusterID string, d egressagent.Desired) error
+	// Mounted : par nœud, les IP portées ; agent false : aucun agent sur le cluster.
+	Mounted(ctx context.Context, clusterID string) (map[string]map[string]bool, bool, error)
 }
 
 // Gateway : pose et retire la règle de sortie d'un projet sur son cluster.
@@ -37,6 +47,7 @@ type Service struct {
 	Store Store
 	// Gateways : implémentation par sorte de passerelle (domain.GatewayCilium…).
 	Gateways map[string]Gateway
+	Nodes    Nodes
 	// DefaultCluster : cluster des projets sans cluster.
 	DefaultCluster string
 	Logger         *zap.SugaredLogger
@@ -84,11 +95,19 @@ func (s *Service) Get(ctx context.Context, project uuid.UUID) (*domain.ProjectEg
 		return out, nil
 	}
 	if out.Offered {
-		n, err := s.Store.FreeCount(ctx, p.ClusterID)
+		only, err := s.usable(ctx, p.ClusterID)
 		if err != nil {
 			return nil, err
 		}
-		out.Available = n > 0
+		if only == nil {
+			n, err := s.Store.FreeCount(ctx, p.ClusterID)
+			if err != nil {
+				return nil, err
+			}
+			out.Available = n > 0
+		} else {
+			out.Available = len(only) > 0
+		}
 	}
 	return out, nil
 }
@@ -109,7 +128,11 @@ func (s *Service) Request(ctx context.Context, project uuid.UUID, by string) (*d
 	} else if cur != nil {
 		return nil, domain.ErrAlreadyHasAddress
 	}
-	a, err := s.Store.Assign(ctx, p.ClusterID, project, by, s.now())
+	only, err := s.usable(ctx, p.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+	a, err := s.Store.Assign(ctx, p.ClusterID, project, by, s.now(), only)
 	if err != nil {
 		return nil, err
 	}
@@ -175,12 +198,31 @@ func (s *Service) Sweep(ctx context.Context) {
 	}
 }
 
+// reconcile : consigne de chaque cluster qui a une réserve republiée
+// (cluster recréé, consigne effacée à la main, agent posé après coup).
+func (s *Service) reconcile(ctx context.Context) {
+	if s.Nodes == nil {
+		return
+	}
+	ids, err := s.Store.Clusters(ctx)
+	if err != nil {
+		if s.Logger != nil {
+			s.Logger.Warnw("egress clusters not listed", "error", err)
+		}
+		return
+	}
+	for _, id := range ids {
+		s.syncLogged(ctx, id)
+	}
+}
+
 // Run : passe de ménage, toutes les every.
 func (s *Service) Run(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
 		s.Sweep(ctx)
+		s.reconcile(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -198,9 +240,71 @@ type DeclareInput struct {
 	Notes       string `json:"notes,omitempty" description:"Notes de l'équipe (référence chez l'hébergeur…)"`
 }
 
-// List : réserve d'un cluster.
+// List : réserve d'un cluster, et si chaque IP est montée sur son nœud
+// (connu seulement avec un agent réseau).
 func (s *Service) List(ctx context.Context, clusterID string) ([]domain.AdminAddress, error) {
-	return s.Store.List(ctx, clusterID)
+	list, err := s.Store.List(ctx, clusterID)
+	if err != nil || s.Nodes == nil {
+		return list, err
+	}
+	mounted, agent, err := s.Nodes.Mounted(ctx, clusterID)
+	if err != nil || !agent {
+		return list, nil // cluster muet : l'état reste inconnu
+	}
+	for i := range list {
+		m := mounted[list[i].GatewayNode][list[i].Address.Address]
+		list[i].Mounted = &m
+	}
+	return list, nil
+}
+
+// usable : IP libres et montées sur leur nœud ; nil : pas d'agent réseau
+// (montage à la main, toute IP libre convient).
+func (s *Service) usable(ctx context.Context, clusterID string) ([]string, error) {
+	if s.Nodes == nil {
+		return nil, nil
+	}
+	mounted, agent, err := s.Nodes.Mounted(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	if !agent {
+		return nil, nil
+	}
+	list, err := s.Store.List(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	only := []string{}
+	for _, a := range list {
+		if !a.Assigned && mounted[a.GatewayNode][a.Address.Address] {
+			only = append(only, a.Address.Address)
+		}
+	}
+	return only, nil
+}
+
+// Sync : consigne du cluster = toute sa réserve, par nœud (montée d'avance,
+// libre ou attribuée). Sans agent réseau, elle n'a pas d'effet.
+func (s *Service) Sync(ctx context.Context, clusterID string) error {
+	if s.Nodes == nil {
+		return nil
+	}
+	list, err := s.Store.List(ctx, clusterID)
+	if err != nil {
+		return err
+	}
+	d := egressagent.Desired{}
+	for _, a := range list {
+		d[a.GatewayNode] = append(d[a.GatewayNode], a.Address.Address)
+	}
+	return s.Nodes.Publish(ctx, clusterID, d)
+}
+
+func (s *Service) syncLogged(ctx context.Context, clusterID string) {
+	if err := s.Sync(ctx, clusterID); err != nil && s.Logger != nil {
+		s.Logger.Warnw("egress addresses not published to the cluster", "cluster", clusterID, "error", err)
+	}
 }
 
 // Declare : IP ajoutée à la réserve du cluster.
@@ -221,10 +325,15 @@ func (s *Service) Declare(ctx context.Context, clusterID string, in DeclareInput
 	if err := s.Store.Declare(ctx, a); err != nil {
 		return nil, err
 	}
+	s.syncLogged(ctx, clusterID)
 	return &domain.AdminAddress{Address: *a}, nil
 }
 
 // Remove : IP libre retirée de la réserve.
 func (s *Service) Remove(ctx context.Context, clusterID string, id uuid.UUID) error {
-	return s.Store.Delete(ctx, clusterID, id)
+	if err := s.Store.Delete(ctx, clusterID, id); err != nil {
+		return err
+	}
+	s.syncLogged(ctx, clusterID)
+	return nil
 }

@@ -94,6 +94,9 @@ config:
     # Image du watcher posé sur chaque cluster préparé depuis le back-office
     # (ex. thekrauss/watcher:<sha>) ; l'équipe peut en donner une autre.
     agentImage: ""
+    # Image de l'agent réseau des IP de sortie dédiées (ex.
+    # thekrauss/egress-agent:<sha>) ; vide : IP montées à la main.
+    egressAgentImage: ""
   iam:
     # STS : URL publique de l'émetteur des jetons machine (= <API>/kmanager/v1/iam).
     stsIssuer: "https://api.example.com/kmanager/v1/iam"

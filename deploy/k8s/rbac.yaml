@@ -34,7 +34,7 @@ metadata:
   name: betorun-platform
 rules:
   - apiGroups: [""]
-    resources: [namespaces, resourcequotas, secrets, services, serviceaccounts, persistentvolumeclaims]
+    resources: [namespaces, resourcequotas, secrets, configmaps, services, serviceaccounts, persistentvolumeclaims]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
     resources: [pods]
@@ -48,6 +48,10 @@ rules:
     verbs: [get, list, watch]
   - apiGroups: [apps]
     resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Agent réseau des IP de sortie (DaemonSet de betorun-system, ADR 0014).
+  - apiGroups: [apps]
+    resources: [daemonsets]
     verbs: [get, list, watch, create, update, patch, delete]
   # Arrêt et redémarrage d'un conteneur (lifecycle.go : GetScale, UpdateScale).
   - apiGroups: [apps]
