@@ -130,5 +130,17 @@
  {
   "fr": "copilot: carte : outil %q absent de la spécification",
   "en": "copilot: feature map: tool %q missing from the specification"
+ },
+ {
+  "fr": "copilot: outil %q : %q exige le paramètre %q",
+  "en": "copilot: tool %q: %q requires the parameter %q"
+ },
+ {
+  "fr": "copilot: outil %q : nom à retaper sans outil qui le lit (TargetTool)",
+  "en": "copilot: tool %q: name to retype without a tool that reads it (TargetTool)"
+ },
+ {
+  "fr": "copilot: outil %q : une lecture n'est pas une carte sensible",
+  "en": "copilot: tool %q: a read is not a sensitive card"
  }
 ]

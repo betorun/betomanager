@@ -36,6 +36,12 @@ type CopilotTool struct {
 	Only []string
 	// Undo : outil inverse (mêmes paramètres de chemin).
 	Undo string
+	// Strong : carte sensible (suppression, action sensible) : jouée avec la
+	// session de la personne, double authentification exigée par l'API.
+	Strong bool
+	// ConfirmName : nom de la ressource à retaper (lu par TargetTool).
+	ConfirmName bool
+	TargetTool  string
 }
 
 // ForCopilot : la route devient un outil du Copilot. Elle doit être une
@@ -60,7 +66,7 @@ func CopilotRoutes(groups []*RouteGroup) []tools.Route {
 				Name: r.Copilot.Name, Method: r.Method, Path: buildFullPath(absPath, r.Path),
 				Fixed: r.Copilot.Fixed, Max: r.Copilot.Max, Hint: r.Copilot.Hint,
 				Write: r.Copilot.Write, Risk: r.Copilot.Risk, Omit: r.Copilot.Omit, Only: r.Copilot.Only, Undo: r.Copilot.Undo,
-				Sensitive: info.Sensitive,
+				Sensitive: info.Sensitive, Strong: r.Copilot.Strong, ConfirmName: r.Copilot.ConfirmName, TargetTool: r.Copilot.TargetTool,
 			})
 		}
 		for _, child := range g.Groups {

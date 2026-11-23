@@ -36,7 +36,12 @@ func TestCopilotFeatureMap(t *testing.T) {
 	assert.Contains(t, out, "action card: create_database")
 
 	out = find("supprimer ma base")
-	assert.Contains(t, out, "done by the person in the console: /services")
+	assert.Contains(t, out, "action card: delete_database (sensitive")
+	assert.Contains(t, out, "retype the resource name")
+
+	// Reste à la console : recharge par mobile money (téléphone, prestataire).
+	out = find("recharger le solde mobile money")
+	assert.Contains(t, out, "done by the person in the console: /billing")
 	assert.Contains(t, out, "needs two-factor authentication")
 
 	out = find("reseau ip de sortie")

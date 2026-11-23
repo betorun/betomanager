@@ -34,6 +34,9 @@ type Result struct {
 	Content   string
 	IsError   bool
 	Truncated bool
+	// StepUp : réponse brute « confirmation d'identité exigée »
+	// (STEP_UP_REQUIRED), à rendre telle quelle à la console (max_age…).
+	StepUp json.RawMessage
 }
 
 const (
@@ -227,7 +230,14 @@ func invoke(ctx context.Context, inv Invoker, p *Prepared, keepTail bool, idempo
 
 	text := w.text()
 	if w.status/100 != 2 {
-		return Result{Status: w.status, Content: errorContent(w.status, text), IsError: true}
+		res := Result{Status: w.status, Content: errorContent(w.status, text), IsError: true}
+		var e struct {
+			Code string `json:"code"`
+		}
+		if w.status == http.StatusUnauthorized && json.Unmarshal([]byte(text), &e) == nil && e.Code == "STEP_UP_REQUIRED" && json.Valid([]byte(text)) {
+			res.StepUp = json.RawMessage(text)
+		}
+		return res
 	}
 	content, truncated := clip(compactJSON(text), keepTail)
 	return Result{Status: w.status, Content: content, Truncated: truncated || w.truncated}
