@@ -139,6 +139,17 @@ cmd_migrate() {
   iptables-save | grep -v -E 'KUBE-|FLANNEL' | iptables-restore
   ip6tables-save | grep -v -E 'KUBE-|FLANNEL' | ip6tables-restore || true
 
+  # Pare-feu : sans kube-proxy ni flannel, plus rien ne laisse passer les
+  # pods vers l'hôte (API 6443, kubelet) avant ufw, qui applique la première
+  # règle qui correspond : l'ouverture des pods va EN TÊTE.
+  if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
+    local cidr
+    cidr=$(kubectl get nodes -o jsonpath='{.items[0].spec.podCIDR}' | sed -E 's#\.[0-9]+/[0-9]+$#.0/16#; s#\.[0-9]+\.0/16$#.0.0/16#')
+    cidr="${POD_CIDR:-${cidr:-10.42.0.0/16}}"
+    ufw status | grep -q "ALLOW.*${cidr}" || ufw insert 1 allow from "$cidr" comment "pods k3s (Cilium)"
+    ufw status numbered | head -5
+  fi
+
   say "5/7 Cilium (passerelle de sortie, remplacement de kube-proxy)"
   # shellcheck disable=SC2086
   cilium install ${CILIUM_VERSION:+--version "$CILIUM_VERSION"} \

@@ -436,8 +436,19 @@ sortir chaque projet par son IP dédiée.
 
 Cluster existant à un nœud (terrain) : bascule sur place, données gardées,
 avec relevé avant/après et retour arrière : deploy/k8s/cilium-migrate.sh
-(check, puis migrate ; rollback au besoin). Les étapes a) et b) ci-dessous
-valent pour un nouveau cluster.
+(check, puis migrate ; resume si elle s'arrête après Cilium ; rollback au
+besoin). Les étapes a) et b) ci-dessous valent pour un nouveau cluster.
+Faite sur le terrain le 2026-11-23 (Cilium 1.20.3). Deux pièges, corrigés
+dans le script :
+  - nœud double pile : l'adresse de l'API donnée à Cilium doit être l'IPv4
+    seule (sinon opérateur et agent ne démarrent pas) ;
+  - ufw : sans kube-proxy ni flannel, plus rien ne laisse passer les pods vers
+    l'hôte avant ufw (API 6443 fermée → Traefik, cert-manager, CloudNativePG
+    bloqués sans erreur). « ufw insert 1 allow from 10.42.0.0/16 » : EN TÊTE,
+    ufw applique la première règle qui correspond.
+Après la bascule, l'hôte vu des pods n'est plus 10.42.0.1 (cni0 disparaît)
+mais l'adresse de cilium_host (10.42.0.109 sur le terrain) : tunnels
+« ssh -R » à ajuster.
 
 a) k3s sans flannel ni kube-proxy (nouveau cluster, ou réinstallation) :
 
