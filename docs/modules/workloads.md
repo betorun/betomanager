@@ -50,7 +50,7 @@ Sous `/kmanager/v1/workloads`. Déclarées dans `addWorkloadRoutes` (et `addGitH
 
 | Méthode | Chemin | Permission | Description |
 |---------|--------|-----------|-------------|
-| `GET` | `/:id/status` | `workloads.workloads.get` | LiveStatus (DB + runtime K8s) |
+| `GET` | `/:id/status` | `workloads.workloads.get` | LiveStatus (DB + runtime K8s) ; par instance `restart_count` et `last_termination {reason, exit_code, finished_at}` (dernière fin : OOMKilled/137, Error/1…, lue par le diagnostic du Copilot) |
 | `GET` | `/:id/events` | `workloads.workloads.get` | Events K8s filtrés |
 | `GET` | `/:id/logs` | `workloads.logs.read` | Stream logs pod (chunked HTTP) |
 | `GET` | `/:id/metrics` | `workloads.metrics.read` | CPU/RAM live (metrics-server) + réservé (DB) |

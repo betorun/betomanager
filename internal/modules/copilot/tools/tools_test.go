@@ -164,3 +164,70 @@ func TestDiagnose(t *testing.T) {
 		t.Fatal("diagnostic d'un conteneur refusé : erreur attendue")
 	}
 }
+
+// Diagnostic déterministe : constats en tête, voisinage lu par les routes,
+// correction gardée seulement si l'outil visé l'accepte (Prepare).
+func TestDiagnoseFindings(t *testing.T) {
+	spec := strings.Replace(testSpec, `"/api/workloads":{`, `"/api/projects/{id}/addons":{"get":{"summary":"Addons","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]}},
+ "/api/projects/{id}/addons/{addonID}/attach":{"post":{"summary":"Attach","parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string"}},{"name":"addonID","in":"path","required":true,"schema":{"type":"string"}}],
+   "requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{"workload_id":{"type":"string"},"variable":{"type":"string"}}}}}}}},
+ "/api/workloads":{`, 1)
+	routes := append(append([]Route(nil), testRoutes...),
+		Route{Name: "list_addons", Method: "GET", Path: "/api/projects/:id/addons"},
+		Route{Name: "attach_addon", Method: "POST", Path: "/api/projects/:id/addons/:addonID/attach", Write: true, Risk: RiskMedium})
+	c, err := Build(routes, []byte(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := AddDiagnose(c); err != nil {
+		t.Fatal(err)
+	}
+	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/logs"):
+			fmt.Fprint(w, "Example app listening on port 3000\nError: connect ECONNREFUSED 127.0.0.1:6379\n")
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			fmt.Fprint(w, `{"status":"CRASHLOOP","kind":"web","pods":[{"restart_count":0}]}`)
+		case strings.HasSuffix(r.URL.Path, "/events"):
+			fmt.Fprint(w, `[]`)
+		case strings.HasSuffix(r.URL.Path, "/addons"):
+			fmt.Fprint(w, `{"addons":[{"id":"a1","name":"cache","template":"redis","status":"RUNNING","host":"cache","port":6379,"attachments":[]}]}`)
+		default:
+			fmt.Fprint(w, `{"ID":"w1","ProjectID":"p1","Name":"api","Kind":"web","TargetPort":8080,"MemoryLimit":"256Mi"}`)
+		}
+	})
+	r := c.Call(context.Background(), Invoker{Handler: api, Token: "tok"}, ToolDiagnoseWorkload, json.RawMessage(`{"id":"w1"}`))
+	if r.IsError || !strings.HasPrefix(r.Content, "## findings\n[") {
+		t.Fatalf("constats en tête : %s", r.Content)
+	}
+	head := strings.SplitN(r.Content, "\n\n", 2)[0]
+	var fs []struct {
+		Code     string            `json:"code"`
+		Evidence []string          `json:"evidence"`
+		Params   map[string]string `json:"params"`
+		Fix      *struct {
+			Tool string         `json:"tool"`
+			Args map[string]any `json:"args"`
+		} `json:"fix"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(head, "## findings\n")), &fs); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for i, f := range fs {
+		got[f.Code] = i
+	}
+	dep, port := fs[got["localhost_dependency"]], fs[got["port_mismatch"]]
+	if dep.Fix == nil || dep.Fix.Tool != "attach_addon" || dep.Fix.Args["addonID"] != "a1" || dep.Fix.Args["workload_id"] != "w1" || dep.Params["internal_address"] != "cache:6379" {
+		t.Fatalf("dépendance : %+v", dep)
+	}
+	// update_workload absent de ce catalogue : le constat reste, sans correction.
+	if port.Code != "port_mismatch" || port.Fix != nil {
+		t.Fatalf("port : %+v", port)
+	}
+	for _, want := range []string{"## workload", "## status", "## logs"} {
+		if !strings.Contains(r.Content, want) {
+			t.Errorf("sans %q", want)
+		}
+	}
+}

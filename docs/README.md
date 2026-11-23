@@ -42,6 +42,7 @@ Chaque page décrit un module avec la même structure : rôle, endpoints, DB, ac
 - [network](modules/network.md) — réseau privé d'un projet : membres, liens, règles (modèle indépendant de Kubernetes)
 - [addons](modules/addons.md) — services additionnels (Redis via Valkey) : catalogue, branchement, mise à jour, « Me prévenir »
 - [diskusage](modules/diskusage.md) — usage réel des disques : mesure horaire, alertes 80/100 %, arrêt à 120 %
+- [insights](modules/insights.md) — « L'assistant a remarqué » : constats d'un projet (échecs, builds, budget, disques, domaines, bases, services), cache 60 s par droits
 - [diskresize](modules/diskresize.md) — agrandir un disque par copie (conteneurs et services), reprenable après un échec
 - [builds](modules/builds.md) — construction d'images (BuildKit), registre de la plateforme, ménage et quota
 - [registries](modules/registries.md) — identifiants des registres d'images privés

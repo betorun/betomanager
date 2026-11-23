@@ -11,6 +11,7 @@ import (
 	computeSvc "github.com/thekrauss/kubemanager/internal/modules/compute/service"
 	diskresizeDomain "github.com/thekrauss/kubemanager/internal/modules/diskresize/domain"
 	diskusageDomain "github.com/thekrauss/kubemanager/internal/modules/diskusage/domain"
+	insightsDomain "github.com/thekrauss/kubemanager/internal/modules/insights/domain"
 	legalDomain "github.com/thekrauss/kubemanager/internal/modules/legal/domain"
 	legalSvc "github.com/thekrauss/kubemanager/internal/modules/legal/service"
 	statusDomain "github.com/thekrauss/kubemanager/internal/modules/status/domain"
@@ -34,6 +35,9 @@ func stableSchemaNames(router *fizz.Fizz) {
 		reflect.TypeOf(diskresizeDomain.Resize{}):     "DiskresizeResize",
 		reflect.TypeOf(diskusageDomain.Usage{}):       "DiskusageUsage",
 		reflect.TypeOf(diskusageDomain.UsageList{}):   "DiskusageUsageList",
+		reflect.TypeOf(insightsDomain.InsightList{}):  "InsightsInsightList",
+		reflect.TypeOf(insightsDomain.Insight{}):      "InsightsInsight",
+		reflect.TypeOf(insightsDomain.Resource{}):     "InsightsResource",
 		reflect.TypeOf(legalDomain.Document{}):        "LegalDocument",
 		reflect.TypeOf(legalDomain.Content{}):         "LegalContent",
 		reflect.TypeOf(legalSvc.Text{}):               "LegalText",

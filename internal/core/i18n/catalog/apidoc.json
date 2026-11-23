@@ -2758,5 +2758,57 @@
  {
   "fr": "Passerelle de sortie installée sur le cluster : cilium, ou vide (pas d'IP de sortie dédiée)",
   "en": "Egress gateway installed on the cluster: cilium, or empty (no dedicated egress IP)"
+ },
+ {
+  "fr": "Ce que l'assistant a remarqué : conteneurs en échec, builds ratés, budget, disques, domaines, bases et services (selon vos droits ; recalculé toutes les 60 s)",
+  "en": "What the assistant noticed: failing containers, failed builds, budget, disks, domains, databases and services (according to your rights; recomputed every 60 s)"
+ },
+ {
+  "fr": "Ce que l'assistant a remarqué : conteneurs en échec, builds ratés, budget, disques, domaines, bases et services",
+  "en": "What the assistant noticed: failing containers, failed builds, budget, disks, domains, databases and services"
+ },
+ {
+  "fr": "Type de ressource (conteneur, build, base de données, service, domaine ou projet)",
+  "en": "Resource type (container, build, database, service, domain or project)"
+ },
+ {
+  "fr": "Identifiant de la ressource",
+  "en": "Resource identifier"
+ },
+ {
+  "fr": "Nom de la ressource",
+  "en": "Resource name"
+ },
+ {
+  "fr": "Clé stable du constat (sorte:identifiant)",
+  "en": "Stable key of the insight (kind:identifier)"
+ },
+ {
+  "fr": "Sorte de constat (workload_crashloop, workload_oom, workload_image_pull, workload_failed, build_failed, budget_high, budget_stopped, disk_high, domain_unverified, database_stopped, addon_unhealthy)",
+  "en": "Kind of insight (workload_crashloop, workload_oom, workload_image_pull, workload_failed, build_failed, budget_high, budget_stopped, disk_high, domain_unverified, database_stopped, addon_unhealthy)"
+ },
+ {
+  "fr": "Gravité : danger, warn ou info",
+  "en": "Severity: danger, warn or info"
+ },
+ {
+  "fr": "Ressource concernée",
+  "en": "Resource concerned"
+ },
+ {
+  "fr": "Valeurs du constat (restarts, percent, hostname, workload_id, status…)",
+  "en": "Values of the insight (restarts, percent, hostname, workload_id, status…)"
+ },
+ {
+  "fr": "Depuis quand (si connu)",
+  "en": "Since when (if known)"
+ },
+ {
+  "fr": "Instant du calcul (le résultat est gardé 60 s)",
+  "en": "When it was computed (the result is kept 60 s)"
+ },
+ {
+  "fr": "Constats, du plus grave au moins grave puis du plus récent, 10 au plus",
+  "en": "Insights, most severe first then most recent, at most 10"
  }
 ]
