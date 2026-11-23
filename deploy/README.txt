@@ -448,7 +448,10 @@ dans le script :
     ufw applique la première règle qui correspond.
 Après la bascule, l'hôte vu des pods n'est plus 10.42.0.1 (cni0 disparaît)
 mais l'adresse de cilium_host (10.42.0.109 sur le terrain) : tunnels
-« ssh -R » à ajuster.
+« ssh -R » à ajuster. Terrain de développement (API et registre du PC joints
+par les pods) : deploy/terrain/tunnel-inverse.sh règle sshd, ufw et
+registries.yaml pour la bonne adresse et affiche la commande ssh ;
+deploy/terrain/k3s.sh installe le serveur.
 
 a) k3s sans flannel ni kube-proxy (nouveau cluster, ou réinstallation) :
 
