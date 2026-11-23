@@ -5,10 +5,12 @@ package workflows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
@@ -97,7 +99,9 @@ func RequestWorkflow(ctx workflow.Context, in service.RequestInput) error {
 func reconcileOptions(ctx workflow.Context) workflow.Context {
 	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Minute,
-		RetryPolicy:         &temporal.RetryPolicy{InitialInterval: 30 * time.Second, BackoffCoefficient: 2, MaximumAttempts: 3},
+		// Passe bloquée (fournisseur muet) : reprise sans attendre les 10 minutes.
+		HeartbeatTimeout: 2 * time.Minute,
+		RetryPolicy:      &temporal.RetryPolicy{InitialInterval: 30 * time.Second, BackoffCoefficient: 2, MaximumAttempts: 3},
 	})
 }
 
@@ -155,8 +159,20 @@ func (a *Activities) Reconcile(ctx context.Context) error {
 	}
 	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Backups: a.Backups, Network: a.Network,
 		Stock: a.Stock, Inbox: a.Inbox, Events: a.Events,
-		StuckAfter: StuckSnapshotAfter, Now: a.Now}).Run(ctx)
+		StuckAfter: StuckSnapshotAfter, Now: a.Now, Heartbeat: heartbeat(ctx)}).Run(ctx)
+	if errors.Is(err, service.ErrReconcileRunning) {
+		// Une passe tourne déjà : celle-ci n'a rien à faire (pas de reprise).
+		return temporal.NewNonRetryableApplicationError(err.Error(), "ReconcileRunning", nil)
+	}
 	return err
+}
+
+// heartbeat : signe de vie de l'activité (hors activité, en test : rien).
+func heartbeat(ctx context.Context) func() {
+	if !activity.IsActivity(ctx) {
+		return nil
+	}
+	return func() { activity.RecordHeartbeat(ctx) }
 }
 
 // Finish : clôt la demande (idempotent).

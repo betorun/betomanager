@@ -45,3 +45,9 @@ func TestSetRescue(t *testing.T) {
 	assert.Equal(t, "rescue", got[0]["netbootMode"])
 	assert.Equal(t, "local", got[1]["netbootMode"])
 }
+
+func TestIsRescueMail(t *testing.T) {
+	assert.True(t, IsRescueMail("Votre VPS", "Le VPS a été redémarré en mode secours.\nMot de passe : Xk7pQ2vLm9"), "mot-clé dans le texte seulement")
+	assert.True(t, IsRescueMail("Rescue mode", "Password: Xk7pQ2vLm9"))
+	assert.False(t, IsRescueMail("[ABUSE] spam", "Plainte reçue pour 51.68.1.2"))
+}

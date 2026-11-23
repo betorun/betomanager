@@ -428,6 +428,8 @@ type ProviderMachine struct {
 	SeenAt   time.Time `gorm:"not null" json:"seen_at"`
 	// FirstSeenAt : première passe où le fournisseur l'a montré.
 	FirstSeenAt *time.Time `json:"first_seen_at,omitempty"`
+	// Keep : illisible à cette passe, la ligne précédente est gardée (non stocké).
+	Keep bool `gorm:"-" json:"-"`
 }
 
 func (ProviderMachine) TableName() string { return "compute_provider_vms" }
@@ -443,7 +445,9 @@ type ReconcileRun struct {
 	Orphans    int        `gorm:"not null;default:0" json:"orphans"`
 	Missing    int        `gorm:"not null;default:0" json:"missing"`
 	Drifts     int        `gorm:"not null;default:0" json:"drifts"`
-	Error      string     `gorm:"not null;default:''" json:"error,omitempty"`
+	// Unread : VPS listés mais illisibles (relevé précédent gardé).
+	Unread int    `gorm:"not null;default:0" json:"unread"`
+	Error  string `gorm:"not null;default:''" json:"error,omitempty"`
 }
 
 func (ReconcileRun) TableName() string { return "compute_reconcile_runs" }
@@ -641,7 +645,10 @@ type ProviderMail struct {
 	VPSID      *uuid.UUID `gorm:"column:vps_id;type:uuid" json:"vps_id,omitempty"`
 	HandledAt  *time.Time `json:"handled_at,omitempty"`
 	HandledBy  string     `gorm:"not null;default:''" json:"handled_by"`
-	CreatedAt  time.Time  `json:"created_at"`
+	// Fingerprint : empreinte (expéditeur, sujet, date, texte) : un e-mail
+	// rangé deux fois (effacement de la boîte en échec) ne fait qu'une ligne.
+	Fingerprint string    `gorm:"not null;default:''" json:"-"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 func (ProviderMail) TableName() string { return "compute_provider_mails" }

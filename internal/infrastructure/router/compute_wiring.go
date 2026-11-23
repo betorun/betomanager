@@ -121,9 +121,16 @@ func (e *vpsEvents) BackupsChanged(ctx context.Context, v *computeDomain.VPS) {
 	}
 }
 
+// VPSChanged : objet complet sur le canal du VPS ; sur le canal du projet,
+// ouvert à tout membre du projet, un simple avis (la console relit le VPS
+// avec ses propres droits) : ni adresse, ni motif d'abus, ni état du secours.
 func (e *vpsEvents) VPSChanged(ctx context.Context, v *computeDomain.VPS) {
-	ev := VPSEvent{Type: "vps.updated", VPS: v}
-	for _, ch := range []string{realtime.VPSChannel(v.ProjectID.String(), v.ID.String()), realtime.ProjectChannel(v.ProjectID.String())} {
+	full := VPSEvent{Type: "vps.updated", VPS: v}
+	notice := map[string]any{"type": "vps.updated", "vps_id": v.ID.String(), "version": v.Version}
+	for ch, ev := range map[string]any{
+		realtime.VPSChannel(v.ProjectID.String(), v.ID.String()): full,
+		realtime.ProjectChannel(v.ProjectID.String()):            notice,
+	} {
 		if err := e.pub.Publish(ctx, ch, ev); err != nil {
 			e.log.Warnw("compute: VPS event not published", "vps", v.ID, "channel", ch, "error", err)
 		}
@@ -141,6 +148,21 @@ func (a *App) computeSuspender() *computeSvc.Service {
 		s.Events = e
 	}
 	return s
+}
+
+// staffVPS : organisation et projet du VPS visé par une route du staff.
+func staffVPS(r *compute.Controller) security.StaffTarget {
+	return func(c *gin.Context) (iam.ResourceName, uuid.UUID, error) {
+		id, err := uuid.Parse(strings.TrimSpace(c.Param("vpsID")))
+		if err != nil || r.Service == nil {
+			return "", uuid.Nil, security.ErrResourceRefInvalid
+		}
+		v, err := r.Service.Store.VPS(c.Request.Context(), id)
+		if err != nil {
+			return "", uuid.Nil, err
+		}
+		return iam.OrganizationName(v.OrganizationID), v.ProjectID, nil
+	}
 }
 
 // vpsProject : projet du VPS de l'URL, s'il est bien dans l'organisation de
@@ -381,22 +403,26 @@ func addComputeRoutes(app *App) {
 	setPrices := g.Perm(iam.PlatformBillingCatalogsUpdate, security.PlatformResource)
 	view := g.Perm(iam.PlatformComputeGet, security.PlatformResource)
 	manage := g.Perm(iam.PlatformComputeManage, security.PlatformResource)
+	// Gestes sur le VPS d'un client : motif exigé, accès visible dans son
+	// journal d'audit (iam.md §10) ; la permission est sensible (double
+	// authentification récente).
+	onStaffVPS := g.Perm(iam.PlatformComputeManage, security.PlatformResource).Staff(staffVPS(r))
 	admin.AddRoute("/offers", http.MethodGet, "Offres de VPS (prix fournisseur, coefficient, emplacements, systèmes)", prices, tonic.Handler(r.AdminOffers, http.StatusOK))
 	admin.AddRoute("/offers/:code", http.MethodPut, "Régler une offre de VPS (prix fournisseur, coefficient, palier)", setPrices, tonic.Handler(r.SaveOffer, http.StatusOK))
 	admin.AddRoute("/vps", http.MethodGet, "VPS de tous les clients, relevé du fournisseur, écarts et dernières réconciliations", view, tonic.Handler(r.Fleet, http.StatusOK))
 	admin.AddRoute("/reconcile", http.MethodPost, "Lancer une réconciliation des VPS avec le fournisseur", manage, tonic.Handler(r.Reconcile, http.StatusAccepted))
-	admin.AddRoute("/vps/:vpsID/spam/unblock", http.MethodPost, "Lever le blocage anti-spam de l'adresse d'un VPS (après vérification)", manage, tonic.Handler(r.UnblockSpam, http.StatusAccepted))
-	admin.AddRoute("/vps/:vpsID/smtp", http.MethodPut, "Ouvrir ou fermer le port 25 sortant d'un VPS (prochaine installation)", manage, tonic.Handler(r.SetSMTP, http.StatusOK))
+	admin.AddRoute("/vps/:vpsID/spam/unblock", http.MethodPost, "Lever le blocage anti-spam de l'adresse d'un VPS (après vérification)", onStaffVPS, tonic.Handler(r.UnblockSpam, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/smtp", http.MethodPut, "Ouvrir ou fermer le port 25 sortant d'un VPS (prochaine installation)", onStaffVPS, tonic.Handler(r.SetSMTP, http.StatusOK))
 	// Lot 8 : quotas et anti-fraude, procédure abus, e-mails du fournisseur.
 	admin.AddRoute("/limits", http.MethodGet, "Quotas des VPS et limites des comptes récents", view, tonic.Handler(r.Limits, http.StatusOK))
 	admin.AddRoute("/limits", http.MethodPut, "Régler les quotas des VPS et les limites des comptes récents", manage, tonic.Handler(r.SaveLimits, http.StatusOK))
 	admin.AddRoute("/organizations/:id/limits", http.MethodGet, "Quota de VPS d'une organisation", view, tonic.Handler(r.OrgLimits, http.StatusOK))
 	admin.AddRoute("/organizations/:id/limits", http.MethodPut, "Accorder un quota de VPS à une organisation, ou la dispenser des limites des comptes récents",
 		g.Perm(iam.PlatformComputeManage, security.PlatformResource).Staff(security.StaffOrganization("id")), tonic.Handler(r.SetOrgLimits, http.StatusOK))
-	admin.AddRoute("/vps/:vpsID/abuse/suspend", http.MethodPost, "Suspendre un VPS pour abus (arrêt immédiat, motif montré au client)", manage, tonic.Handler(r.SuspendForAbuse, http.StatusAccepted))
-	admin.AddRoute("/vps/:vpsID/abuse/resume", http.MethodPost, "Lever la suspension pour abus d'un VPS", manage, tonic.Handler(r.ResumeFromAbuse, http.StatusAccepted))
-	admin.AddRoute("/vps/:vpsID/terminate", http.MethodPost, "Résilier un VPS (équipe : récidive grave)", manage, tonic.Handler(r.AdminTerminate, http.StatusAccepted))
-	admin.AddRoute("/vps/:vpsID/attach", http.MethodPost, "Rattacher un VPS livré à son identifiant chez le fournisseur", manage, tonic.Handler(r.Attach, http.StatusOK))
+	admin.AddRoute("/vps/:vpsID/abuse/suspend", http.MethodPost, "Suspendre un VPS pour abus (arrêt immédiat, motif montré au client)", onStaffVPS, tonic.Handler(r.SuspendForAbuse, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/abuse/resume", http.MethodPost, "Lever la suspension pour abus d'un VPS", onStaffVPS, tonic.Handler(r.ResumeFromAbuse, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/terminate", http.MethodPost, "Résilier un VPS (équipe : récidive grave)", onStaffVPS, tonic.Handler(r.AdminTerminate, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/attach", http.MethodPost, "Rattacher un VPS livré à son identifiant chez le fournisseur", onStaffVPS, tonic.Handler(r.Attach, http.StatusOK))
 	admin.AddRoute("/provider-mails", http.MethodGet, "E-mails du fournisseur reçus par la boîte technique (abus, incidents)", view, tonic.Handler(r.ProviderMails, http.StatusOK))
 	admin.AddRoute("/provider-mails/:mailID/handled", http.MethodPost, "Marquer un e-mail du fournisseur comme traité", manage, tonic.Handler(r.HandleProviderMail, http.StatusNoContent))
 	admin.AddRoute("/mailbox-check", http.MethodPost, "Diagnostic : la boîte e-mail technique répond (mode compute)", manage, tonic.Handler(r.MailboxCheck, http.StatusAccepted))

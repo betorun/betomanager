@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/lib/pq"
 	"gorm.io/gorm"
 
+	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/modules/support/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/support/service"
 )
@@ -293,10 +295,22 @@ func (s *GormStore) Attachments(ctx context.Context, ticket uuid.UUID) ([]domain
 	return out, nil
 }
 
-func (s *GormStore) AddAttachment(ctx context.Context, a *domain.Attachment) error {
+func (s *GormStore) AddAttachment(ctx context.Context, a *domain.Attachment, max int) error {
 	row := attachmentRow{ID: a.ID, TicketID: a.TicketID, MessageID: a.MessageID, FileName: a.FileName, MimeType: a.MimeType,
 		Size: a.Size, ObjectKey: a.ObjectKey, CreatedBy: a.CreatedBy, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
-	return s.DB.WithContext(ctx).Create(&row).Error
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`SELECT id FROM support_tickets WHERE id = ? FOR UPDATE`, a.TicketID).Error; err != nil {
+			return err
+		}
+		var n int64
+		if err := tx.Model(&attachmentRow{}).Where("ticket_id = ?", a.TicketID).Count(&n).Error; err != nil {
+			return err
+		}
+		if n >= int64(max) {
+			return domain.ErrAttachmentLimit
+		}
+		return tx.Create(&row).Error
+	})
 }
 
 func (s *GormStore) Attachment(ctx context.Context, ticket, id uuid.UUID) (*domain.Attachment, error) {
@@ -334,6 +348,21 @@ func (s *GormStore) Contacts(ctx context.Context, users []uuid.UUID) ([]service.
 	return out, err
 }
 
+// supportReaders : rôles prédéfinis qui donnent le droit de lire un ticket.
+func supportReaders() []string {
+	out := []string{}
+	for _, r := range iam.PredefinedRoles() {
+		if slices.Contains(r.Permissions, iam.SupportTicketsGet) {
+			out = append(out, r.Name)
+		}
+	}
+	return out
+}
+
+// MemberContacts : personnes qui peuvent encore lire les tickets de
+// l'organisation (rôle prédéfini ou personnalisé portant support.tickets.get,
+// sur l'organisation ou l'un de ses projets, directement ou par un groupe) ;
+// une personne retirée ou rétrogradée ne reçoit plus le contenu des tickets.
 func (s *GormStore) MemberContacts(ctx context.Context, org uuid.UUID, users []uuid.UUID) ([]service.Contact, error) {
 	var out []service.Contact
 	if len(users) == 0 {
@@ -345,10 +374,12 @@ func (s *GormStore) MemberContacts(ctx context.Context, org uuid.UUID, users []u
 		AND EXISTS (
 			SELECT 1 FROM iam_bindings b
 			WHERE (b.resource_name = @org OR b.resource_name IN (SELECT 'projects/' || p.id::text FROM projects p WHERE p.organization_id = @orgID))
+			AND (b.role IN @roles OR b.role IN (SELECT name FROM iam_custom_roles WHERE @perm = ANY(permissions)))
 			AND (b.principal = 'user:' || u.id::text OR b.principal IN (
 				SELECT 'group:' || g.id::text FROM iam_groups g JOIN iam_group_members gm ON gm.group_id = g.id
 				WHERE gm.principal = 'user:' || u.id::text)))
-		ORDER BY u.email`, map[string]any{"users": users, "org": orgName, "orgID": org}).Scan(&out).Error
+		ORDER BY u.email`, map[string]any{"users": users, "org": orgName, "orgID": org,
+		"roles": supportReaders(), "perm": string(iam.SupportTicketsGet)}).Scan(&out).Error
 	return out, err
 }
 
@@ -416,4 +447,16 @@ func (s *GormStore) DeleteMacro(ctx context.Context, id uuid.UUID) error {
 		return domain.ErrMacroNotFound
 	}
 	return nil
+}
+
+// ResourceInOrganization : seules les ressources connues ; un VPS résilié compte
+// encore (un client peut écrire à son sujet après la résiliation).
+func (s *GormStore) ResourceInOrganization(ctx context.Context, kind string, id, org uuid.UUID) (bool, error) {
+	var n int64
+	switch kind {
+	case "vps":
+		err := s.DB.WithContext(ctx).Raw(`SELECT COUNT(*) FROM compute_vps WHERE id = ? AND organization_id = ?`, id, org).Row().Scan(&n)
+		return n == 1, err
+	}
+	return false, nil
 }

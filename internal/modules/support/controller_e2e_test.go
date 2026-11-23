@@ -31,6 +31,8 @@ import (
 
 type memFiles map[string][]byte
 
+func (f memFiles) Delete(_ context.Context, key string) error { delete(f, key); return nil }
+
 func (f memFiles) Put(_ context.Context, key string, r io.Reader, _ int64, _ string) error {
 	b, err := io.ReadAll(r)
 	f[key] = b

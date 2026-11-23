@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -37,6 +38,8 @@ var e2eDSN = func() string {
 }()
 
 type files map[string][]byte
+
+func (f files) Delete(_ context.Context, key string) error { delete(f, key); return nil }
 
 func (f files) Put(_ context.Context, key string, r io.Reader, _ int64, _ string) error {
 	b, err := io.ReadAll(r)
@@ -104,7 +107,17 @@ func TestE2E_SupportFlow(t *testing.T) {
 	// Création : projet d'une autre organisation refusé.
 	_, err = s.Create(ctx, other, me, service.CreateInput{Subject: "Mauvais projet", Description: "x", ProjectID: &project})
 	assert.ErrorIs(t, err, domain.ErrProjectNotInOrg)
-	vps := uuid.New()
+	// Ticket rattaché à un VPS : seulement un VPS de l'organisation.
+	vps, foreign := uuid.New(), uuid.New()
+	otherProject := uuid.New()
+	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, namespace, organization_id) VALUES (?, ?, ?, ?)`,
+		otherProject, "sup-o-"+otherProject.String()[:8], "km-o"+otherProject.String()[:8], other).Error)
+	for _, row := range []struct{ id, org, project uuid.UUID }{{vps, org, project}, {foreign, other, otherProject}} {
+		require.NoError(t, db.Exec(`INSERT INTO compute_vps (id, organization_id, project_id, name, offer, location, image, provider, state)
+			VALUES (?, ?, ?, ?, 'VPS-1', 'gra', 'debian-12', 'ovh', 'running')`, row.id, row.org, row.project, "v-"+row.id.String()[:8]).Error)
+	}
+	_, err = s.Create(ctx, org, me, service.CreateInput{Subject: "Serveur d'un autre", Description: "x", ResourceKind: "vps", ResourceID: &foreign})
+	assert.ErrorIs(t, err, domain.ErrInvalidResource, "VPS d'une autre organisation")
 	v, err := s.Create(ctx, org, me, service.CreateInput{Subject: "Ouvrir le port 25", Description: "Serveur mail 100% légitime",
 		Category: "REQUEST", Tags: []string{"smtp"}, ProjectID: &project, ResourceKind: "vps", ResourceID: &vps})
 	require.NoError(t, err)
@@ -274,4 +287,14 @@ func TestE2E_SupportMemberContacts(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, cs, 1)
 	assert.Equal(t, member, cs[0].ID)
+
+	// Rôle personnalisé sans droit de lecture des tickets : plus d'e-mail.
+	role := "organizations/" + org.String() + "/roles/sanstickets"
+	require.NoError(t, db.Exec(`INSERT INTO iam_custom_roles (name, parent_resource, role_id, title, permissions, etag)
+		VALUES (?, ?, 'sanstickets', 'Sans tickets', ?, 'e1')`, role, "organizations/"+org.String(), pq.StringArray{"compute.vps.list"}).Error)
+	require.NoError(t, db.Exec(`INSERT INTO iam_bindings (resource_name, role, principal) VALUES (?, ?, ?)`,
+		"organizations/"+org.String(), role, "user:"+gone.String()).Error)
+	cs, err = store.MemberContacts(ctx, org, []uuid.UUID{gone})
+	require.NoError(t, err)
+	assert.Empty(t, cs, "un rôle sans support.tickets.get ne reçoit pas le contenu des tickets")
 }

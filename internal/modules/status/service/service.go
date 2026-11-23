@@ -54,6 +54,16 @@ type Store interface {
 // CacheTTL : la page publique est recalculée au plus toutes les 30 s.
 const CacheTTL = 30 * time.Second
 
+// computeTimeout : calcul de la page, détaché de la requête (un visiteur
+// qui part n'annule pas le calcul des autres) ; retryAfterError : un calcul
+// en échec n'est pas relancé à chaque visite (dernière page gardée).
+const (
+	computeTimeout  = 5 * time.Second
+	retryAfterError = 5 * time.Second
+	// staleMax : âge maximal d'une page gardée faute de mieux.
+	staleMax = 5 * time.Minute
+)
+
 // ResolvedWindow : incidents résolus encore affichés.
 const ResolvedWindow = 7 * 24 * time.Hour
 
@@ -63,9 +73,12 @@ type Service struct {
 	Store      Store
 	Now        func() time.Time
 
+	// mu : un seul calcul à la fois, les visites simultanées l'attendent.
 	mu       sync.Mutex
 	cached   *snapshot
 	cachedAt time.Time
+	failedAt time.Time
+	lastErr  error
 }
 
 func (s *Service) now() time.Time {
@@ -126,7 +139,8 @@ func (s *Service) compute(ctx context.Context) (*snapshot, error) {
 	return snap, nil
 }
 
-// current : instantané de moins de CacheTTL.
+// current : instantané de moins de CacheTTL ; calcul en échec : la dernière
+// page est gardée et le calcul n'est retenté qu'après retryAfterError.
 func (s *Service) current(ctx context.Context) (*snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -134,19 +148,35 @@ func (s *Service) current(ctx context.Context) (*snapshot, error) {
 	if s.cached != nil && now.Sub(s.cachedAt) < CacheTTL && !now.Before(s.cachedAt) {
 		return s.cached, nil
 	}
-	snap, err := s.compute(ctx)
+	if s.lastErr != nil && now.Sub(s.failedAt) < retryAfterError && !now.Before(s.failedAt) {
+		if s.usableStale(now) {
+			return s.cached, nil
+		}
+		return nil, s.lastErr
+	}
+	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), computeTimeout)
+	defer cancel()
+	snap, err := s.compute(cctx)
 	if err != nil {
+		s.failedAt, s.lastErr = now, err
+		if s.usableStale(now) {
+			return s.cached, nil // page un peu ancienne plutôt qu'une erreur
+		}
 		return nil, err
 	}
-	s.cached, s.cachedAt = snap, now
+	s.cached, s.cachedAt, s.lastErr = snap, now, nil
 	return snap, nil
+}
+
+func (s *Service) usableStale(now time.Time) bool {
+	return s.cached != nil && now.Sub(s.cachedAt) < staleMax
 }
 
 // invalidate : un incident a changé, la page publique le montre tout de suite
 // (sur ce process ; les autres suivent en 30 s au plus).
 func (s *Service) invalidate() {
 	s.mu.Lock()
-	s.cached = nil
+	s.cached, s.lastErr = nil, nil
 	s.mu.Unlock()
 }
 

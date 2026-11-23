@@ -277,13 +277,21 @@ func TestSuspendedDuringOperationGetsStopped(t *testing.T) {
 
 type listCloud struct {
 	*fakeCloud
-	ids []string
+	ids          []string
+	plans, zones map[string]string
 }
 
 func (l *listCloud) List(context.Context) ([]service.ProviderVM, error) {
 	out := []service.ProviderVM{}
 	for _, id := range l.ids {
-		out = append(out, service.ProviderVM{ProviderID: id})
+		vm := service.ProviderVM{ProviderID: id, Plan: "vps-2025-model1", Zone: "Region OpenStack: os-gra7"}
+		if l.plans[id] != "" {
+			vm.Plan = l.plans[id]
+		}
+		if l.zones[id] != "" {
+			vm.Zone = l.zones[id]
+		}
+		out = append(out, vm)
 	}
 	return out, nil
 }
@@ -319,6 +327,14 @@ func TestResolveDelivered(t *testing.T) {
 	pid, err = a.ResolveDelivered(context.Background(), vid.String())
 	require.NoError(t, err)
 	assert.Equal(t, "", pid, "deux candidats : l'équipe tranche")
+
+	// Un seul inconnu, mais d'un autre plan ou d'un autre datacenter : jamais rattaché.
+	a.Provider = &listCloud{fakeCloud: &fakeCloud{}, ids: []string{"vps-other.vps.ovh.net"}, plans: map[string]string{"vps-other.vps.ovh.net": "vps-2025-model3"}}
+	pid, _ = a.ResolveDelivered(context.Background(), vid.String())
+	assert.Equal(t, "", pid, "autre plan : commande d'un autre client")
+	a.Provider = &listCloud{fakeCloud: &fakeCloud{}, ids: []string{"vps-other.vps.ovh.net"}, zones: map[string]string{"vps-other.vps.ovh.net": "Region OpenStack: os-sbg5"}}
+	pid, _ = a.ResolveDelivered(context.Background(), vid.String())
+	assert.Equal(t, "", pid, "autre datacenter")
 
 	vs.vps[vid].ProviderID = "vps-attached.vps.ovh.net"
 	pid, _ = a.ResolveDelivered(context.Background(), vid.String())

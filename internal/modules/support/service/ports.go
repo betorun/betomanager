@@ -22,11 +22,16 @@ type Store interface {
 	Messages(ctx context.Context, ticket uuid.UUID) ([]domain.Message, error)
 	Events(ctx context.Context, ticket uuid.UUID) ([]domain.Event, error)
 	Attachments(ctx context.Context, ticket uuid.UUID) ([]domain.Attachment, error)
-	AddAttachment(ctx context.Context, a *domain.Attachment) error
+	// AddAttachment : ErrAttachmentLimit si le ticket en a déjà max (compté
+	// sous verrou du ticket : deux envois simultanés ne dépassent pas).
+	AddAttachment(ctx context.Context, a *domain.Attachment, max int) error
 	// Attachment : ErrAttachmentNotFound s'il n'est pas sur ce ticket.
 	Attachment(ctx context.Context, ticket, id uuid.UUID) (*domain.Attachment, error)
 	MessageOnTicket(ctx context.Context, ticket, msg uuid.UUID) (bool, error)
 	ProjectInOrganization(ctx context.Context, project, org uuid.UUID) (bool, error)
+	// ResourceInOrganization : la ressource rattachée (genre connu : "vps")
+	// appartient à l'organisation ; un genre inconnu est refusé.
+	ResourceInOrganization(ctx context.Context, kind string, id, org uuid.UUID) (bool, error)
 	// Contacts : comptes actifs parmi ces personnes.
 	Contacts(ctx context.Context, users []uuid.UUID) ([]Contact, error)
 	// MemberContacts : comme Contacts, mais seulement les personnes qui ont
@@ -56,6 +61,7 @@ type Contact struct {
 type Files interface {
 	Put(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
 	Get(ctx context.Context, key string) (objectstore.Object, objectstore.ObjectInfo, error)
+	Delete(ctx context.Context, key string) error
 }
 
 // Notifier : e-mails au client. Jamais d'erreur rendue : un envoi raté ne

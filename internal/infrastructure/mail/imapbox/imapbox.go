@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -93,8 +94,16 @@ func (b *Box) Check(ctx context.Context) (int, error) {
 	return int(c.Mailbox().Messages), nil
 }
 
+// maxMessages : messages lus au plus par recherche (les plus récents) ;
+// maxFetch : octets lus au plus par message (pièces jointes tronquées).
+const (
+	maxMessages = 100
+	maxFetch    = 512 << 10
+)
+
 // Search : messages reçus depuis since (au jour près côté serveur, puis à la
-// date du message) qui contiennent text.
+// date du message) qui contiennent text ; les maxMessages plus récents, chacun
+// lu sur ses maxFetch premiers octets (une boîte pleine ne gonfle pas la mémoire).
 func (b *Box) Search(ctx context.Context, since time.Time, text string) ([]Message, error) {
 	c, err := b.open(ctx)
 	if err != nil {
@@ -110,9 +119,14 @@ func (b *Box) Search(ctx context.Context, since time.Time, text string) ([]Messa
 	if err != nil || len(uids) == 0 {
 		return nil, err
 	}
+	if len(uids) > maxMessages {
+		// Les UID croissent avec l'arrivée : les derniers sont les plus récents.
+		slices.Sort(uids)
+		uids = uids[len(uids)-maxMessages:]
+	}
 	set := new(imap.SeqSet)
 	set.AddNum(uids...)
-	section := &imap.BodySectionName{Peek: true}
+	section := &imap.BodySectionName{Peek: true, Partial: []int{0, maxFetch}}
 	ch := make(chan *imap.Message, len(uids))
 	done := make(chan error, 1)
 	go func() {
@@ -138,15 +152,18 @@ func (b *Box) Search(ctx context.Context, since time.Time, text string) ([]Messa
 	return out, <-done
 }
 
-// Delete : le message est effacé (marqué puis purgé).
-func (b *Box) Delete(ctx context.Context, uid uint32) error {
+// Delete : les messages sont effacés (marqués puis purgés), en une session.
+func (b *Box) Delete(ctx context.Context, uids ...uint32) error {
+	if len(uids) == 0 {
+		return nil
+	}
 	c, err := b.open(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = c.Logout() }()
 	set := new(imap.SeqSet)
-	set.AddNum(uid)
+	set.AddNum(uids...)
 	if err := c.UidStore(set, imap.FormatFlagsOp(imap.AddFlags, true), []any{imap.DeletedFlag}, nil); err != nil {
 		return err
 	}

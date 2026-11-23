@@ -61,3 +61,34 @@ func TestGetSubscriptionToken_UsesIAMPrincipal(t *testing.T) {
 		t.Fatal("abonnement accordé à un non-membre")
 	}
 }
+
+// permsOnly : n'accorde que ces permissions.
+type permsOnly map[iam.Permission]bool
+
+func (p permsOnly) Check(_ context.Context, _ iam.Principal, perm iam.Permission, _ iam.ResourceName) (iam.Decision, error) {
+	return iam.Decision{Allowed: p[perm]}, nil
+}
+
+// Le canal d'un VPS porte l'objet complet : membre du projet ne suffit pas.
+func TestGetSubscriptionToken_VPSChannelNeedsVPSGet(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	project, vps := uuid.New(), uuid.New()
+	ask := func(perms permsOnly, channel string) error {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("GET", "/", nil)
+		c.Set("userID", uuid.NewString())
+		security.SetAuditPrincipal(c, iam.UserPrincipal(uuid.New()))
+		_, err := (&Controller{signer: fakeSigner{}, authz: perms}).GetSubscriptionToken(c, &SubscribeRequest{Channel: channel})
+		return err
+	}
+	vpsChannel := "project:" + project.String() + ":vps:" + vps.String()
+	if err := ask(permsOnly{iam.ProjectsGet: true}, vpsChannel); err == nil {
+		t.Fatal("canal du VPS ouvert sans compute.vps.get")
+	}
+	if err := ask(permsOnly{iam.ProjectsGet: true, iam.VPSGet: true}, vpsChannel); err != nil {
+		t.Fatalf("canal du VPS refusé avec le droit : %v", err)
+	}
+	if err := ask(permsOnly{iam.ProjectsGet: true}, "project:"+project.String()+":events"); err != nil {
+		t.Fatalf("canal du projet refusé à un membre : %v", err)
+	}
+}

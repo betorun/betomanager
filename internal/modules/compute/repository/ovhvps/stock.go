@@ -94,8 +94,8 @@ func (m *Mailbox) Recent(ctx context.Context, since time.Time) ([]service.InboxM
 	}
 	out := make([]service.InboxMail, 0, len(msgs))
 	for _, msg := range msgs {
-		if rescueHint.MatchString(msg.Subject) && passwordRe.MatchString(msg.Text) {
-			continue
+		if IsRescueMail(msg.Subject, msg.Text) {
+			continue // e-mail de secours : jamais rangé ni effacé ici (il porte un mot de passe)
 		}
 		out = append(out, service.InboxMail{ID: msg.UID, From: msg.From, Subject: msg.Subject, Date: msg.Date, Text: msg.Text})
 	}

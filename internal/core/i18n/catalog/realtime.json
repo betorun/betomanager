@@ -14,5 +14,9 @@
  {
   "fr": "Vous ne faites pas partie de ce projet",
   "en": "not a member of this project"
+ },
+ {
+  "fr": "Vous n'avez pas le droit de suivre ce canal",
+  "en": "not allowed to follow this channel"
  }
 ]

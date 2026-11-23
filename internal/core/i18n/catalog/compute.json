@@ -158,5 +158,17 @@
  {
   "fr": "Ce serveur n'est pas un serveur non rattaché du dernier relevé",
   "en": "this provider server is not an unattached server of the last reconciliation"
+ },
+ {
+  "fr": "Le VPS a changé entre-temps",
+  "en": "compute: VPS changed since read"
+ },
+ {
+  "fr": "Le débit n'a pas été enregistré",
+  "en": "compute: charge not written"
+ },
+ {
+  "fr": "Une réconciliation est déjà en cours",
+  "en": "compute: a reconciliation is already running"
  }
 ]

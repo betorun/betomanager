@@ -69,7 +69,7 @@ func TestE2E_ComputeNetworkAndTermination(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, domain.StateDeleted, got.State)
 	assert.NotNil(t, got.TerminatedAt)
-	due, err := store.DueVPS(ctx, now, 100)
+	due, err := store.DueVPS(ctx, now, nil, 100)
 	require.NoError(t, err)
 	for _, d := range due {
 		assert.NotEqual(t, v.ID, d.ID, "résilié : plus jamais renouvelé")

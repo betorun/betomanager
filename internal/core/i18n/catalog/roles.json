@@ -590,5 +590,9 @@
  {
   "fr": "Traiter les tickets de support de tous les clients",
   "en": "Handle all customers' support tickets"
+ },
+ {
+  "fr": "Gérer les VPS des clients : abus, port 25, résiliation, rattachement, réconciliation",
+  "en": "Manage customers' VPS: abuse, port 25, cancellation, attachment, reconciliation"
  }
 ]

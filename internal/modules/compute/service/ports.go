@@ -85,7 +85,8 @@ type ProviderStock struct {
 // Inbox : e-mails récents de la boîte technique (incidents, abus…).
 type Inbox interface {
 	Recent(ctx context.Context, since time.Time) ([]InboxMail, error)
-	Delete(ctx context.Context, id uint32) error
+	// Delete : effacement groupé (une session).
+	Delete(ctx context.Context, ids ...uint32) error
 }
 
 // InboxMail : un e-mail, texte seulement.
@@ -105,7 +106,7 @@ type RescueProvider interface {
 // RescueMailbox : e-mails du fournisseur (identifiants du mode secours).
 type RescueMailbox interface {
 	FindRescue(ctx context.Context, providerID string, since time.Time) (*RescueMail, error)
-	Delete(ctx context.Context, id uint32) error
+	Delete(ctx context.Context, ids ...uint32) error
 	// Check : la boîte répond (diagnostic de l'équipe) ; nombre de messages.
 	Check(ctx context.Context) (int, error)
 }
@@ -197,6 +198,9 @@ type ProviderVM struct {
 	IPv4, IPv6 string
 	// Busy : une opération du fournisseur est en cours (sauvegarde, installation).
 	Busy bool
+	// Unread : listé mais illisible à cette passe (seul ProviderID est rempli) :
+	// présent, son relevé précédent est gardé, rien n'est corrigé.
+	Unread bool
 }
 
 // Store : VPS, offres et demandes (repository).
@@ -225,6 +229,12 @@ type Store interface {
 	// ReplaceMachines : remplace le relevé du fournisseur.
 	ReplaceMachines(ctx context.Context, provider string, ms []domain.ProviderMachine) error
 	SaveRun(ctx context.Context, r *domain.ReconcileRun) error
+	// Purge : secrets lus ou expirés, demandes closes avant closedBefore,
+	// passes commencées avant runsBefore (par lots bornés).
+	Purge(ctx context.Context, now, closedBefore, runsBefore time.Time) error
+	// BeginRun : enregistre la passe si aucune autre n'est en cours (une passe
+	// non close depuis staleAfter ne compte plus) ; false sinon.
+	BeginRun(ctx context.Context, r *domain.ReconcileRun, staleAfter time.Duration) (bool, error)
 
 	// Back-office.
 	ListVPS(ctx context.Context, limit int) ([]domain.VPS, error)
@@ -237,10 +247,16 @@ type Store interface {
 	// UpdateVPSTx : champs donnés ; version augmentée.
 	UpdateVPSTx(tx *gorm.DB, id uuid.UUID, fields map[string]any) error
 	UpdateVPS(ctx context.Context, id uuid.UUID, fields map[string]any) error
+	// LockVPSIfTx : verrouille la ligne (FOR UPDATE) si le VPS est encore dans
+	// cet état avec cette échéance ; faux sinon.
+	LockVPSIfTx(tx *gorm.DB, id uuid.UUID, state string, paidUntil time.Time) (bool, error)
 	VPS(ctx context.Context, id uuid.UUID) (*domain.VPS, error)
 	OrganizationVPS(ctx context.Context, org uuid.UUID) ([]domain.VPS, error)
-	// DueVPS : VPS dont le mois payé est fini (renouvellement), au plus limit.
-	DueVPS(ctx context.Context, now time.Time, limit int) ([]domain.VPS, error)
+	// DueVPS : VPS dont le mois payé est fini (renouvellement), au plus
+	// limit, après le curseur (échéance, identifiant) : un VPS qui ne se
+	// renouvelle pas ne bloque jamais les suivants. Exclut les VPS suspendus
+	// pour une autre raison qu'un impayé (abus, organisation suspendue).
+	DueVPS(ctx context.Context, now time.Time, after *DueCursor, limit int) ([]domain.VPS, error)
 	ProjectOrganization(ctx context.Context, project uuid.UUID) (uuid.UUID, error)
 
 	// Sauvegardes : relevé écrit par le mode compute, lu par l'API.
@@ -263,6 +279,9 @@ type Store interface {
 	DeleteOrgLimits(ctx context.Context, org uuid.UUID) error
 	// CountVPS : VPS de l'organisation qui comptent dans le quota (ni résiliés ni en échec).
 	CountVPS(ctx context.Context, org uuid.UUID) (int, error)
+	// LockAndCountVPSTx : verrou de commande de l'organisation (jusqu'à la fin
+	// de tx) puis comptage, dans tx.
+	LockAndCountVPSTx(tx *gorm.DB, org uuid.UUID) (int, error)
 	// AccountAge / HasPaidTopup : ancienneté de l'organisation, recharge payée reçue.
 	OrganizationCreatedAt(ctx context.Context, org uuid.UUID) (time.Time, error)
 	HasPaidTopup(ctx context.Context, org uuid.UUID) (bool, error)
@@ -272,6 +291,12 @@ type Store interface {
 
 	// OrganizationNames : nom affiché de chaque organisation.
 	OrganizationNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
+}
+
+// DueCursor : position dans la file des renouvellements.
+type DueCursor struct {
+	PaidUntil time.Time
+	ID        uuid.UUID
 }
 
 // Starter : lancement d'un workflow (Temporal), identifiant imposé, jamais deux fois.

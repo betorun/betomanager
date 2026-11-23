@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -236,12 +237,17 @@ func (s *Service) SubscribeSnapshot(ctx context.Context, org, id uuid.UUID, req 
 	if req.MonthlyPrice != price {
 		return nil, domain.ErrPriceChanged
 	}
-	period := snapshotPeriod(v.ID, s.now())
+	// Référence propre à cette souscription (jamais celle d'une souscription
+	// précédente du même jour : son remboursement rendrait l'option gratuite).
+	period := snapshotPeriod(v.ID, s.now()) + ":" + uuid.NewString()
 	amount := price * domain.MilliPerUnit
 	payload, _ := json.Marshal(domain.SubscribePayload{Period: period, AmountMilli: amount})
 	out, err := s.enqueueOp(ctx, v, domain.KindSnapshotOrder, domain.OpSubscribing, payload, by,
 		map[string]any{"snapshot_option": domain.SnapshotOrdering}, func(tx *gorm.DB) error {
-			_, err := s.Wallet.ChargeComputeTx(ctx, tx, org, billingDomain.Milli(amount), period, "Snapshot du VPS "+v.Name+", 1 mois", by)
+			written, err := s.Wallet.ChargeComputeTx(ctx, tx, org, billingDomain.Milli(amount), period, "Snapshot du VPS "+v.Name+", 1 mois", by)
+			if err == nil && !written {
+				return errNotCharged
+			}
 			return err
 		})
 	if err == nil {
@@ -266,6 +272,10 @@ func (s *Service) UnsubscribeSnapshot(ctx context.Context, org, id uuid.UUID, by
 	return s.enqueueOp(ctx, v, domain.KindSnapshotRelease, domain.OpUnsubscribing, []byte(`{}`), by,
 		map[string]any{"snapshot_option": domain.SnapshotReleasing}, nil)
 }
+
+// errNotCharged : le débit n'a pas été écrit (référence déjà utilisée) :
+// rien n'est commandé sans paiement.
+var errNotCharged = errors.New("compute: charge not written")
 
 // snapshotPeriod : référence d'un mois de l'option.
 func snapshotPeriod(vps uuid.UUID, from time.Time) string {

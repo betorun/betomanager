@@ -34,6 +34,16 @@ func (s *reconStore) ReplaceMachines(_ context.Context, _ string, ms []domain.Pr
 	s.machines = ms
 	return nil
 }
+func (s *reconStore) Purge(context.Context, time.Time, time.Time, time.Time) error { return nil }
+func (s *reconStore) BeginRun(_ context.Context, r *domain.ReconcileRun, _ time.Duration) (bool, error) {
+	for _, run := range s.runs {
+		if run.FinishedAt == nil {
+			return false, nil
+		}
+	}
+	s.runs = append(s.runs, *r)
+	return true, nil
+}
 func (s *reconStore) SaveRun(_ context.Context, r *domain.ReconcileRun) error {
 	s.runs = append(s.runs, *r)
 	return nil
@@ -148,9 +158,78 @@ func TestReconcile_BackupsAndStuckSnapshots(t *testing.T) {
 		{ProviderID: "p-busy", State: domain.StateRunning, Busy: true},
 		{ProviderID: "p-op", State: domain.StateRunning},
 	}}}
+	r.Now = dueAt(t, free)
 	_, err := r.Run(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"p-busy"}, b.aborted, "opération en cours chez le fournisseur : contrôlée (abortSnapshot si bloquée)")
 	assert.Equal(t, []string{"p-free"}, b.read, "relevé seulement des VPS sans opération")
 	assert.True(t, store.saved[free])
+}
+
+// dueAt : une heure de passe où les sauvegardes de ce VPS sont relevées.
+func dueAt(t *testing.T, id uuid.UUID) func() time.Time {
+	t.Helper()
+	base := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 6; i++ {
+		at := base.Add(time.Duration(i) * passEvery)
+		if dueThisPass(id, at, backupsEvery) {
+			return func() time.Time { return at }
+		}
+	}
+	t.Fatal("aucune passe de l'heure ne relève ce VPS")
+	return nil
+}
+
+// Chaque VPS est relevé une passe sur six (une fois par heure).
+func TestDueThisPass_OncePerHour(t *testing.T) {
+	base := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+	for n := 0; n < 50; n++ {
+		id, due := uuid.New(), 0
+		for i := 0; i < 6; i++ {
+			if dueThisPass(id, base.Add(time.Duration(i)*passEvery), backupsEvery) {
+				due++
+			}
+		}
+		assert.Equal(t, 1, due)
+	}
+}
+
+type failingApply struct{ *reconStore }
+
+func (s failingApply) ApplyObserved(_ context.Context, id uuid.UUID, v int64, state, ipv4, ipv6 string, at time.Time) (bool, error) {
+	if ipv4 == "6.6.6.6" {
+		return false, errors.New("db down")
+	}
+	return s.reconStore.ApplyObserved(context.Background(), id, v, state, ipv4, ipv6, at)
+}
+
+// Un VPS illisible ou une écriture en échec n'arrêtent pas la passe ; le
+// relevé est quand même remplacé et l'illisible n'est pas « absent ».
+func TestReconcile_PartialFailures(t *testing.T) {
+	bad, good, unread := uuid.New(), uuid.New(), uuid.New()
+	base := &reconStore{applied: map[uuid.UUID]string{}, vps: []domain.VPS{
+		{ID: bad, ProviderID: "p-bad", State: domain.StateRunning},
+		{ID: good, ProviderID: "p-good", State: domain.StateRunning},
+		{ID: unread, ProviderID: "p-unread", State: domain.StateRunning},
+	}}
+	r := &Reconciler{Store: failingApply{base}, Provider: &fakeProvider{vms: []ProviderVM{
+		{ProviderID: "p-bad", State: domain.StateRunning, IPv4: "6.6.6.6"},
+		{ProviderID: "p-good", State: domain.StateStopped},
+		{ProviderID: "p-unread", Unread: true},
+	}}}
+	run, err := r.Run(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, "stopped ", base.applied[good])
+	assert.Equal(t, 0, run.Missing)
+	assert.Equal(t, 1, run.Unread)
+	require.Len(t, base.machines, 3)
+	assert.True(t, base.machines[2].Keep)
+	assert.NotNil(t, base.runs[len(base.runs)-1].FinishedAt, "passe close malgré l'échec")
+}
+
+// Une seule passe à la fois.
+func TestReconcile_SingleFlight(t *testing.T) {
+	store := &reconStore{applied: map[uuid.UUID]string{}, runs: []domain.ReconcileRun{{ID: uuid.New()}}}
+	_, err := (&Reconciler{Store: store, Provider: &fakeProvider{}}).Run(context.Background())
+	assert.ErrorIs(t, err, ErrReconcileRunning)
 }

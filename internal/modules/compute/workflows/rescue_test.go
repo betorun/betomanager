@@ -45,8 +45,8 @@ type fakeMailbox struct {
 func (m *fakeMailbox) FindRescue(context.Context, string, time.Time) (*service.RescueMail, error) {
 	return m.mail, nil
 }
-func (m *fakeMailbox) Delete(_ context.Context, id uint32) error {
-	m.deleted = append(m.deleted, id)
+func (m *fakeMailbox) Delete(_ context.Context, ids ...uint32) error {
+	m.deleted = append(m.deleted, ids...)
 	return nil
 }
 func (m *fakeMailbox) Check(context.Context) (int, error) { return 0, nil }

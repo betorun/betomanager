@@ -329,7 +329,7 @@ var catalog = map[Permission]PermissionInfo{
 	PlatformBillingAccountsUpdate:  {Title: "Offrir un crédit, corriger un solde, activer la facturation", PlatformOnly: true, Sensitive: true},
 	PlatformMailSuppressionsManage: {Title: "Voir et relâcher les adresses e-mail mises de côté", PlatformOnly: true},
 	PlatformComputeGet:             {Title: "Voir les VPS de tous les clients et la réconciliation", PlatformOnly: true},
-	PlatformComputeManage:          {Title: "Lancer une réconciliation ou un diagnostic des VPS", PlatformOnly: true},
+	PlatformComputeManage:          {Title: "Gérer les VPS des clients : abus, port 25, résiliation, rattachement, réconciliation", PlatformOnly: true, Sensitive: true},
 	PlatformLegalManage:            {Title: "Rédiger et publier les conditions de vente et la politique d'usage", PlatformOnly: true},
 	PlatformStatusManage:           {Title: "Annoncer les incidents et les maintenances sur la page de statut", PlatformOnly: true},
 	PlatformSupportManage:          {Title: "Traiter les tickets de support de tous les clients", PlatformOnly: true},
