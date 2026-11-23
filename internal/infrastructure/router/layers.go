@@ -128,6 +128,7 @@ func (a *App) initDomainLayers() error {
 	clustersService := clustersSvc.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger, clusterOpts...)
 	clustersController := clusters.NewController(clustersService)
 	clustersController.Registry = a.clusterRegistry()
+	clustersController.Agents = a.clusterAgents()
 
 	// Sites statiques : actifs seulement si l'object store est configuré.
 	var siteService sitesSvc.ISiteService

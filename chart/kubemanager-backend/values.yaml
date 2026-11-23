@@ -91,6 +91,9 @@ config:
     # Espace de noms du contrôleur d'ingress, autorisé par la NetworkPolicy
     # des conteneurs (vide : ingress-nginx).
     ingressNamespace: ""
+    # Image du watcher posé sur chaque cluster préparé depuis le back-office
+    # (ex. thekrauss/watcher:<sha>) ; l'équipe peut en donner une autre.
+    agentImage: ""
   iam:
     # STS : URL publique de l'émetteur des jetons machine (= <API>/kmanager/v1/iam).
     stsIssuer: "https://api.example.com/kmanager/v1/iam"

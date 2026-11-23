@@ -326,6 +326,11 @@ personnalisés qu'il faut s'appuyer.
 7 BIS. WATCHER DU CLUSTER
 -------------------------
 
+Clusters suivants : depuis le back-office (Clusters, « Préparer le cluster ») avec
+un kubeconfig administrateur utilisé une seule fois ; voir docs/modules/clusters.md,
+« Agent de chaque cluster ». Image : WATCHER_IMAGE dans .env.prod. La procédure
+ci-dessous reste celle du premier cluster.
+
 Agent du serveur 2 (dépôt watcher) : il remonte les événements des pods à l'API et
 publie les clés des jetons Kubernetes. Sans lui, CLUSTER_ID reste vide et l'identité
 des workloads est désactivée. JAMAIS TESTÉ entre deux serveurs : seul le rendu du

@@ -25,6 +25,8 @@ type Controller struct {
 	service service.IClusterService
 	// Registry : registre et santé (nil : routes du registre non montées).
 	Registry *service.Registry
+	// Agents : installation des agents (nil : routes non montées).
+	Agents *service.Agents
 }
 
 func NewController(s service.IClusterService) *Controller {
@@ -89,6 +91,19 @@ type KubeconfigInput struct {
 	Kubeconfig string `json:"kubeconfig" binding:"required" description:"Kubeconfig complet (YAML) : jeton ou certificat inclus, sans commande exec ni fichier local, serveur en https"`
 }
 
+// BootstrapClusterInput : préparation d'un cluster par un administrateur.
+type BootstrapClusterInput struct {
+	ClusterID  string `path:"clusterID" binding:"required"`
+	Kubeconfig string `json:"kubeconfig" binding:"required" description:"Kubeconfig administrateur (YAML), utilisé le temps de l'installation et jamais enregistré"`
+	Image      string `json:"image,omitempty" description:"Image de l'agent (vide : celle de la configuration)"`
+}
+
+// AgentUpdateInput : mise à jour de l'agent.
+type AgentUpdateInput struct {
+	ClusterID string `path:"clusterID" binding:"required"`
+	service.AgentInput
+}
+
 func principal(c *gin.Context) string {
 	if p, ok := security.PrincipalFromContext(c); ok {
 		return string(p)
@@ -132,6 +147,22 @@ func (ctrl *Controller) RegistryNodes(c *gin.Context, in *ClusterPath) ([]domain
 
 func (ctrl *Controller) RegistryDelete(c *gin.Context, in *ClusterPath) error {
 	return ctrl.Registry.Delete(c.Request.Context(), in.ClusterID)
+}
+
+// AgentBootstrap : compte plateforme et agent posés avec un accès administrateur.
+func (ctrl *Controller) AgentBootstrap(c *gin.Context, in *BootstrapClusterInput) (*domain.AgentState, error) {
+	raw := strings.TrimSpace(in.Kubeconfig)
+	return ctrl.Agents.Bootstrap(c.Request.Context(), in.ClusterID, service.BootstrapInput{Kubeconfig: []byte(raw), Image: in.Image}, principal(c))
+}
+
+// AgentUpdate : image ou clé de l'agent renouvelée par le compte plateforme.
+func (ctrl *Controller) AgentUpdate(c *gin.Context, in *AgentUpdateInput) (*domain.AgentState, error) {
+	return ctrl.Agents.Update(c.Request.Context(), in.ClusterID, in.AgentInput, principal(c))
+}
+
+// AgentState : agent lu sur le cluster.
+func (ctrl *Controller) AgentState(c *gin.Context, in *ClusterPath) (*domain.AgentState, error) {
+	return ctrl.Agents.State(c.Request.Context(), in.ClusterID)
 }
 
 // Regions : régions proposées à la création d'un projet (clients).

@@ -51,6 +51,13 @@ type Cluster struct {
 	IngressTarget    string `gorm:"not null;default:''" json:"ingress_target"`
 	StorageClass     string `gorm:"not null;default:''" json:"storage_class"`
 
+	// Agent installé par la plateforme (lot 3) : image, fichier de clé en
+	// service (identifiant public seulement), date et auteur.
+	AgentImage       string     `gorm:"not null;default:''" json:"agent_image"`
+	AgentKeyID       string     `gorm:"not null;default:''" json:"-"`
+	AgentInstalledAt *time.Time `json:"agent_installed_at,omitempty"`
+	AgentInstalledBy string     `gorm:"not null;default:''" json:"-"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

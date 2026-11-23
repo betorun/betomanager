@@ -119,3 +119,42 @@ func (a *App) startClusterHealth(ctx context.Context) {
 	r := a.clusterRegistry()
 	a.goWith(ctx, "cluster-health", func(ctx context.Context) { r.Run(ctx, clustersSvc.DefaultHealthEvery) })
 }
+
+// clusterAgents : installation des agents (lot 3) : fichiers de clé émis
+// pour le compte système de chaque cluster, accès restreint par le pool.
+func (a *App) clusterAgents() *clustersSvc.Agents {
+	ag := &clustersSvc.Agents{
+		Registry: a.clusterRegistry(),
+		Image:    strings.TrimSpace(a.Config.Kubernetes.AgentImage),
+		Prepare: func(raw []byte) (clustersSvc.AgentInstaller, string, error) {
+			rc, server, err := clustersRepo.ParseKubeconfig(raw)
+			if err != nil {
+				return nil, "", err
+			}
+			c, err := kubernetes.NewForConfig(rc)
+			if err != nil {
+				return nil, "", err
+			}
+			return &clustersRepo.Installer{Client: c}, server, nil
+		},
+		RestrictedKubeconfig: clustersRepo.RestrictedKubeconfig,
+	}
+	if u := strings.TrimRight(strings.TrimSpace(a.Config.Builds.PublicAPIURL), "/"); u != "" {
+		ag.APIURL = u + "/clusters"
+	}
+	pool := a.clusterSettings()
+	ag.For = func(ctx context.Context, clusterID string) (clustersSvc.AgentInstaller, error) {
+		if pool == nil {
+			return nil, clustersSvc.ErrNoDefaultCluster
+		}
+		p, err := pool.ForCluster(ctx, clusterID)
+		if err != nil {
+			return nil, err
+		}
+		return &clustersRepo.Installer{Client: p.Client}, nil
+	}
+	if a.ClusterAgents != nil {
+		ag.Keys = clustersSvc.ClusterAgentKeys{Agents: a.ClusterAgents}
+	}
+	return ag
+}

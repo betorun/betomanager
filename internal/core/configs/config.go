@@ -681,6 +681,10 @@ type KubernetesConfig struct {
 	// par la NetworkPolicy à joindre les conteneurs (défaut ingress-nginx ;
 	// kube-system pour le traefik de k3s).
 	IngressNamespace string `mapstructure:"ingress_namespace"`
+	// AgentImage : image du watcher posé par la plateforme sur chaque
+	// cluster préparé depuis le back-office (ex. thekrauss/watcher:<sha>) ;
+	// l'équipe peut en donner une autre à chaque installation.
+	AgentImage string `mapstructure:"agent_image"`
 }
 
 // EnvPrefix est le préfixe utilisé pour les variables d'environnement (ex: KUBEMANAGER_DATABASE_HOST).
