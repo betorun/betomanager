@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,16 +17,30 @@ import (
 func TestCLI_Projects(t *testing.T) {
 	const second = "22222222-2222-2222-2222-222222222222"
 	var created, renamed map[string]any
+	const third = "33333333-3333-3333-3333-333333333333"
+	polls := 0 // lectures après création : PROVISIONING puis READY
+	savedPoll := projectPollEvery
+	projectPollEvery = time.Millisecond
+	t.Cleanup(func() { projectPollEvery = savedPoll })
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		p := strings.TrimPrefix(r.URL.Path, "/kmanager/v1")
 		switch {
 		case r.Method == "GET" && p == "/projects":
+			projects := []any{
+				map[string]any{"project_id": projectID, "name": "Bomba", "status": "ACTIVE", "organization_id": "org-1"},
+				map[string]any{"project_id": second, "name": "Bomba préprod", "status": "ACTIVE", "organization_id": "org-1"},
+			}
+			if created != nil {
+				polls++
+				status := "PROVISIONING"
+				if polls >= 2 {
+					status = "READY"
+				}
+				projects = append(projects, map[string]any{"project_id": third, "name": "Bomba staging", "status": status, "organization_id": "org-1"})
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"projects": []any{
-					map[string]any{"project_id": projectID, "name": "Bomba", "status": "ACTIVE", "organization_id": "org-1"},
-					map[string]any{"project_id": second, "name": "Bomba préprod", "status": "ACTIVE", "organization_id": "org-1"},
-				},
+				"projects":      projects,
 				"organizations": []any{map[string]any{"organization_id": "org-1", "display_name": "Awa", "projects": 2, "max_projects": 3}},
 			})
 		case r.Method == "POST" && p == "/projects":
@@ -67,6 +82,7 @@ func TestCLI_Projects(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "betorun projects use 33333333")
 	assert.Equal(t, map[string]any{"name": "Bomba staging", "organization_id": "org-1"}, created)
+	assert.Equal(t, 2, polls, "rend la main seulement une fois le projet prêt")
 
 	out, err = run(t, "projects", "rename", second, "Bomba recette")
 	require.NoError(t, err)

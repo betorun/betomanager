@@ -54,7 +54,11 @@ func applyVariables(cmd *cobra.Command, name string, req api.PatchVariablesReque
 	if err != nil {
 		return err
 	}
-	res, err := cl.PatchVariables(cmd.Context(), w.ID.String(), req)
+	var res *api.VariablesResponse
+	err = retryWhileDeploying(cmd.Context(), printer(cmd), w.Name, "wl.env.busy", "db.attach.busy_timeout", func() (err error) {
+		res, err = cl.PatchVariables(cmd.Context(), w.ID.String(), req)
+		return err
+	})
 	if err != nil {
 		return err
 	}

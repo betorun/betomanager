@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -111,4 +112,39 @@ func TestVariables_InvalidNameRefusedBeforePrompt(t *testing.T) {
 	}
 	assert.Zero(t, asked, "aucune invite ouverte")
 	assert.Nil(t, patched, "rien d'envoyé")
+}
+
+// Déploiement en cours : la modification attend qu'il se termine au lieu
+// d'échouer.
+func TestVariables_WaitsForDeployInProgress(t *testing.T) {
+	id := uuid.New()
+	calls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /workloads", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"ID": id, "Name": "web", "Status": "RUNNING"}})
+	})
+	mux.HandleFunc("PATCH /workloads/{id}/variables", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(409)
+			_, _ = w.Write([]byte(`{"code":"DEPLOY_IN_PROGRESS","message":"a deployment of this container is in progress"}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"changed": false, "variables": []any{}})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	t.Setenv("BETORUN_CONFIG_DIR", t.TempDir())
+	t.Setenv("BETORUN_LANG", "fr")
+	t.Setenv("BETORUN_TOKEN", "ci-token")
+	t.Setenv("BETORUN_API_URL", srv.URL)
+	t.Setenv("BETORUN_PROJECT", projectID)
+	saved := busyRetryEvery
+	busyRetryEvery = time.Millisecond
+	t.Cleanup(func() { busyRetryEvery = saved })
+
+	out, err := run(t, "workloads", "env", "set", "web", "PUBLIC_URL=https://x.sn")
+	require.NoError(t, err)
+	assert.Equal(t, 3, calls)
+	assert.Contains(t, out, "Un déploiement de web est en cours")
 }
