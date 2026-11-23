@@ -12,3 +12,7 @@ k3s-config.yaml
 dist/
 # Clé et certificat des jetons du registre (scripts/registry_dev_certs.sh)
 docker/registry/certs/
+
+# Accès des clusters de terrain (deploy/terrain/k3s.sh) : jamais dans git.
+kubeconfig.terrain
+*.kubeconfig
