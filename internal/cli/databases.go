@@ -16,6 +16,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/cli/i18n"
 	"github.com/thekrauss/kubemanager/internal/cli/ui"
 	databasesdomain "github.com/thekrauss/kubemanager/internal/modules/databases/domain"
+	diskusagedomain "github.com/thekrauss/kubemanager/internal/modules/diskusage/domain"
 )
 
 const (
@@ -62,7 +63,16 @@ func newDatabasesList() *cobra.Command {
 				p.Hint(i18n.T("db.list.empty"))
 				return nil
 			}
-			t := p.Table(i18n.T("wl.col.name"), i18n.T("wl.col.status"), i18n.T("db.col.size"))
+			// Usage mesuré : facultatif, la liste s'affiche même sans.
+			used := map[string]string{}
+			if du, err := cl.DiskUsage(cmd.Context(), project); err == nil {
+				for _, u := range du.Disks {
+					if u.Kind == diskusagedomain.KindDatabase {
+						used[u.TargetID.String()] = humanBytes(u.UsedBytes) + " (" + usedPercent(u.UsedBytes, u.CapacityBytes) + ")"
+					}
+				}
+			}
+			t := p.Table(i18n.T("wl.col.name"), i18n.T("wl.col.status"), i18n.T("db.col.size"), i18n.T("proj.du.col.used"))
 			for _, d := range list {
 				tone := ui.ToneProgress
 				switch d.Status {
@@ -71,7 +81,11 @@ func newDatabasesList() *cobra.Command {
 				case databasesdomain.StatusFailed:
 					tone = ui.ToneError
 				}
-				t.Row(p.Bold(d.Name), p.Status(tone, d.Status), d.StorageSize)
+				u, ok := used[d.ID]
+				if !ok {
+					u = "—"
+				}
+				t.Row(p.Bold(d.Name), p.Status(tone, d.Status), d.StorageSize, u)
 			}
 			return t.Flush()
 		},
