@@ -6,6 +6,7 @@
 #
 #   sudo bash cilium-migrate.sh check      # état et réponses des sites (rien ne change)
 #   sudo bash cilium-migrate.sh migrate    # bascule (demande confirmation)
+#   sudo bash cilium-migrate.sh resume     # termine une bascule interrompue après Cilium
 #   sudo bash cilium-migrate.sh rollback   # retour à flannel
 #
 # Variables : K3S_IP (défaut : IP du nœud), CILIUM_VERSION (défaut : version
@@ -26,7 +27,11 @@ exec > >(tee -a "$DIR/journal.txt") 2>&1
 say() { printf '\n── %s\n' "$*"; }
 die() { echo "ÉCHEC : $*"; echo "Journal : $DIR"; exit 1; }
 
-node_ip() { kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}'; }
+# IPv4 du nœud (un nœud double pile a aussi une InternalIP en IPv6).
+node_ip() {
+  kubectl get nodes -o jsonpath='{range .items[0].status.addresses[?(@.type=="InternalIP")]}{.address}{"\n"}{end}' \
+    | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -1
+}
 
 wait_api() {
   for _ in $(seq 1 90); do kubectl get --raw=/readyz >/dev/null 2>&1 && return 0; sleep 2; done
@@ -144,21 +149,47 @@ cmd_migrate() {
     --set operator.replicas=1
   cilium status --wait --wait-duration 10m || die "Cilium ne s'est pas mis en route (rollback possible)"
 
+  finish_migration
+}
+
+# Fin commune à migrate et resume : pods recréés, droits, relevé après.
+finish_migration() {
   say "6/7 pods recréés sur le nouveau réseau"
   restart_pods
   sleep 20
   wait_pods
-  [ -f "$RBAC" ] && kubectl apply -f "$RBAC" || echo "rbac.yaml introuvable ($RBAC) : le réappliquer à la main"
+  if [ -f "$RBAC" ]; then kubectl apply -f "$RBAC"; else echo "rbac.yaml introuvable ($RBAC) : le réappliquer à la main"; fi
 
   say "7/7 relevé après"
   snapshot apres
-  compare_http
+  [ -f "$DIR/avant-http.txt" ] && compare_http
   echo
   echo "Adresse de l'hôte vue des pods (tunnels « ssh -R » : remplace 10.42.0.1) :"
   ip -4 -o addr show cilium_host 2>/dev/null | awk '{print "  " $4}'
   echo
   echo "Terminé. Journal et relevés : $DIR"
   echo "Retour arrière si besoin : sudo bash $0 rollback"
+}
+
+# resume : bascule interrompue après l'installation de Cilium (Cilium mal
+# configuré) : corrige l'adresse de l'API et termine.
+cmd_resume() {
+  wait_api
+  kubectl -n kube-system get ds cilium >/dev/null 2>&1 || die "Cilium n'est pas installé : lancer migrate"
+  local ip="${K3S_IP:-$(node_ip)}"
+  [ -n "$ip" ] || die "IP du nœud introuvable (K3S_IP=…)"
+  # Relevé « avant » de la dernière bascule : sert de référence.
+  local last
+  last=$(ls -1d /root/cilium-migrate/*/ 2>/dev/null | while read -r d; do [ -f "$d/avant-pods.txt" ] && [ -e "$d/iptables.avant" ] && echo "$d"; done | tail -1)
+  if [ -n "$last" ]; then
+    cp "$last"/avant-* "$DIR/" 2>/dev/null || true
+    BASELINE_BAD=$(awk 'NR>1 && $4!="Running" && $4!="Completed"' "$last/avant-pods.txt" | wc -l)
+  fi
+  say "5/7 Cilium : adresse de l'API = $ip"
+  cilium upgrade --reuse-values --set k8sServiceHost="$ip" --set k8sServicePort=6443
+  kubectl -n kube-system rollout restart deploy/cilium-operator ds/cilium >/dev/null 2>&1 || true
+  cilium status --wait --wait-duration 10m || die "Cilium ne s'est toujours pas mis en route (rollback possible)"
+  finish_migration
 }
 
 cmd_rollback() {
@@ -187,6 +218,7 @@ cmd_rollback() {
 case "${1:-}" in
   check) cmd_check ;;
   migrate) cmd_migrate ;;
+  resume) cmd_resume ;;
   rollback) cmd_rollback ;;
-  *) echo "usage : sudo bash $0 check|migrate|rollback"; exit 2 ;;
+  *) echo "usage : sudo bash $0 check|migrate|resume|rollback"; exit 2 ;;
 esac
