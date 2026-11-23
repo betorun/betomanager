@@ -214,28 +214,11 @@ func newDatabasesAttach() *cobra.Command {
 			path := databasesPath(project) + "/" + url.PathEscape(db.ID) + "/attach"
 			// Un déploiement en cours (souvent le premier, qui échoue faute de
 			// base) bloque le branchement : on attend qu'il se termine.
-			deadline, warned := time.Now().Add(createTimeout), false
-			for {
-				err := cl.Do(ctx, http.MethodPost, path, body, &out)
-				var apiErr *api.Error
-				if err == nil || !errors.As(err, &apiErr) || apiErr.Code != codeDeployInProgress {
-					if err != nil {
-						return err
-					}
-					break
-				}
-				if time.Now().After(deadline) {
-					return errors.New(i18n.T("db.attach.busy_timeout", args[1]))
-				}
-				if !warned && !flagJSON {
-					p.Hint(i18n.T("db.attach.busy", args[1]))
-					warned = true
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(attachRetryEvery):
-				}
+			err = retryWhileDeploying(ctx, p, args[1], "db.attach.busy", "db.attach.busy_timeout", func() error {
+				return cl.Do(ctx, http.MethodPost, path, body, &out)
+			})
+			if err != nil {
+				return err
 			}
 			if ok, err := wantJSON(cmd, out); ok {
 				return err

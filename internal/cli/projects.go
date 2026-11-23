@@ -24,7 +24,7 @@ func newProjects() *cobra.Command {
 			"betorun projects rename \"Boutique préprod\" \"Boutique staging\""}
 
 	var description, org string
-	var use bool
+	var use, noWait bool
 	create := &cobra.Command{
 		Use: "create " + i18n.T("arg.project_name"), Short: i18n.T("proj.create.short"), Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -36,6 +36,16 @@ func newProjects() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			p := printer(cmd)
+			if !noWait && res.ProjectID != "" {
+				if !flagJSON {
+					p.Hint(i18n.T("proj.create.waiting"))
+				}
+				if err := waitProjectReady(cmd.Context(), client(s), p, res.ProjectID); err != nil {
+					return err
+				}
+				res.Status = projectStatusReady
+			}
 			if use && res.ProjectID != "" {
 				if err := saveProject(res.ProjectID); err != nil {
 					return err
@@ -44,7 +54,6 @@ func newProjects() *cobra.Command {
 			if done, err := wantJSON(cmd, res); done {
 				return err
 			}
-			p := printer(cmd)
 			p.Success(i18n.T("proj.create.done", args[0], res.ProjectID))
 			if use {
 				p.Hint(i18n.T("proj.use.done", args[0]))
@@ -57,6 +66,7 @@ func newProjects() *cobra.Command {
 	create.Flags().StringVar(&description, "description", "", i18n.T("flag.proj.description"))
 	create.Flags().StringVar(&org, "org", "", i18n.T("flag.proj.org"))
 	create.Flags().BoolVar(&use, "use", false, i18n.T("flag.proj.use"))
+	create.Flags().BoolVar(&noWait, "no-wait", false, i18n.T("flag.proj.no_wait"))
 
 	c.AddCommand(newProjectsDiskUsage())
 	c.AddCommand(&cobra.Command{

@@ -21,6 +21,12 @@ const (
 	principalServiceAccount = kindServiceAccount + ":"
 )
 
+// Statuts d'un projet (mêmes valeurs que internal/modules/utils).
+const (
+	projectStatusReady = "READY"
+	projectStatusError = "ERROR"
+)
+
 // Statuts et phases d'un workload (mêmes valeurs que internal/modules/utils).
 const (
 	statusRunning         = "RUNNING"
