@@ -137,6 +137,23 @@ func (s *GormStore) ApplyObserved(ctx context.Context, id uuid.UUID, version int
 // ReplaceMachines : le relevé du fournisseur remplace le précédent, d'un bloc.
 func (s *GormStore) ReplaceMachines(ctx context.Context, provider string, ms []domain.ProviderMachine) error {
 	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// La première apparition est gardée d'un relevé à l'autre.
+		var prev []domain.ProviderMachine
+		if err := tx.Where("provider = ?", provider).Find(&prev).Error; err != nil {
+			return err
+		}
+		first := make(map[string]*time.Time, len(prev))
+		for _, p := range prev {
+			first[p.ProviderID] = p.FirstSeenAt
+		}
+		for i := range ms {
+			if f := first[ms[i].ProviderID]; f != nil {
+				ms[i].FirstSeenAt = f
+			} else if ms[i].FirstSeenAt == nil {
+				seen := ms[i].SeenAt
+				ms[i].FirstSeenAt = &seen
+			}
+		}
 		if err := tx.Where("provider = ?", provider).Delete(&domain.ProviderMachine{}).Error; err != nil {
 			return err
 		}
@@ -311,4 +328,91 @@ func (s *GormStore) TakeSecret(ctx context.Context, vps uuid.UUID, kind string, 
 
 func (s *GormStore) DeleteSecrets(ctx context.Context, vps uuid.UUID, kind string) error {
 	return s.DB.WithContext(ctx).Where("vps_id = ? AND kind = ?", vps, kind).Delete(&domain.Secret{}).Error
+}
+
+// ── Stock, quotas, abus, e-mails du fournisseur ────────────────────────
+
+func (s *GormStore) ReplaceStock(ctx context.Context, offer string, rows []domain.Stock) error {
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("offer = ?", offer).Delete(&domain.Stock{}).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
+func (s *GormStore) Stock(ctx context.Context) ([]domain.Stock, error) {
+	out := []domain.Stock{}
+	return out, s.DB.WithContext(ctx).Order("offer, location").Find(&out).Error
+}
+
+func (s *GormStore) Limits(ctx context.Context) (*domain.Limits, error) {
+	var l domain.Limits
+	return &l, s.DB.WithContext(ctx).First(&l, "id = 1").Error
+}
+
+func (s *GormStore) SaveLimits(ctx context.Context, l *domain.Limits) error {
+	l.ID = 1
+	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(l).Error
+}
+
+// OrgLimits : nil si l'organisation suit les réglages de la plateforme.
+func (s *GormStore) OrgLimits(ctx context.Context, org uuid.UUID) (*domain.OrgLimits, error) {
+	var l domain.OrgLimits
+	err := s.DB.WithContext(ctx).First(&l, "organization_id = ?", org).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &l, err
+}
+
+func (s *GormStore) SaveOrgLimits(ctx context.Context, l *domain.OrgLimits) error {
+	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{UpdateAll: true}).Create(l).Error
+}
+
+func (s *GormStore) DeleteOrgLimits(ctx context.Context, org uuid.UUID) error {
+	return s.DB.WithContext(ctx).Where("organization_id = ?", org).Delete(&domain.OrgLimits{}).Error
+}
+
+func (s *GormStore) CountVPS(ctx context.Context, org uuid.UUID) (int, error) {
+	var n int64
+	err := s.DB.WithContext(ctx).Model(&domain.VPS{}).
+		Where("organization_id = ? AND state NOT IN ?", org, []string{domain.StateDeleted, domain.StateFailed}).Count(&n).Error
+	return int(n), err
+}
+
+func (s *GormStore) OrganizationCreatedAt(ctx context.Context, org uuid.UUID) (time.Time, error) {
+	var at time.Time
+	err := s.DB.WithContext(ctx).Raw(`SELECT created_at FROM organizations WHERE id = ?`, org).Row().Scan(&at)
+	return at, err
+}
+
+func (s *GormStore) HasPaidTopup(ctx context.Context, org uuid.UUID) (bool, error) {
+	var n int64
+	err := s.DB.WithContext(ctx).Raw(`SELECT COUNT(*) FROM billing_topups WHERE organization_id = ? AND settled_at IS NOT NULL`, org).Row().Scan(&n)
+	return n > 0, err
+}
+
+func (s *GormStore) SaveProviderMail(ctx context.Context, m *domain.ProviderMail) error {
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
+	}
+	return s.DB.WithContext(ctx).Create(m).Error
+}
+
+func (s *GormStore) ProviderMails(ctx context.Context, openOnly bool, limit int) ([]domain.ProviderMail, error) {
+	out := []domain.ProviderMail{}
+	q := s.DB.WithContext(ctx).Order("received_at DESC").Limit(limit)
+	if openOnly {
+		q = q.Where("handled_at IS NULL")
+	}
+	return out, q.Find(&out).Error
+}
+
+func (s *GormStore) HandleProviderMail(ctx context.Context, id uuid.UUID, by string, at time.Time) error {
+	return s.DB.WithContext(ctx).Model(&domain.ProviderMail{}).Where("id = ? AND handled_at IS NULL", id).
+		Updates(map[string]any{"handled_at": at, "handled_by": by}).Error
 }

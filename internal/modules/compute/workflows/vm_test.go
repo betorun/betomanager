@@ -274,3 +274,53 @@ func TestSuspendedDuringOperationGetsStopped(t *testing.T) {
 	assert.Equal(t, domain.StateSuspended, store.vps[vid].State)
 	assert.Equal(t, []string{KindStop}, store.enqueued, "arrêt déposé à la fin de l'opération")
 }
+
+type listCloud struct {
+	*fakeCloud
+	ids []string
+}
+
+func (l *listCloud) List(context.Context) ([]service.ProviderVM, error) {
+	out := []service.ProviderVM{}
+	for _, id := range l.ids {
+		out = append(out, service.ProviderVM{ProviderID: id})
+	}
+	return out, nil
+}
+func (l *listCloud) Name() string { return domain.ProviderOVH }
+
+type resolveStore struct {
+	*vmStore
+	known    []domain.VPS
+	machines []domain.ProviderMachine
+}
+
+func (s *resolveStore) ProviderVPS(context.Context, string) ([]domain.VPS, error) {
+	return s.known, nil
+}
+func (s *resolveStore) Machines(context.Context) ([]domain.ProviderMachine, error) {
+	return s.machines, nil
+}
+
+func TestResolveDelivered(t *testing.T) {
+	vs, vid, _ := setup(domain.StateCreating, KindCreate)
+	created := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+	vs.vps[vid].CreatedAt = created
+	old := created.Add(-48 * time.Hour)
+	store := &resolveStore{vmStore: vs,
+		known:    []domain.VPS{{ProviderID: "vps-client.vps.ovh.net"}},
+		machines: []domain.ProviderMachine{{ProviderID: "vps-old-orphan.vps.ovh.net", Drift: domain.DriftOrphan, FirstSeenAt: &old}}}
+	a := &Activities{Store: store, Provider: &listCloud{fakeCloud: &fakeCloud{}, ids: []string{"vps-client.vps.ovh.net", "vps-old-orphan.vps.ovh.net", "vps-new.vps.ovh.net"}}}
+	pid, err := a.ResolveDelivered(context.Background(), vid.String())
+	require.NoError(t, err)
+	assert.Equal(t, "vps-new.vps.ovh.net", pid, "seul VPS inconnu apparu après la commande")
+
+	a.Provider = &listCloud{fakeCloud: &fakeCloud{}, ids: []string{"vps-new.vps.ovh.net", "vps-other.vps.ovh.net"}}
+	pid, err = a.ResolveDelivered(context.Background(), vid.String())
+	require.NoError(t, err)
+	assert.Equal(t, "", pid, "deux candidats : l'équipe tranche")
+
+	vs.vps[vid].ProviderID = "vps-attached.vps.ovh.net"
+	pid, _ = a.ResolveDelivered(context.Background(), vid.String())
+	assert.Equal(t, "vps-attached.vps.ovh.net", pid, "rattaché par l'équipe")
+}

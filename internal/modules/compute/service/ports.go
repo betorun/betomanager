@@ -69,6 +69,34 @@ type NetworkProvider interface {
 	StopRenewal(ctx context.Context, providerID string) error
 }
 
+// StockProvider : disponibilité des offres chez le fournisseur.
+type StockProvider interface {
+	// Stock : état de chaque emplacement de la plateforme (gra, rbx, sbg) pour ce plan.
+	Stock(ctx context.Context, planCode string) ([]ProviderStock, error)
+}
+
+// ProviderStock : un emplacement (code de la plateforme) et son stock.
+type ProviderStock struct {
+	Location string
+	Status   string // domain.Stock*
+	Days     int
+}
+
+// Inbox : e-mails récents de la boîte technique (incidents, abus…).
+type Inbox interface {
+	Recent(ctx context.Context, since time.Time) ([]InboxMail, error)
+	Delete(ctx context.Context, id uint32) error
+}
+
+// InboxMail : un e-mail, texte seulement.
+type InboxMail struct {
+	ID      uint32
+	From    string
+	Subject string
+	Date    time.Time
+	Text    string
+}
+
 // RescueProvider : démarrage sur le système de secours (mode compute).
 type RescueProvider interface {
 	SetRescue(ctx context.Context, providerID string, on bool) error
@@ -224,6 +252,23 @@ type Store interface {
 	SaveSecret(ctx context.Context, sec *domain.Secret) error
 	TakeSecret(ctx context.Context, vps uuid.UUID, kind string, now time.Time) (*domain.Secret, error)
 	DeleteSecrets(ctx context.Context, vps uuid.UUID, kind string) error
+
+	// Stock, quotas, abus, e-mails du fournisseur (lot 8).
+	ReplaceStock(ctx context.Context, offer string, rows []domain.Stock) error
+	Stock(ctx context.Context) ([]domain.Stock, error)
+	Limits(ctx context.Context) (*domain.Limits, error)
+	SaveLimits(ctx context.Context, l *domain.Limits) error
+	OrgLimits(ctx context.Context, org uuid.UUID) (*domain.OrgLimits, error)
+	SaveOrgLimits(ctx context.Context, l *domain.OrgLimits) error
+	DeleteOrgLimits(ctx context.Context, org uuid.UUID) error
+	// CountVPS : VPS de l'organisation qui comptent dans le quota (ni résiliés ni en échec).
+	CountVPS(ctx context.Context, org uuid.UUID) (int, error)
+	// AccountAge / HasPaidTopup : ancienneté de l'organisation, recharge payée reçue.
+	OrganizationCreatedAt(ctx context.Context, org uuid.UUID) (time.Time, error)
+	HasPaidTopup(ctx context.Context, org uuid.UUID) (bool, error)
+	SaveProviderMail(ctx context.Context, m *domain.ProviderMail) error
+	ProviderMails(ctx context.Context, openOnly bool, limit int) ([]domain.ProviderMail, error)
+	HandleProviderMail(ctx context.Context, id uuid.UUID, by string, at time.Time) error
 
 	// OrganizationNames : nom affiché de chaque organisation.
 	OrganizationNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)

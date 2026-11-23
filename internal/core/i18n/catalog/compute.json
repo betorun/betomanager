@@ -138,5 +138,25 @@
  {
   "fr": "Ce nom d'hôte ne pointe pas encore vers l'adresse du VPS : ajoutez d'abord l'enregistrement DNS",
   "en": "this host name does not resolve to the VPS address yet: add the DNS record first"
+ },
+ {
+  "fr": "Limite de VPS atteinte pour cette organisation : contactez le support pour l'augmenter",
+  "en": "VPS limit reached for this organization: contact support to raise it"
+ },
+ {
+  "fr": "Les comptes récents sont limités pour l'instant : contactez le support pour relever la limite",
+  "en": "new accounts are limited for now: contact support to raise the limit"
+ },
+ {
+  "fr": "Ce VPS n'est pas suspendu par l'équipe",
+  "en": "this VPS is not suspended by the team"
+ },
+ {
+  "fr": "Cette offre n'est plus en stock à cet emplacement : choisissez-en un autre",
+  "en": "this offer is out of stock at this location: choose another location"
+ },
+ {
+  "fr": "Ce serveur n'est pas un serveur non rattaché du dernier relevé",
+  "en": "this provider server is not an unattached server of the last reconciliation"
  }
 ]

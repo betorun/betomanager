@@ -70,6 +70,8 @@ type VPS struct {
 	ReverseV6     string     `gorm:"column:reverse_v6;not null;default:''" json:"reverse_v6"`
 	SpamBlockedAt *time.Time `json:"spam_blocked_at,omitempty"`
 	SMTPAllowed   bool       `gorm:"column:smtp_allowed;not null;default:false" json:"smtp_allowed"`
+	// AbuseNote : motif d'une suspension par l'équipe (vu par le client).
+	AbuseNote string `gorm:"not null;default:''" json:"abuse_note,omitempty"`
 	// TerminatedAt : résiliation (VPS coupé tout de suite, plus renouvelé).
 	TerminatedAt *time.Time `json:"terminated_at,omitempty"`
 	// SnapshotOption : option snapshot (domain.Snapshot*), vide si non souscrite.
@@ -267,6 +269,8 @@ const (
 	FailureTimeout      = "timeout"       // livraison trop longue
 	FailureUnpaid       = "unpaid"        // renouvellement non payé (suspendu)
 	FailureOrgSuspended = "org_suspended" // organisation suspendue (solde épuisé)
+	FailureAbuse        = "abuse"         // suspendu par l'équipe (procédure abus)
+	FailureOutOfStock   = "out_of_stock"  // plus de stock chez le fournisseur : remboursé
 )
 
 // Opérations en cours (Operation), une à la fois par VPS.
@@ -353,6 +357,11 @@ var (
 	ErrReverseNotPointing       = errors.New("this host name does not resolve to the VPS address yet: add the DNS record first")
 	ErrNoAddress                = errors.New("this VPS has no such address")
 	ErrNotSpamBlocked           = errors.New("this address is not blocked for spam")
+	ErrOutOfStock               = errors.New("this offer is out of stock at this location: choose another location")
+	ErrQuotaReached             = errors.New("VPS limit reached for this organization: contact support to raise it")
+	ErrNewAccountLimit          = errors.New("new accounts are limited for now: contact support to raise the limit")
+	ErrNotAbuseSuspended        = errors.New("this VPS is not suspended by the team")
+	ErrNotOrphan                = errors.New("this provider server is not an unattached server of the last reconciliation")
 )
 
 // ValidName : étiquette DNS (le nom devient le nom d'hôte).
@@ -417,6 +426,8 @@ type ProviderMachine struct {
 	Busy     bool      `gorm:"not null;default:false" json:"busy"`
 	Drift    string    `gorm:"not null;default:''" json:"drift"`
 	SeenAt   time.Time `gorm:"not null" json:"seen_at"`
+	// FirstSeenAt : première passe où le fournisseur l'a montré.
+	FirstSeenAt *time.Time `json:"first_seen_at,omitempty"`
 }
 
 func (ProviderMachine) TableName() string { return "compute_provider_vms" }
@@ -556,3 +567,81 @@ func ValidReverse(h string) bool {
 	}
 	return true
 }
+
+// ── Stock, quotas, abus, e-mails du fournisseur (lot 8) ────────────────
+
+// États du stock (compute_stock.status).
+const (
+	StockAvailable  = "available"
+	StockOutOfStock = "out_of_stock"
+	StockPreorder   = "preorder" // rupture, commande acceptée avec un délai
+)
+
+// Stock : disponibilité d'une offre à un emplacement.
+type Stock struct {
+	Offer     string    `gorm:"primaryKey" json:"offer"`
+	Location  string    `gorm:"primaryKey" json:"location"`
+	Status    string    `gorm:"not null" json:"status"`
+	Days      int       `gorm:"not null;default:0" json:"days"`
+	CheckedAt time.Time `gorm:"not null" json:"checked_at"`
+}
+
+func (Stock) TableName() string { return "compute_stock" }
+
+// Orderable : commande possible (en stock, ou précommande autorisée).
+func (s Stock) Orderable() bool { return s.Status == StockAvailable || s.Status == StockPreorder }
+
+// Limits : quotas de la plateforme et limites des comptes récents (une ligne).
+type Limits struct {
+	ID               int16           `gorm:"primaryKey" json:"-"`
+	MaxVPSPerOrg     int             `gorm:"column:max_vps_per_org;not null" json:"max_vps_per_org"`
+	NewAccountDays   int             `gorm:"not null" json:"new_account_days"`
+	NewAccountMaxVPS int             `gorm:"column:new_account_max_vps;not null" json:"new_account_max_vps"`
+	NewAccountOffers json.RawMessage `gorm:"type:jsonb;not null" json:"new_account_offers"`
+	UpdatedBy        string          `gorm:"not null;default:''" json:"updated_by"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
+func (Limits) TableName() string { return "compute_limits" }
+
+// NewAccountOfferList : offres permises aux comptes récents.
+func (l Limits) NewAccountOfferList() []string {
+	var out []string
+	_ = json.Unmarshal(l.NewAccountOffers, &out)
+	return out
+}
+
+// OrgLimits : plafond accordé à une organisation par l'équipe.
+type OrgLimits struct {
+	OrganizationID uuid.UUID `gorm:"type:uuid;primaryKey" json:"organization_id"`
+	MaxVPS         int       `gorm:"column:max_vps;not null" json:"max_vps"`
+	// Trusted : exemptée des limites des comptes récents.
+	Trusted   bool      `gorm:"not null;default:false" json:"trusted"`
+	UpdatedBy string    `gorm:"not null;default:''" json:"updated_by"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (OrgLimits) TableName() string { return "compute_org_limits" }
+
+// Types d'e-mail du fournisseur.
+const (
+	MailAbuse    = "abuse"
+	MailIncident = "incident"
+	MailOther    = "other"
+)
+
+// ProviderMail : e-mail du fournisseur reçu par la boîte technique, pour l'équipe.
+type ProviderMail struct {
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	ReceivedAt time.Time  `gorm:"not null" json:"received_at"`
+	Sender     string     `gorm:"not null;default:''" json:"sender"`
+	Subject    string     `gorm:"not null;default:''" json:"subject"`
+	Body       string     `gorm:"not null;default:''" json:"body"`
+	Kind       string     `gorm:"not null;default:'other'" json:"kind"`
+	VPSID      *uuid.UUID `gorm:"column:vps_id;type:uuid" json:"vps_id,omitempty"`
+	HandledAt  *time.Time `json:"handled_at,omitempty"`
+	HandledBy  string     `gorm:"not null;default:''" json:"handled_by"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+func (ProviderMail) TableName() string { return "compute_provider_mails" }

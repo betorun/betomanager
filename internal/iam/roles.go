@@ -34,6 +34,7 @@ var (
 		DatabasesList, DatabasesGet,
 		AddonsList, AddonsGet,
 		VPSList, VPSGet,
+		SupportTicketsList, SupportTicketsGet,
 		ServiceAccountsList, ServiceAccountsGet, ServiceAccountKeysList, APIKeysList,
 		RolesList, GroupsList, GroupsGet,
 		// Savoir pourquoi une action est refusée.
@@ -50,6 +51,7 @@ var (
 		SitesCreate, SitesUpdate, SiteDeploymentsCreate, SiteDeploymentsActive,
 		SiteDomainsCreate, SiteDomainsVerify,
 		VPSStart, VPSStop, VPSReboot, VPSSnapshot, VPSNetwork,
+		SupportTicketsCreate,
 		ServiceAccountsActAs,
 	})
 
@@ -87,6 +89,7 @@ var (
 		PlatformBillingAccountsGet, PlatformBillingAccountsUpdate,
 		PlatformMailSuppressionsManage,
 		PlatformComputeGet, PlatformComputeManage,
+		PlatformSupportManage,
 	}
 )
 
@@ -151,8 +154,8 @@ var predefinedRoles = []Role{
 		Description: "Staff betorun : opère la flotte de clusters.",
 		Permissions: platformAdminPerms, PlatformOnly: true},
 	{Name: RolePlatformSupport, Title: "Support plateforme",
-		Description: "Staff betorun : consulte la flotte.",
-		Permissions: []Permission{PlatformClustersList, PlatformClusterKeysList}, PlatformOnly: true},
+		Description: "Staff betorun : consulte la flotte et traite les tickets de support.",
+		Permissions: []Permission{PlatformClustersList, PlatformClusterKeysList, PlatformSupportManage}, PlatformOnly: true},
 	// Attribué par la plateforme au compte de service système d'un cluster,
 	// jamais à une personne (iam.md §7.4).
 	{Name: RoleClusterAgent, Title: "Agent de cluster",

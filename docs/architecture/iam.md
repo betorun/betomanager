@@ -348,7 +348,7 @@ Les clés existantes (`km_…`, rattachées à des utilisateurs) restent valides
 
 Les rôles Keycloak `SUPER_ADMIN`/`ADMIN` ne donnent plus de contournement global :
 
-- Le staff a des **rôles plateforme** explicites sur la ressource `platform` (`roles/platform.support` en lecture, `roles/platform.admin`), vérifiés par le même `iam.Check`. Ils sont attribués par la configuration (`iam.platform_admins`, `iam.platform_support` : listes d'e-mails), réconciliée toutes les 10 min ; un e-mail retiré perd son rôle.
+- Le staff a des **rôles plateforme** explicites sur la ressource `platform` (`roles/platform.support` : lecture de la flotte et tickets de support, `roles/platform.admin`), vérifiés par le même `iam.Check`. Ils sont attribués par la configuration (`iam.platform_admins`, `iam.platform_support` : listes d'e-mails), réconciliée toutes les 10 min ; un e-mail retiré perd son rôle.
 - `roles/platform.admin` porte les clés de cluster et `platform.projects.setLimits` : `PATCH /admin/projects/{id}/limits` (CPU, mémoire, stockage ; sensible). Un client ne choisit pas ses limites : un projet naît avec les valeurs par défaut, seul le staff les change.
 - Accéder aux données d'un client exige une **justification** (ticket) et produit une entrée d'audit **visible par le client** (équivalent « Access Transparency » de Google).
 - Accès d'urgence (*break-glass*) : temporaire (1 h), à double validation, alerte immédiate (pas encore fait).

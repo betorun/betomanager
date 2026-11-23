@@ -562,5 +562,33 @@
  {
   "fr": "Résilier un VPS",
   "en": "Cancel a VPS"
+ },
+ {
+  "fr": "Rédiger et publier les conditions de vente et la politique d'usage",
+  "en": "Write and publish the terms of sale and the acceptable use policy"
+ },
+ {
+  "fr": "Annoncer les incidents et les maintenances sur la page de statut",
+  "en": "Announce incidents and maintenance on the status page"
+ },
+ {
+  "fr": "Staff betorun : consulte la flotte et traite les tickets de support.",
+  "en": "betorun staff: views the fleet and handles support tickets."
+ },
+ {
+  "fr": "Lister les tickets de support",
+  "en": "List support tickets"
+ },
+ {
+  "fr": "Voir un ticket de support",
+  "en": "View a support ticket"
+ },
+ {
+  "fr": "Ouvrir un ticket de support et y répondre",
+  "en": "Open a support ticket and reply to it"
+ },
+ {
+  "fr": "Traiter les tickets de support de tous les clients",
+  "en": "Handle all customers' support tickets"
  }
 ]

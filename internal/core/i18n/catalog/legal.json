@@ -1,0 +1,42 @@
+[
+ {
+  "fr": "Document juridique inconnu",
+  "en": "unknown legal document"
+ },
+ {
+  "fr": "Version du document introuvable",
+  "en": "legal document version not found"
+ },
+ {
+  "fr": "Une version publiée ne peut plus être modifiée",
+  "en": "a published version cannot be changed"
+ },
+ {
+  "fr": "Un brouillon existe déjà pour ce document",
+  "en": "a draft already exists for this document"
+ },
+ {
+  "fr": "Titre et texte obligatoires, en français et en anglais",
+  "en": "title and text are required in French and in English"
+ },
+ {
+  "fr": "Titre ou texte du document trop long",
+  "en": "legal document title or text is too long"
+ },
+ {
+  "fr": "Seule la version en vigueur peut être acceptée",
+  "en": "only the version in force can be accepted"
+ },
+ {
+  "fr": "Les conditions en vigueur doivent d'abord être acceptées",
+  "en": "the terms in force must be accepted first"
+ },
+ {
+  "fr": "Rien à copier : rédigez le titre et le texte de la première version",
+  "en": "nothing to copy: write the title and text of the first version"
+ },
+ {
+  "fr": "Version ou langue invalide",
+  "en": "invalid version or language"
+ }
+]

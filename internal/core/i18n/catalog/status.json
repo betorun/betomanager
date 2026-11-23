@@ -1,0 +1,54 @@
+[
+ {
+  "fr": "Console et API",
+  "en": "Console and API"
+ },
+ {
+  "fr": "Serveurs VPS : commande et gestion",
+  "en": "VPS servers: ordering and management"
+ },
+ {
+  "fr": "Noms de domaine",
+  "en": "Domain names"
+ },
+ {
+  "fr": "Incident résolu.",
+  "en": "Incident resolved."
+ },
+ {
+  "fr": "Incident introuvable",
+  "en": "incident not found"
+ },
+ {
+  "fr": "Cet incident est résolu",
+  "en": "this incident is resolved"
+ },
+ {
+  "fr": "Titre et message obligatoires, en français et en anglais",
+  "en": "title and message are required in French and in English"
+ },
+ {
+  "fr": "Titre ou message de l'incident trop long",
+  "en": "incident title or message is too long"
+ },
+ {
+  "fr": "L'impact doit valoir minor, major ou maintenance",
+  "en": "impact must be minor, major or maintenance"
+ },
+ {
+  "fr": "Le statut doit valoir investigating, identified, monitoring ou resolved",
+  "en": "status must be investigating, identified, monitoring or resolved"
+ },
+ {
+  "fr": "Au moins un composant connu est obligatoire",
+  "en": "at least one known component is required"
+ },
+ {
+  "fr": "Une maintenance demande un début et une fin postérieure",
+  "en": "a maintenance needs a start and an end after it"
+ },
+ {
+  "fr": "Message obligatoire, en français et en anglais",
+  "en": "message is required in French and in English"
+ }
+]

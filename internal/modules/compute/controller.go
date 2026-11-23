@@ -309,6 +309,105 @@ func (h *Controller) SetSMTP(c *gin.Context, in *service.SMTPRequest) (*domain.V
 	return h.Service.SetSMTP(c.Request.Context(), id, in.Allowed)
 }
 
+func principal(c *gin.Context) string {
+	if p, ok := security.PrincipalFromContext(c); ok {
+		return string(p)
+	}
+	return ""
+}
+
+// ── Lot 8 : quotas, anti-fraude, abus, e-mails du fournisseur (équipe) ──
+
+func (h *Controller) Limits(c *gin.Context) (*domain.Limits, error) {
+	return h.Service.Limits(c.Request.Context())
+}
+
+func (h *Controller) SaveLimits(c *gin.Context, in *service.LimitsUpdate) (*domain.Limits, error) {
+	return h.Service.SaveLimits(c.Request.Context(), *in, principal(c))
+}
+
+func (h *Controller) OrgLimits(c *gin.Context, in *OrgPath) (*service.OrgLimitsView, error) {
+	org, err := uuid.Parse(in.OrganizationID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	return h.Service.OrgLimitsView(c.Request.Context(), org)
+}
+
+func (h *Controller) SetOrgLimits(c *gin.Context, in *service.OrgLimitsUpdate) (*service.OrgLimitsView, error) {
+	org, err := uuid.Parse(in.OrganizationID)
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	return h.Service.SetOrgLimits(c.Request.Context(), org, *in, principal(c))
+}
+
+func (h *Controller) SuspendForAbuse(c *gin.Context, in *service.AbuseRequest) (*domain.VPS, error) {
+	id, err := adminVPS(&AdminVPSPath{VPSID: in.VPSID})
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.SuspendForAbuse(c.Request.Context(), id, in.Note, principal(c))
+}
+
+func (h *Controller) ResumeFromAbuse(c *gin.Context, in *AdminVPSPath) (*domain.VPS, error) {
+	id, err := adminVPS(in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.ResumeFromAbuse(c.Request.Context(), id, principal(c))
+}
+
+func (h *Controller) AdminTerminate(c *gin.Context, in *AdminVPSPath) (*domain.VPS, error) {
+	id, err := adminVPS(in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.AdminTerminate(c.Request.Context(), id, principal(c))
+}
+
+// AttachInput : rattacher un VPS livré à son identifiant chez le fournisseur.
+type AttachInput struct {
+	VPSID      string `path:"vpsID" json:"-"`
+	ProviderID string `json:"provider_id" binding:"required" description:"Identifiant du VPS chez le fournisseur (orphelin du relevé)"`
+}
+
+func (h *Controller) Attach(c *gin.Context, in *AttachInput) (*domain.VPS, error) {
+	id, err := adminVPS(&AdminVPSPath{VPSID: in.VPSID})
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.AttachDelivered(c.Request.Context(), id, in.ProviderID)
+}
+
+type ProviderMailsInput struct {
+	All bool `query:"all" description:"Inclure les e-mails déjà traités"`
+}
+
+type ProviderMailsResponse struct {
+	Mails []domain.ProviderMail `json:"mails"`
+}
+
+func (h *Controller) ProviderMails(c *gin.Context, in *ProviderMailsInput) (*ProviderMailsResponse, error) {
+	list, err := h.Service.ProviderMails(c.Request.Context(), !in.All)
+	if err != nil {
+		return nil, err
+	}
+	return &ProviderMailsResponse{Mails: list}, nil
+}
+
+type MailPath struct {
+	MailID string `path:"mailID" description:"Identifiant de l'e-mail"`
+}
+
+func (h *Controller) HandleProviderMail(c *gin.Context, in *MailPath) error {
+	id, err := uuid.Parse(in.MailID)
+	if err != nil {
+		return domain.ErrVPSNotFound
+	}
+	return h.Service.HandleProviderMail(c.Request.Context(), id, principal(c))
+}
+
 // MailboxCheck : diagnostic de la boîte technique (demande compute.mailbox).
 func (h *Controller) MailboxCheck(c *gin.Context) (*PingResponse, error) {
 	return h.enqueue(c, workflows.KindMailbox)

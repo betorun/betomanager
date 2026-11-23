@@ -21,7 +21,7 @@ Règles :
   Temporal, `keycloak`, `xykpay`, `pdf`, `agent`, `tools`…) restent tels quels.
 
 Modules rangés selon ce plan en novembre 2026 : addons, alerts, clusters,
-copilot (racine), databases, diskresize, diskusage, mail, organizations ;
+copilot (racine), databases, diskresize, diskusage, legal, mail, organizations, status ;
 auth, billing, builds, domainsales, github, projects, registries, sites et
 workloads l'étaient déjà. Racines faites seulement de contrôleurs : iamapi,
 identity, realtime.

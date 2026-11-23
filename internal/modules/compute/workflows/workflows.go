@@ -117,6 +117,8 @@ type Activities struct {
 	Backups  service.BackupProvider  // sauvegardes (nil : aucun fournisseur)
 	Rescue   service.RescueProvider  // mode secours
 	Network  service.NetworkProvider // adresses, fin de service
+	Stock    service.StockProvider   // stock des offres
+	Inbox    service.Inbox           // e-mails du fournisseur pour l'équipe
 	Mailbox  service.RescueMailbox   // e-mails du fournisseur (nil : non configurée)
 	Sealer   service.Sealer          // chiffrement des secrets
 	Events   service.Events          // temps réel (nil : aucun)
@@ -151,7 +153,8 @@ func (a *Activities) Reconcile(ctx context.Context) error {
 	if a.Provider == nil {
 		return temporal.NewNonRetryableApplicationError("no compute provider configured", "NoProvider", nil)
 	}
-	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Backups: a.Backups, Network: a.Network, Events: a.Events,
+	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Backups: a.Backups, Network: a.Network,
+		Stock: a.Stock, Inbox: a.Inbox, Events: a.Events,
 		StuckAfter: StuckSnapshotAfter, Now: a.Now}).Run(ctx)
 	return err
 }

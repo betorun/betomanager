@@ -26,7 +26,13 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/compute/service"
 )
 
-const e2eDSN = "postgres://postgres:pw@127.0.0.1:55433/postgres?sslmode=disable"
+// e2eDSN : base des tests (IAM_E2E_DSN pour en viser une autre).
+var e2eDSN = func() string {
+	if d := os.Getenv("IAM_E2E_DSN"); d != "" {
+		return d
+	}
+	return "postgres://postgres:pw@127.0.0.1:55433/postgres?sslmode=disable"
+}()
 
 type fcfa struct{}
 

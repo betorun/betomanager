@@ -21,6 +21,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identity "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
+	"github.com/thekrauss/kubemanager/internal/modules/legal"
 	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
 	"github.com/thekrauss/kubemanager/internal/modules/projects"
 	projectRepos "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
@@ -30,6 +31,8 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/sites"
 	sitesRepo "github.com/thekrauss/kubemanager/internal/modules/sites/repository"
 	sitesSvc "github.com/thekrauss/kubemanager/internal/modules/sites/service"
+	"github.com/thekrauss/kubemanager/internal/modules/status"
+	"github.com/thekrauss/kubemanager/internal/modules/support"
 	workload "github.com/thekrauss/kubemanager/internal/modules/workloads"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
@@ -88,6 +91,12 @@ type ControllerContainer struct {
 	Mail *mailmod.Controller
 	// Compute : VPS (offres, réglage, diagnostic).
 	Compute *compute.Controller
+	// Legal : conditions de vente et politique d'usage.
+	Legal *legal.Controller
+	// Status : page de statut publique et incidents.
+	Status *status.Controller
+	// Support : tickets des clients, file de l'équipe.
+	Support *support.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -112,4 +121,7 @@ func AddAllRoutes(a *App) {
 	addDomainSalesRoutes(a)
 	addMailRoutes(a)
 	addComputeRoutes(a)
+	addLegalRoutes(a)
+	addSupportRoutes(a)
+	addStatusRoutes(a)
 }
