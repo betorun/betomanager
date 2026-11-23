@@ -106,5 +106,33 @@
  {
   "fr": "Aucun cluster Kubernetes configuré",
   "en": "no Kubernetes cluster configured"
+ },
+ {
+  "fr": "Aucune image d'agent : en donner une ou renseigner kubernetes.agent_image",
+  "en": "no agent image: give one or configure kubernetes.agent_image"
+ },
+ {
+  "fr": "Référence d'image d'agent invalide",
+  "en": "invalid agent image reference"
+ },
+ {
+  "fr": "L'adresse de l'API vue depuis les clusters n'est pas configurée (builds.public_api_url)",
+  "en": "the platform API address seen from clusters is not configured (builds.public_api_url)"
+ },
+ {
+  "fr": "Ce kubeconfig ne peut pas créer de rôles de cluster : utiliser un kubeconfig administrateur",
+  "en": "this kubeconfig cannot create cluster roles: use an administrator kubeconfig"
+ },
+ {
+  "fr": "Le cluster n'a pas délivré à temps le jeton du compte plateforme",
+  "en": "the cluster did not issue the platform account token in time"
+ },
+ {
+  "fr": "Les clés des agents de cluster ne sont pas disponibles sur ce serveur",
+  "en": "cluster agent keys are not available on this server"
+ },
+ {
+  "fr": "Le cluster est hors service",
+  "en": "the cluster is disabled"
  }
 ]

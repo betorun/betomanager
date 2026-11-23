@@ -124,6 +124,18 @@ func addClusterRoutes(app *App) {
 	adminClusters.AddRoute("/:clusterID/nodes", http.MethodGet,
 		"Nœuds du cluster lus à l'instant : prêt, rôles, allouable, demandes",
 		list, tonic.Handler(reg.RegistryNodes, http.StatusOK))
+	if reg.Agents == nil {
+		return
+	}
+	adminClusters.AddRoute("/:clusterID/bootstrap", http.MethodPost,
+		"Préparer le cluster avec un kubeconfig administrateur, utilisé le temps de l'appel et jamais enregistré : compte restreint de la plateforme, agent et son fichier de clé ; seul l'accès restreint est gardé",
+		manage, tonic.Handler(reg.AgentBootstrap, http.StatusOK))
+	adminClusters.AddRoute("/:clusterID/agent", http.MethodGet,
+		"Agent du cluster : installé, image, instances prêtes, dernier signe de vie",
+		list, tonic.Handler(reg.AgentState, http.StatusOK))
+	adminClusters.AddRoute("/:clusterID/agent", http.MethodPost,
+		"Mettre à jour l'agent par l'accès restreint : nouvelle image ou nouveau fichier de clé (l'ancien est révoqué)",
+		manage, tonic.Handler(reg.AgentUpdate, http.StatusOK))
 }
 
 func addRealtimeRoutes(app *App) {

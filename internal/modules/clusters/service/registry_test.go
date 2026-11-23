@@ -83,6 +83,13 @@ func (m *memRegistry) Update(_ context.Context, id string, f map[string]any) err
 		case "kubeconfig_set_at":
 			t := v.(time.Time)
 			c.KubeconfigSetAt = &t
+		case "agent_image":
+			c.AgentImage = v.(string)
+		case "agent_key_id":
+			c.AgentKeyID = v.(string)
+		case "agent_installed_at":
+			t := v.(time.Time)
+			c.AgentInstalledAt = &t
 		}
 	}
 	return nil

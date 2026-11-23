@@ -111,3 +111,22 @@ func TestE2E_ProjectCounts(t *testing.T) {
 	require.NoError(t, db.Exec(`DELETE FROM projects WHERE id IN (?, ?)`, p1, p2).Error)
 	require.NoError(t, store.Delete(ctx, host))
 }
+
+// Lot 3 : l'agent posé par la plateforme est enregistré au registre.
+func TestE2E_AgentFields(t *testing.T) {
+	db := e2eDB(t)
+	ctx := context.Background()
+	store := &repository.RegistryStore{DB: db}
+	id := "agent-" + uuid.NewString()[:8]
+	require.NoError(t, store.Declare(ctx, &domain.Cluster{ClusterID: id, Provider: domain.ProviderOVH, Distribution: domain.DistributionK3s, State: domain.StateActive}))
+	now := time.Now().UTC().Truncate(time.Second)
+	require.NoError(t, store.Update(ctx, id, map[string]any{"agent_image": "thekrauss/watcher:abc", "agent_key_id": "kf_123",
+		"agent_installed_at": now, "agent_installed_by": "user:staff"}))
+	c, err := store.Get(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "thekrauss/watcher:abc", c.AgentImage)
+	assert.Equal(t, "kf_123", c.AgentKeyID)
+	require.NotNil(t, c.AgentInstalledAt)
+	assert.True(t, now.Equal(c.AgentInstalledAt.UTC()))
+	assert.Equal(t, "user:staff", c.AgentInstalledBy)
+}

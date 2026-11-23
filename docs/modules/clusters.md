@@ -40,6 +40,9 @@ Routes internes sur `platform` (staff). `platform.clusters.manage` est **sensibl
 | `POST` | `/admin/clusters/:clusterID/default` | `platform.clusters.manage` | Cluster par défaut (un seul ; pas un cluster `disabled`) |
 | `POST` | `/admin/clusters/:clusterID/check` | `platform.clusters.list` | Relevé de santé immédiat |
 | `GET` | `/admin/clusters/:clusterID/nodes` | `platform.clusters.list` | Nœuds lus à l'instant (prêt, rôles, allouable, demandes) |
+| `POST` | `/admin/clusters/:clusterID/bootstrap` | `platform.clusters.manage` | Préparer le cluster avec un kubeconfig administrateur jamais enregistré : compte restreint, agent et sa clé (voir « Agent de chaque cluster ») |
+| `GET` | `/admin/clusters/:clusterID/agent` | `platform.clusters.list` | État de l'agent lu par l'accès restreint |
+| `POST` | `/admin/clusters/:clusterID/agent` | `platform.clusters.manage` | Nouvelle image ou nouvelle clé de l'agent |
 
 ## Registre multi-cluster (lot 1)
 
@@ -71,6 +74,21 @@ Routes internes sur `platform` (staff). `platform.clusters.manage` est **sensibl
 - **Watcher** : un événement de pod n'est retenu que si le projet du workload est placé sur le cluster du watcher (projet sans cluster : le défaut) ; sinon `ignored`, métrique `rejected` (`service.WithPlacement`).
 - **Identité des workloads (STS)** : plusieurs clusters peuvent publier le même émetteur (celui de k3s est identique partout) ; la clé qui vérifie le jeton du pod désigne le cluster, et le workload doit appartenir à un projet de ce cluster. Un pod d'un cluster ne peut donc pas obtenir l'identité d'un workload d'un autre, même namespace et même nom. `sts.WorkloadClusterID` (configuration `kubernetes.cluster_id`) reste l'interrupteur et le cluster des projets sans cluster.
 - **Restent sur le cluster par défaut** (infrastructure de la plateforme, pas des projets) : builds d'images (le registre `builds.registry_host` est public, chaque cluster en tire les images avec le secret posé dans le namespace du projet), sites statiques et leur edge (`SyncEdgeDomains`), sondes d'appel du back-office.
+
+## Agent de chaque cluster (lot 3)
+
+Un nouveau cluster se prépare depuis le back-office, page Clusters, « Préparer le cluster » (`POST /admin/clusters/:clusterID/bootstrap`, permission sensible `platform.clusters.manage`) :
+
+1. l'équipe colle un **kubeconfig administrateur**, utilisé le temps de l'appel, jamais enregistré ni journalisé (mêmes contrôles qu'un dépôt : ni `exec`, ni fichier local, serveur en https) ;
+2. la plateforme pose dans `betorun-system` son compte `betorun-platform` et son rôle (règles de `repository.PlatformRules`, identiques à `deploy/k8s/rbac.yaml`, vérifié par un test : aucun droit sur le RBAC), puis attend son jeton ;
+3. elle pose le rôle du watcher (`betorun-watcher` : pods, namespaces, événements, leases, découverte OIDC), émet un **fichier de clé** neuf du compte système du cluster (365 jours) et installe le watcher (Secret `betorun-watcher-key`, Deployment `betorun-watcher`, une instance, non root, système de fichiers en lecture seule) ; l'agent joint l'API par `builds.public_api_url` + `/clusters` ;
+4. elle enregistre l'agent (image, clé en service), révoque la clé précédente, puis dépose le **kubeconfig du compte restreint** (contrôlé : il doit lire nœuds et pods) à la place de tout accès précédent.
+
+Refus : kubeconfig sans droits RBAC → `422 CLUSTER_ADMIN_REQUIRED` ; aucune image (`kubernetes.agent_image` vide et rien dans la demande) → `400 AGENT_IMAGE_MISSING` ; jeton du compte non délivré sous 30 s → `504 CLUSTER_TOKEN_PENDING`. Si le watcher ne peut pas être posé, la clé émise est révoquée.
+
+Ensuite, par l'accès restreint seulement : `GET /admin/clusters/:clusterID/agent` (installé, posé par la plateforme ou à la main, image, instances prêtes, motif d'un conteneur bloqué, dernier signe de vie) et `POST /admin/clusters/:clusterID/agent` (`image`, `rotate_key` : nouvelle image, nouvelle clé, l'ancienne révoquée ; le modèle du pod porte l'empreinte de la clé, jamais la clé, pour redémarrer l'agent quand elle change).
+
+Un cluster où un watcher a déjà été installé à la main avec Helm (`deploy/README.txt`, section 7 bis) le garde : avant de préparer ce cluster depuis le back-office, désinstaller cette release (sinon deux watchers rendent compte du même cluster). La fiche le signale (« installé à la main »).
 
 ## Santé des clusters
 
