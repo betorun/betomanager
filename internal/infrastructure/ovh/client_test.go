@@ -47,3 +47,32 @@ func TestCall_HeadersAndErrors(t *testing.T) {
 	err = c.Call(context.Background(), http.MethodGet, "/vps/missing", nil, nil)
 	assert.True(t, IsNotFound(err))
 }
+
+// Une lecture refusée pour débit est reprise ; une écriture jamais.
+func TestCall_RetriesReadsOnly(t *testing.T) {
+	var gets, posts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts++
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		gets++
+		if gets == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(`{"name":"vps-1"}`))
+	}))
+	defer srv.Close()
+	c, err := New(Credentials{Endpoint: srv.URL, ApplicationKey: "ak", ApplicationSecret: "as", ConsumerKey: "ck"})
+	require.NoError(t, err)
+	var out struct{ Name string }
+	require.NoError(t, c.Call(context.Background(), http.MethodGet, "/vps/vps-1", nil, &out))
+	assert.Equal(t, 2, gets)
+	assert.Equal(t, "vps-1", out.Name)
+	require.Error(t, c.Call(context.Background(), http.MethodPost, "/order", map[string]string{}, nil))
+	assert.Equal(t, 1, posts)
+	assert.Equal(t, maxRetryWait, retryAfter("3600"))
+}

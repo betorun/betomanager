@@ -57,10 +57,16 @@ func vpsPath(sn string, rest ...string) string {
 	return "/vps/" + url.PathEscape(sn) + strings.Join(rest, "")
 }
 
+// Names : noms des VPS du compte (un appel).
+func (p *Provider) Names(ctx context.Context) ([]string, error) {
+	var names []string
+	return names, p.api.Call(ctx, http.MethodGet, "/vps", nil, &names)
+}
+
 // List : tous les VPS du compte, lus un par un (4 à la fois).
 func (p *Provider) List(ctx context.Context) ([]service.ProviderVM, error) {
-	var names []string
-	if err := p.api.Call(ctx, http.MethodGet, "/vps", nil, &names); err != nil {
+	names, err := p.Names(ctx)
+	if err != nil {
 		return nil, err
 	}
 	out := make([]*service.ProviderVM, len(names))
@@ -77,14 +83,21 @@ func (p *Provider) List(ctx context.Context) ([]service.ProviderVM, error) {
 		}(i, sn)
 	}
 	wg.Wait()
-	if err := errors.Join(errs...); err != nil {
-		return nil, err
-	}
+	// Un VPS illisible n'arrête pas la passe (il est rendu « illisible ») ;
+	// tous illisibles : panne du fournisseur ou des clés, la passe échoue.
+	failed := 0
 	list := make([]service.ProviderVM, 0, len(names))
-	for _, vm := range out {
-		if vm != nil { // supprimé entre la liste et la lecture
+	for i, vm := range out {
+		switch {
+		case errs[i] != nil:
+			failed++
+			list = append(list, service.ProviderVM{ProviderID: names[i], Unread: true})
+		case vm != nil: // nil : supprimé entre la liste et la lecture
 			list = append(list, *vm)
 		}
+	}
+	if failed > 0 && failed == len(names) {
+		return nil, errors.Join(errs...)
 	}
 	return list, nil
 }

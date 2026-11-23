@@ -98,12 +98,24 @@ func (s *Service) Order(ctx context.Context, req OrderRequest, by string) (*doma
 		return nil, err
 	}
 	if err := s.Store.Transaction(ctx, func(tx *gorm.DB) error {
+		// Commandes de l'organisation l'une après l'autre ; quota recompté ici.
+		count, err := s.Store.LockAndCountVPSTx(tx, org)
+		if err != nil {
+			return err
+		}
+		if err := s.checkLimits(ctx, org, offer.Code, count); err != nil {
+			return err
+		}
 		if err := s.Store.CreateVPSTx(tx, v); err != nil {
 			return err
 		}
-		if _, err := s.Wallet.ChargeComputeTx(ctx, tx, org, billingDomain.Milli(amount), period,
-			"VPS "+name+" ("+offer.Name+"), 1 mois", by); err != nil {
+		written, err := s.Wallet.ChargeComputeTx(ctx, tx, org, billingDomain.Milli(amount), period,
+			"VPS "+name+" ("+offer.Name+"), 1 mois", by)
+		if err != nil {
 			return err
+		}
+		if !written {
+			return errNotCharged // jamais de VPS sans débit
 		}
 		return s.Store.EnqueueTx(tx, &domain.Request{OrganizationID: org, VPSID: &id, Kind: domain.KindCreate,
 			Payload: payload, CreatedBy: by})
@@ -137,10 +149,16 @@ func (s *Service) Get(ctx context.Context, org, id uuid.UUID) (*domain.VPS, erro
 const (
 	DefaultRenewEvery = 15 * time.Minute
 	renewBatch        = 50
+	// renewMaxPages : au plus 50 × 200 = 10 000 VPS par passage (le reste au suivant).
+	renewMaxPages = 200
 )
 
-// errUnpaid : solde insuffisant au renouvellement (annule la transaction).
-var errUnpaid = errors.New("compute: renewal unpaid")
+// errUnpaid : solde insuffisant au renouvellement (annule la transaction) ;
+// errStale : le VPS a changé depuis sa lecture (rien n'est débité).
+var (
+	errUnpaid = errors.New("compute: renewal unpaid")
+	errStale  = errors.New("compute: VPS changed since read")
+)
 
 // RenewDue : débite le mois suivant des VPS arrivés au bout du mois payé.
 // Payé : le mois commence à la fin du précédent (ou maintenant pour un VPS
@@ -151,26 +169,33 @@ func (s *Service) RenewDue(ctx context.Context) (renewed, suspended int, err err
 		return 0, 0, nil
 	}
 	now := s.now()
-	due, err := s.Store.DueVPS(ctx, now, renewBatch)
-	if err != nil {
-		return 0, 0, err
-	}
-	// Une erreur sur un VPS n'arrête pas les autres ; la première est rendue.
+	// Toute la file, page après page : un VPS qui ne se renouvelle pas (impayé
+	// qui reste suspendu) n'empêche jamais les suivants d'être débités. Une
+	// erreur sur un VPS n'arrête pas les autres ; la première est rendue.
 	var first error
-	for _, v := range due {
-		ok, susp, err := s.renew(ctx, v, now)
+	var cursor *DueCursor
+	for page := 0; page < renewMaxPages; page++ {
+		due, err := s.Store.DueVPS(ctx, now, cursor, renewBatch)
 		if err != nil {
-			if first == nil {
+			return renewed, suspended, err
+		}
+		for _, v := range due {
+			ok, susp, err := s.renew(ctx, v, now)
+			if err != nil && first == nil {
 				first = err
 			}
-			continue
+			if ok {
+				renewed++
+			}
+			if susp {
+				suspended++
+			}
 		}
-		if ok {
-			renewed++
+		if len(due) < renewBatch {
+			break
 		}
-		if susp {
-			suspended++
-		}
+		last := due[len(due)-1]
+		cursor = &DueCursor{PaidUntil: *last.PaidUntil, ID: last.ID}
 	}
 	return renewed, suspended, first
 }
@@ -201,22 +226,40 @@ func (s *Service) renew(ctx context.Context, v domain.VPS, now time.Time) (renew
 	}
 	period := domain.Period(v.ID, from)
 	err = s.Store.Transaction(ctx, func(tx *gorm.DB) error {
-		if _, err := s.Wallet.ChargeComputeTx(ctx, tx, v.OrganizationID, billingDomain.Milli(price*domain.MilliPerUnit), period,
-			"VPS "+v.Name+" ("+v.Offer+"), 1 mois", "billing"); err != nil {
+		// Ligne du VPS verrouillée d'abord, à condition qu'il n'ait pas changé
+		// depuis la lecture (résilié, suspendu par l'équipe, déjà renouvelé) :
+		// sinon rien n'est débité.
+		still, err := s.Store.LockVPSIfTx(tx, v.ID, v.State, *v.PaidUntil)
+		if err != nil {
+			return err
+		}
+		if !still {
+			return errStale
+		}
+		written, err := s.Wallet.ChargeComputeTx(ctx, tx, v.OrganizationID, billingDomain.Milli(price*domain.MilliPerUnit), period,
+			"VPS "+v.Name+" ("+v.Offer+"), 1 mois", "billing")
+		if err != nil {
 			if errors.Is(err, billingDomain.ErrInsufficientFunds) {
 				return errUnpaid
 			}
 			return err
 		}
+		if !written {
+			return errStale // ce mois a déjà une écriture : jamais prolongé sans débit
+		}
 		// Option snapshot : renouvelée avec le VPS, dans la même transaction
 		// (un solde qui ne couvre pas les deux suspend le VPS).
 		if snapshotPrice > 0 {
-			if _, err := s.Wallet.ChargeComputeTx(ctx, tx, v.OrganizationID, billingDomain.Milli(snapshotPrice*domain.MilliPerUnit),
-				snapshotPeriod(v.ID, from), "Snapshot du VPS "+v.Name+", 1 mois", "billing"); err != nil {
+			written, err := s.Wallet.ChargeComputeTx(ctx, tx, v.OrganizationID, billingDomain.Milli(snapshotPrice*domain.MilliPerUnit),
+				snapshotPeriod(v.ID, from), "Snapshot du VPS "+v.Name+", 1 mois", "billing")
+			if err != nil {
 				if errors.Is(err, billingDomain.ErrInsufficientFunds) {
 					return errUnpaid
 				}
 				return err
+			}
+			if !written {
+				return errStale
 			}
 		}
 		if err := s.Store.UpdateVPSTx(tx, v.ID, map[string]any{"paid_until": domain.NextPeriod(from),
@@ -229,8 +272,8 @@ func (s *Service) renew(ctx context.Context, v domain.VPS, now time.Time) (renew
 		return nil
 	})
 	switch {
-	case isBusy(err):
-		return false, false, nil // une opération occupe le VPS : passage suivant
+	case isBusy(err), errors.Is(err, errStale):
+		return false, false, nil // occupé ou changé entre-temps : passage suivant
 	case err == nil:
 		s.Wallet.AfterComputeCharge(ctx, v.OrganizationID)
 		Notify(ctx, s.Store, s.Events, v.ID)

@@ -108,6 +108,17 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, by Actor, in Create
 	if (kind == "") != (in.ResourceID == nil) || utf8.RuneCountInString(kind) > domain.ResourceKindMax {
 		return nil, domain.ErrInvalidResource
 	}
+	if kind != "" {
+		// Seules les ressources de l'organisation : un ticket ne doit jamais
+		// pointer l'équipe vers le serveur d'un autre client.
+		ok, err := s.Store.ResourceInOrganization(ctx, kind, *in.ResourceID, org)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, domain.ErrInvalidResource
+		}
+	}
 	if in.ProjectID != nil {
 		ok, err := s.Store.ProjectInOrganization(ctx, *in.ProjectID, org)
 		if err != nil {
@@ -315,7 +326,11 @@ func (s *Service) Attach(ctx context.Context, org, id uuid.UUID, by Actor, in At
 	if err := s.Files.Put(ctx, a.ObjectKey, io.LimitReader(br, in.Size), in.Size, mime); err != nil {
 		return nil, err
 	}
-	if err := s.Store.AddAttachment(ctx, a); err != nil {
+	if err := s.Store.AddAttachment(ctx, a, domain.MaxAttachments); err != nil {
+		// Objet déposé mais non enregistré : effacé (même requête annulée).
+		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		_ = s.Files.Delete(dctx, a.ObjectKey)
+		cancel()
 		return nil, err
 	}
 	return s.view(ctx, t)

@@ -39,7 +39,10 @@ Temporal, file « compute » ──▶ APP_MODE=compute : RequestWorkflow + acti
 - **Relais** (`service.Relay`, dans le worker) : réclame les demandes `pending`
   (`SKIP LOCKED` : plusieurs workers ne lancent jamais deux fois la même),
   démarre le workflow puis passe la demande à `started`. Échec de démarrage :
-  la demande reste `pending` et repart au passage suivant.
+  la demande reste `pending` et repart au passage suivant. Chaque lancement est
+  borné à 5 s et un passage à 30 s (la transaction qui verrouille les demandes
+  reste courte) ; Temporal injoignable, les passages s'espacent (×2, jusqu'à
+  1 min) puis reprennent leur rythme de 2 s.
 - **Une seule exécution** : `WorkflowID` = identifiant de la demande, politique
   `REJECT_DUPLICATE` : même terminé, il n'est jamais relancé.
 - **Mode compute** (`APP_MODE=compute`) : worker Temporal de la file
@@ -242,13 +245,17 @@ cas de récidive grave. Le client ne peut pas relancer un VPS suspendu pour abus
 **E-mails du fournisseur** : à chaque réconciliation, les e-mails de la boîte
 technique (hors mode secours) sont rangés pour l'équipe
 (`compute_provider_mails`) — abus, incident ou autre, rattachés au VPS qu'ils
-citent (identifiant ou adresse) — puis effacés de la boîte. Page du back-office :
-liste, « traité ».
+citent (identifiant ou adresse) — puis effacés de la boîte en une session.
+Lecture bornée : les 100 plus récents, 512 Ko par e-mail. Chaque e-mail porte une
+empreinte (`fingerprint`, unique) : un effacement raté ne crée pas de doublon à
+la passe suivante. Page du back-office : liste, « traité ».
 
 **VPS livré sans identifiant** : si le détail de la commande ne nomme pas le
 VPS, il est rattaché au seul VPS du compte inconnu de la plateforme apparu
 après la commande (`first_seen_at` du relevé) ; plusieurs candidats : l'équipe
 le rattache à un orphelin depuis le back-office ; la création reprend seule.
+Seuls les VPS du compte non rattachés sont lus (`GET /vps` puis chacun), pas le
+parc entier ; le sondage de la livraison s'espace de 1 à 10 min (×1,5).
 
 ## Vérification des appels au fournisseur
 
@@ -272,7 +279,9 @@ le format de l'e-mail du mode secours.
 
 `repository/ovhvps.Provider` implémente `ComputeProvider` en lecture :
 `GET /vps` puis, pour chaque VPS (4 à la fois), `/vps/{sn}`, `/vps/{sn}/ips`
-et `/vps/{sn}/tasks?state=doing|todo` ; `Task` suit une opération
+et `/vps/{sn}/tasks?state=doing|todo` ; un VPS illisible est rendu
+« illisible » (`Unread`) sans faire échouer la liste (tous illisibles : échec).
+`Task` suit une opération
 (`/vps/{sn}/tasks/{id}`). Les actions (démarrer, arrêter, réinstaller,
 console) rendent `ErrNotSupported` jusqu'au lot 4.
 
@@ -288,6 +297,11 @@ console) rendent `ErrNotSupported` jusqu'au lot 4.
 | maintenance, rescued, upgrading, backuping, autre | — | oui |
 
 Une tâche prévue ou en cours compte aussi comme opération en cours.
+
+Client OVH (`internal/infrastructure/ovh`) : débit plafonné par process
+(10 appels/s, rafale 20), connexions gardées (16 par hôte) ; une lecture
+refusée en 429/502/503/504 est reprise deux fois (`Retry-After` respecté,
+borné à 10 s), une écriture jamais.
 
 ## Réconciliation (lot 2)
 
@@ -312,8 +326,20 @@ Règles d'une passe :
     résilié encore présent…) ; un VPS en création est laissé au workflow de commande ;
   - `missing` : VPS de la plateforme absent chez le fournisseur.
 - le relevé (`compute_provider_vms`) est remplacé d'un bloc ; une passe en
-  échec garde le précédent. Chaque passe est enregistrée
-  (`compute_reconcile_runs`), réussie ou non.
+  échec garde le précédent. Un VPS illisible garde sa ligne précédente et
+  n'est pas compté absent (`unread` de la passe). Une écriture en échec sur un
+  VPS n'arrête pas la passe (erreur relevée à la fin). Chaque passe est
+  enregistrée (`compute_reconcile_runs`), réussie ou non, même annulée
+  (clôture sur un contexte détaché) ;
+- **une seule passe à la fois** (`BeginRun` : verrou de transaction + passe
+  non close de moins de 30 min) : une passe manuelle pendant la périodique
+  finit en `failed` « déjà en cours », sans reprise ;
+- signe de vie Temporal (`HeartbeatTimeout` 2 min) : une passe bloquée est
+  reprise sans attendre les 10 min ;
+- sauvegardes relevées une fois par heure (chaque VPS sur une des six passes
+  de l'heure), anti-spam à chaque passe, 4 VPS à la fois ;
+- **purge** à chaque passe (lots de 1 000) : secrets lus ou expirés, demandes
+  closes depuis plus de 90 jours, passes de plus de 30 jours.
 
 ## Offres et prix
 
@@ -391,10 +417,10 @@ toucher au fournisseur. Sert à vérifier un déploiement.
 
 - `compute_offers` : catalogue (code, plan, prix fournisseur, coefficient, arrondi, spécifications, emplacements, images).
 - `compute_vps` : VPS des projets (état : pending, creating, running, stopped, suspended, failed, deleted).
-- `compute_requests` : outbox (pending → started → done / failed).
+- `compute_requests` : outbox (pending → started → done / failed) ; closes gardées 90 jours.
 - `compute_secrets` : secrets à usage unique (mot de passe initial), 15 min.
 - `compute_provider_vms` : dernier relevé du fournisseur (état brut, plan, zone, adresses, écart).
-- `compute_reconcile_runs` : passes de réconciliation (compteurs, erreur).
+- `compute_reconcile_runs` : passes de réconciliation (compteurs dont `unread`, erreur) ; gardées 30 jours.
 - `compute_vps_backups` : relevé des sauvegardes de chaque VPS (lot 5).
 
 ## Configuration

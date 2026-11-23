@@ -2,8 +2,10 @@ package router
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/loopfz/gadgeto/tonic"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
@@ -73,15 +75,36 @@ func addSupportRoutes(app *App) {
 
 	admin := RootGroup.NewGroup("/admin/support", "Admin — support").Internal()
 	manage := g.Perm(iam.PlatformSupportManage, security.PlatformResource)
+	// Un ticket précis d'un client : motif exigé, accès visible dans son journal d'audit.
+	onTicket := g.Perm(iam.PlatformSupportManage, security.PlatformResource).Staff(staffTicket(r))
 	admin.AddRoute("/summary", http.MethodGet, "Compteurs du menu : ouverts, en cours, en attente du client, prioritaires", manage, tonic.Handler(r.Summary, http.StatusOK))
 	admin.AddRoute("/tickets", http.MethodGet, "Tickets de tous les clients, à traiter d'abord", manage, tonic.Handler(r.AdminList, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID", http.MethodGet, "Un ticket, avec ses messages, pièces jointes et événements", manage, tonic.Handler(r.AdminGet, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID", http.MethodPatch, "Changer le statut, la priorité, la catégorie ou les étiquettes", manage, tonic.Handler(r.AdminUpdate, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID/assign", http.MethodPost, "Assigner un ticket à un agent", manage, tonic.Handler(r.Assign, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID/messages", http.MethodPost, "Répondre au client (le ticket attend le client, prévenu par e-mail)", manage, tonic.Handler(r.AdminReply, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID/attachments/:attachmentID", http.MethodGet, "Télécharger une pièce jointe", manage, wrapRawHandler(r.AdminDownload))
+	admin.AddRoute("/tickets/:ticketID", http.MethodGet, "Un ticket, avec ses messages, pièces jointes et événements", onTicket, tonic.Handler(r.AdminGet, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID", http.MethodPatch, "Changer le statut, la priorité, la catégorie ou les étiquettes", onTicket, tonic.Handler(r.AdminUpdate, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID/assign", http.MethodPost, "Assigner un ticket à un agent", onTicket, tonic.Handler(r.Assign, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID/messages", http.MethodPost, "Répondre au client (le ticket attend le client, prévenu par e-mail)", onTicket, tonic.Handler(r.AdminReply, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID/attachments/:attachmentID", http.MethodGet, "Télécharger une pièce jointe", onTicket, wrapRawHandler(r.AdminDownload))
 	admin.AddRoute("/macros", http.MethodGet, "Réponses types", manage, tonic.Handler(r.Macros, http.StatusOK))
 	admin.AddRoute("/macros", http.MethodPost, "Créer une réponse type", manage, tonic.Handler(r.CreateMacro, http.StatusCreated))
 	admin.AddRoute("/macros/:macroID", http.MethodPatch, "Modifier une réponse type", manage, tonic.Handler(r.UpdateMacro, http.StatusOK))
 	admin.AddRoute("/macros/:macroID", http.MethodDelete, "Supprimer une réponse type", manage, tonic.Handler(r.DeleteMacro, http.StatusNoContent))
+}
+
+// staffTicket : organisation du ticket visé par une route du staff.
+func staffTicket(r *support.Controller) security.StaffTarget {
+	return func(c *gin.Context) (iam.ResourceName, uuid.UUID, error) {
+		id, err := uuid.Parse(strings.TrimSpace(c.Param("ticketID")))
+		if err != nil || r == nil || r.Service == nil {
+			return "", uuid.Nil, security.ErrResourceRefInvalid
+		}
+		t, err := r.Service.Store.Ticket(c.Request.Context(), id)
+		if err != nil {
+			return "", uuid.Nil, err
+		}
+		project := uuid.Nil
+		if t.ProjectID != nil {
+			project = *t.ProjectID
+		}
+		return iam.OrganizationName(t.OrganizationID), project, nil
+	}
 }

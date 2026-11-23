@@ -43,15 +43,22 @@ func (s *Service) checkOrderAllowed(ctx context.Context, org uuid.UUID, offer, l
 	if st, ok := s.stockIndex(ctx)[offer][location]; ok && !st.Orderable() {
 		return domain.ErrOutOfStock
 	}
+	count, err := s.Store.CountVPS(ctx, org)
+	if err != nil {
+		return err
+	}
+	return s.checkLimits(ctx, org, offer, count)
+}
+
+// checkLimits : quota et comptes récents pour count VPS déjà comptés (le
+// comptage se refait dans la transaction de commande, sous verrou de
+// l'organisation : des commandes simultanées ne dépassent jamais la limite).
+func (s *Service) checkLimits(ctx context.Context, org uuid.UUID, offer string, count int) error {
 	limits, err := s.Store.Limits(ctx)
 	if err != nil {
 		return err
 	}
 	own, err := s.Store.OrgLimits(ctx, org)
-	if err != nil {
-		return err
-	}
-	count, err := s.Store.CountVPS(ctx, org)
 	if err != nil {
 		return err
 	}

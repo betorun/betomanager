@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,9 @@ const (
 	readyTimeout    = 2 * time.Hour
 	taskTimeout     = time.Hour
 	deliveryPoll    = time.Minute
+	// deliveryPollMax : le sondage de la livraison s'espace (×1,5) jusqu'à ce
+	// plafond (une livraison lente ne fait pas des centaines d'appels).
+	deliveryPollMax = 10 * time.Minute
 	readyPoll       = 30 * time.Second
 	taskPoll        = 15 * time.Second
 )
@@ -102,6 +106,7 @@ func runCreate(ctx workflow.Context, spec *VMSpec) error {
 			}
 		}
 		deadline := workflow.Now(ctx).Add(deliveryTimeout)
+		poll := deliveryPoll
 		for {
 			var st OrderStatus
 			if err := workflow.ExecuteActivity(quick(ctx), a.OrderState, spec.OrderID).Get(ctx, &st); err != nil {
@@ -127,9 +132,10 @@ func runCreate(ctx workflow.Context, spec *VMSpec) error {
 			if workflow.Now(ctx).After(deadline) {
 				return temporal.NewNonRetryableApplicationError("provider delivery timed out", errTypeTimeout, nil)
 			}
-			if err := workflow.Sleep(ctx, deliveryPoll); err != nil {
+			if err := workflow.Sleep(ctx, poll); err != nil {
 				return err
 			}
+			poll = min(poll*3/2, deliveryPollMax)
 		}
 		if err := workflow.ExecuteActivity(quick(ctx), a.AttachProvider, spec.VPSID, spec.ProviderID).Get(ctx, nil); err != nil {
 			return err
@@ -368,6 +374,10 @@ func (a *Activities) PlaceOrder(ctx context.Context, vpsID string) (string, erro
 	if v.ProviderOrderID != "" {
 		return v.ProviderOrderID, nil
 	}
+	if v.State != domain.StatePending && v.State != domain.StateCreating {
+		// Résilié ou en échec entre-temps : rien n'est commandé.
+		return "", nonRetryable("VPS no longer awaiting creation", errTypeProvider, nil)
+	}
 	o, err := a.Store.Offer(ctx, v.Offer)
 	if err != nil {
 		return "", err
@@ -410,7 +420,11 @@ func (a *Activities) AttachProvider(ctx context.Context, vpsID, providerID strin
 	if err != nil {
 		return err
 	}
-	if err := a.Store.UpdateVPS(ctx, v.ID, map[string]any{"provider_id": providerID, "state": domain.StateCreating, "updated_at": a.now()}); err != nil {
+	fields := map[string]any{"provider_id": providerID, "updated_at": a.now()}
+	if v.State == domain.StatePending || v.State == domain.StateCreating {
+		fields["state"] = domain.StateCreating // un VPS résilié le reste
+	}
+	if err := a.Store.UpdateVPS(ctx, v.ID, fields); err != nil {
 		return err
 	}
 	service.Notify(ctx, a.Store, a.Events, v.ID)
@@ -545,6 +559,8 @@ func (a *Activities) MarkObserved(ctx context.Context, vpsID, state string) erro
 	}
 	fields := map[string]any{"updated_at": a.now()}
 	switch {
+	case v.State == domain.StateDeleted || v.State == domain.StateFailed:
+		// résilié ou en échec : jamais remis en marche par une opération
 	case state == domain.StateStopped && v.State == domain.StateSuspended:
 	case state == domain.StateRunning && v.State == domain.StateSuspended && v.FailureCode != domain.FailureUnpaid:
 		// suspendu par l'équipe entre-temps : on ne le rouvre pas
@@ -584,10 +600,6 @@ func (a *Activities) ResolveDelivered(ctx context.Context, vpsID string) (string
 	if err != nil {
 		return "", err
 	}
-	vms, err := p.List(ctx)
-	if err != nil {
-		return "", err
-	}
 	known, err := a.Store.ProviderVPS(ctx, p.Name())
 	if err != nil {
 		return "", err
@@ -606,9 +618,17 @@ func (a *Activities) ResolveDelivered(ctx context.Context, vpsID string) (string
 			taken[m.ProviderID] = true
 		}
 	}
+	o, err := a.Store.Offer(ctx, v.Offer)
+	if err != nil {
+		return "", err
+	}
+	vms, err := untakenVMs(ctx, p, taken)
+	if err != nil {
+		return "", err
+	}
 	candidate := ""
 	for _, vm := range vms {
-		if taken[vm.ProviderID] {
+		if taken[vm.ProviderID] || !MatchesOrder(vm, o.ProviderPlanCode, v.Location) {
 			continue
 		}
 		if candidate != "" {
@@ -617,6 +637,52 @@ func (a *Activities) ResolveDelivered(ctx context.Context, vpsID string) (string
 		candidate = vm.ProviderID
 	}
 	return candidate, nil
+}
+
+// nameLister : fournisseur qui liste les noms sans lire chaque VPS.
+type nameLister interface {
+	Names(ctx context.Context) ([]string, error)
+}
+
+// untakenVMs : VPS du compte non rattachés ; seuls ceux-là sont lus quand le
+// fournisseur sait lister les noms (pas une lecture du parc à chaque sondage).
+func untakenVMs(ctx context.Context, p service.ComputeProvider, taken map[string]bool) ([]service.ProviderVM, error) {
+	nl, ok := p.(nameLister)
+	if !ok {
+		return p.List(ctx)
+	}
+	names, err := nl.Names(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []service.ProviderVM
+	for _, n := range names {
+		if taken[n] {
+			continue
+		}
+		vm, err := p.Get(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		if vm != nil {
+			out = append(out, *vm)
+		}
+	}
+	return out, nil
+}
+
+// MatchesOrder : le VPS du fournisseur correspond au plan et à l'emplacement
+// commandés (sans ces informations : non, l'équipe tranche). Deux commandes
+// simultanées ne s'échangent jamais leurs serveurs.
+func MatchesOrder(vm service.ProviderVM, planCode, location string) bool {
+	plan, want := strings.ToLower(strings.TrimSpace(vm.Plan)), strings.ToLower(strings.TrimSpace(planCode))
+	if plan == "" || want == "" || location == "" {
+		return false
+	}
+	if plan != want && !strings.HasSuffix(want, plan) && !strings.HasSuffix(plan, want) {
+		return false
+	}
+	return strings.Contains(strings.ToLower(vm.Zone), strings.ToLower(location))
 }
 
 // installScript : port 25 sortant fermé, sauf ouverture par l'équipe.

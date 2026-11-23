@@ -143,10 +143,18 @@ func (s *GormStore) ReplaceMachines(ctx context.Context, provider string, ms []d
 			return err
 		}
 		first := make(map[string]*time.Time, len(prev))
+		before := make(map[string]domain.ProviderMachine, len(prev))
 		for _, p := range prev {
 			first[p.ProviderID] = p.FirstSeenAt
+			before[p.ProviderID] = p
 		}
 		for i := range ms {
+			if ms[i].Keep {
+				if p, ok := before[ms[i].ProviderID]; ok {
+					ms[i] = p
+					continue
+				}
+			}
 			if f := first[ms[i].ProviderID]; f != nil {
 				ms[i].FirstSeenAt = f
 			} else if ms[i].FirstSeenAt == nil {
@@ -162,6 +170,45 @@ func (s *GormStore) ReplaceMachines(ctx context.Context, provider string, ms []d
 		}
 		return tx.CreateInBatches(ms, 200).Error
 	})
+}
+
+// purgeBatch : lignes effacées au plus par table et par passe.
+const purgeBatch = 1000
+
+func (s *GormStore) Purge(ctx context.Context, now, closedBefore, runsBefore time.Time) error {
+	db := s.DB.WithContext(ctx)
+	return errors.Join(
+		// Un secret lu n'a plus à être gardé, même chiffré.
+		db.Exec(`DELETE FROM compute_secrets WHERE id IN (SELECT id FROM compute_secrets
+			WHERE read_at IS NOT NULL OR expires_at < ? LIMIT ?)`, now, purgeBatch).Error,
+		db.Exec(`DELETE FROM compute_requests WHERE id IN (SELECT id FROM compute_requests
+			WHERE status IN ('done', 'failed') AND finished_at < ? LIMIT ?)`, closedBefore, purgeBatch).Error,
+		db.Exec(`DELETE FROM compute_reconcile_runs WHERE id IN (SELECT id FROM compute_reconcile_runs
+			WHERE started_at < ? LIMIT ?)`, runsBefore, purgeBatch).Error,
+	)
+}
+
+// BeginRun : verrou de transaction (passes concurrentes sérialisées), puis
+// refus si une passe récente n'est pas close.
+func (s *GormStore) BeginRun(ctx context.Context, r *domain.ReconcileRun, staleAfter time.Duration) (bool, error) {
+	started := false
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended('compute:reconcile', 0))").Error; err != nil {
+			return err
+		}
+		var running int64
+		if err := tx.Model(&domain.ReconcileRun{}).
+			Where("provider = ? AND finished_at IS NULL AND started_at > ?", r.Provider, r.StartedAt.Add(-staleAfter)).
+			Count(&running).Error; err != nil {
+			return err
+		}
+		if running > 0 {
+			return nil
+		}
+		started = true
+		return tx.Create(r).Error
+	})
+	return started && err == nil, err
 }
 
 func (s *GormStore) SaveRun(ctx context.Context, r *domain.ReconcileRun) error {
@@ -230,6 +277,13 @@ func (s *GormStore) UpdateVPSTx(tx *gorm.DB, id uuid.UUID, fields map[string]any
 	return tx.Model(&domain.VPS{}).Where("id = ?", id).Updates(f).Error
 }
 
+func (s *GormStore) LockVPSIfTx(tx *gorm.DB, id uuid.UUID, state string, paidUntil time.Time) (bool, error) {
+	var n int64
+	err := tx.Raw(`SELECT COUNT(*) FROM (SELECT id FROM compute_vps WHERE id = ? AND state = ? AND paid_until = ? FOR UPDATE) t`,
+		id, state, paidUntil).Row().Scan(&n)
+	return n == 1, err
+}
+
 func (s *GormStore) UpdateVPS(ctx context.Context, id uuid.UUID, fields map[string]any) error {
 	return s.UpdateVPSTx(s.DB.WithContext(ctx), id, fields)
 }
@@ -249,12 +303,15 @@ func (s *GormStore) OrganizationVPS(ctx context.Context, org uuid.UUID) ([]domai
 		Order("created_at DESC").Find(&out).Error
 }
 
-func (s *GormStore) DueVPS(ctx context.Context, now time.Time, limit int) ([]domain.VPS, error) {
+func (s *GormStore) DueVPS(ctx context.Context, now time.Time, after *service.DueCursor, limit int) ([]domain.VPS, error) {
 	out := []domain.VPS{}
-	return out, s.DB.WithContext(ctx).
-		Where("state IN ? AND paid_until IS NOT NULL AND paid_until <= ?",
-			[]string{domain.StateRunning, domain.StateStopped, domain.StateSuspended}, now).
-		Order("paid_until").Limit(limit).Find(&out).Error
+	q := s.DB.WithContext(ctx).
+		Where("(state IN ('running', 'stopped') OR (state = 'suspended' AND failure_code = 'unpaid'))").
+		Where("paid_until IS NOT NULL AND paid_until <= ?", now)
+	if after != nil {
+		q = q.Where("(paid_until, id) > (?, ?)", after.PaidUntil, after.ID)
+	}
+	return out, q.Order("paid_until, id").Limit(limit).Find(&out).Error
 }
 
 func (s *GormStore) ProjectOrganization(ctx context.Context, project uuid.UUID) (uuid.UUID, error) {
@@ -384,6 +441,16 @@ func (s *GormStore) CountVPS(ctx context.Context, org uuid.UUID) (int, error) {
 	return int(n), err
 }
 
+func (s *GormStore) LockAndCountVPSTx(tx *gorm.DB, org uuid.UUID) (int, error) {
+	if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, "compute:order:"+org.String()).Error; err != nil {
+		return 0, err
+	}
+	var n int64
+	err := tx.Model(&domain.VPS{}).
+		Where("organization_id = ? AND state NOT IN ?", org, []string{domain.StateDeleted, domain.StateFailed}).Count(&n).Error
+	return int(n), err
+}
+
 func (s *GormStore) OrganizationCreatedAt(ctx context.Context, org uuid.UUID) (time.Time, error) {
 	var at time.Time
 	err := s.DB.WithContext(ctx).Raw(`SELECT created_at FROM organizations WHERE id = ?`, org).Row().Scan(&at)
@@ -392,15 +459,24 @@ func (s *GormStore) OrganizationCreatedAt(ctx context.Context, org uuid.UUID) (t
 
 func (s *GormStore) HasPaidTopup(ctx context.Context, org uuid.UUID) (bool, error) {
 	var n int64
-	err := s.DB.WithContext(ctx).Raw(`SELECT COUNT(*) FROM billing_topups WHERE organization_id = ? AND settled_at IS NOT NULL`, org).Row().Scan(&n)
+	err := s.DB.WithContext(ctx).Raw(`SELECT COUNT(*) FROM billing_topups WHERE organization_id = ? AND status = 'succeeded'
+		AND settled_at IS NOT NULL AND environment <> 'sandbox'`, org).Row().Scan(&n)
 	return n > 0, err
 }
 
+// SaveProviderMail : un e-mail déjà rangé (même empreinte) est ignoré.
 func (s *GormStore) SaveProviderMail(ctx context.Context, m *domain.ProviderMail) error {
 	if m.ID == uuid.Nil {
 		m.ID = uuid.New()
 	}
-	return s.DB.WithContext(ctx).Create(m).Error
+	if m.Fingerprint == "" {
+		return s.DB.WithContext(ctx).Create(m).Error
+	}
+	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:     []clause.Column{{Name: "fingerprint"}},
+		TargetWhere: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "fingerprint <> ''"}}},
+		DoNothing:   true,
+	}).Create(m).Error
 }
 
 func (s *GormStore) ProviderMails(ctx context.Context, openOnly bool, limit int) ([]domain.ProviderMail, error) {

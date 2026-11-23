@@ -46,14 +46,21 @@ func (m *Mailbox) FindRescue(ctx context.Context, providerID string, since time.
 	return nil, nil
 }
 
-func (m *Mailbox) Delete(ctx context.Context, id uint32) error { return m.Box.Delete(ctx, id) }
-func (m *Mailbox) Check(ctx context.Context) (int, error)      { return m.Box.Check(ctx) }
+func (m *Mailbox) Delete(ctx context.Context, ids ...uint32) error { return m.Box.Delete(ctx, ids...) }
+func (m *Mailbox) Check(ctx context.Context) (int, error)          { return m.Box.Check(ctx) }
 
 var (
 	rescueHint = regexp.MustCompile(`(?i)\b(rescue|secours)\b`)
 	passwordRe = regexp.MustCompile(`(?im)(?:password|mot de passe)[^:=\n]{0,40}[:=]\s*([^\s<>"']{6,128})`)
 	userRe     = regexp.MustCompile(`(?im)(?:user(?:name)?|login|identifiant|utilisateur|nom d'utilisateur)[^:=\n]{0,20}[:=]\s*([a-z_][a-z0-9_-]{0,31})\b`)
 )
+
+// IsRescueMail : e-mail de mode secours porteur d'un mot de passe, quel que
+// soit le VPS cité (même critère que ParseRescueMail : sujet ou texte). Un
+// tel e-mail n'est jamais stocké en clair pour l'équipe.
+func IsRescueMail(subject, text string) bool {
+	return rescueHint.MatchString(subject+"\n"+text) && passwordRe.MatchString(text)
+}
 
 // ParseRescueMail : e-mail de mode secours qui cite ce VPS → identifiants
 // (utilisateur root par défaut). Tolérant aux variantes FR/EN et au HTML.

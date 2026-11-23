@@ -60,3 +60,25 @@ func TestRelay_Pass(t *testing.T) {
 	assert.Contains(t, store.failed[down], "temporal unavailable")
 	assert.Equal(t, []string{ok.String(), down.String(), again.String()}, starter.calls, "WorkflowID = identifiant de la demande")
 }
+
+type slowStarter struct{ calls int }
+
+func (s *slowStarter) Start(ctx context.Context, _, _ string, _ any) error {
+	s.calls++
+	<-ctx.Done() // Temporal muet
+	return ctx.Err()
+}
+
+// Temporal muet : chaque lancement est borné, la demande reste en attente.
+func TestRelay_StartIsBounded(t *testing.T) {
+	id := uuid.New()
+	store := &relayStore{pending: []domain.Request{{ID: id, Kind: "compute.ping"}}, started: map[uuid.UUID]bool{}, failed: map[uuid.UUID]string{}}
+	r := &Relay{Store: store, Starter: &slowStarter{}, Logger: zap.NewNop().Sugar()}
+	begin := time.Now()
+	started, failed, err := r.pass(context.Background())
+	require.NoError(t, err)
+	assert.Less(t, time.Since(begin), startTimeout+time.Second)
+	assert.Equal(t, 0, started)
+	assert.Equal(t, 1, failed)
+	assert.False(t, store.started[id])
+}

@@ -90,6 +90,7 @@ var (
 		PlatformMailSuppressionsManage,
 		PlatformComputeGet, PlatformComputeManage,
 		PlatformSupportManage,
+		PlatformLegalManage, PlatformStatusManage,
 	}
 )
 

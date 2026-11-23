@@ -136,6 +136,13 @@ func (ctrl *Controller) GetSubscriptionToken(c *gin.Context, in *SubscribeReques
 	if err := ctrl.requireProjectMembership(c.Request.Context(), principal, projectID); err != nil {
 		return nil, err
 	}
+	// Canal d'un VPS (objet complet : adresses, motif d'abus, secours) : il faut
+	// aussi pouvoir lire les VPS du projet.
+	if isVPSChannel(channel) {
+		if err := ctrl.require(c.Request.Context(), principal, iam.VPSGet, iam.ProjectName(projectID)); err != nil {
+			return nil, err
+		}
+	}
 
 	exp := time.Now().Add(subscriptionTokenTTL)
 	token, err := ctrl.signer.GenerateSubscriptionToken(c.Request.Context(), userID, channel, exp)
@@ -171,6 +178,24 @@ func parseProjectIDFromChannel(channel string) (uuid.UUID, error) {
 		return uuid.Nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid projectID in channel")
 	}
 	return pid, nil
+}
+
+// isVPSChannel : "project:<id>:vps:<id>".
+func isVPSChannel(channel string) bool {
+	parts := strings.Split(channel, realtime.ChannelSeparator)
+	return len(parts) >= 3 && parts[2] == "vps"
+}
+
+// require : permission sur la ressource, refus uniforme.
+func (ctrl *Controller) require(ctx context.Context, principal iam.Principal, perm iam.Permission, r iam.ResourceName) error {
+	decision, err := ctrl.authz.Check(ctx, principal, perm, r)
+	if errors.Is(err, iam.ErrResourceNotFound) || (err == nil && !decision.Allowed) {
+		return betoerrors.New(betoerrors.CodeForbidden, "not allowed to follow this channel")
+	}
+	if err != nil {
+		return fmt.Errorf("authorization check: %w", err)
+	}
+	return nil
 }
 
 // requireProjectMembership : s'abonner aux événements d'un projet exige

@@ -32,7 +32,9 @@ Migration `000065_support` : `support_tickets`, `support_messages`,
   pas à l'extension), 10 Mo, 20 par ticket. Envoyées **à l'API** (multipart)
   et rangées dans le stockage objet (`support/<org>/<ticket>/<id>`) ;
   téléchargées par l'API (`Content-Disposition: attachment`, `nosniff`).
-  Sans stockage objet : `503 ATTACHMENTS_UNAVAILABLE`.
+  Sans stockage objet : `503 ATTACHMENTS_UNAVAILABLE`. La limite de 20 est
+  comptée sous verrou du ticket (deux envois simultanés ne la dépassent pas) ;
+  un fichier déposé mais non enregistré est effacé du stockage.
 - **Réponses types** (macros) : communes à l'équipe (`title`, `body`, `category`).
 
 ## Statuts

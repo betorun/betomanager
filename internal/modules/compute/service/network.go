@@ -92,6 +92,12 @@ func (s *Service) terminate(ctx context.Context, v *domain.VPS, by string) (*dom
 	if v.Operation != "" {
 		return nil, domain.ErrBusy
 	}
+	// En création : la commande est en cours chez le fournisseur ; la résilier
+	// ici laisserait la création se terminer (VPS livré malgré tout, quota
+	// contourné). Résiliable une fois livré ; une création échouée l'est tout de suite.
+	if v.State == domain.StatePending || v.State == domain.StateCreating {
+		return nil, domain.ErrNotReady
+	}
 	now := s.now()
 	if err := s.Store.Transaction(ctx, func(tx *gorm.DB) error {
 		if v.ProviderID != "" {

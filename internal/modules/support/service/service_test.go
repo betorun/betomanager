@@ -91,7 +91,16 @@ func (m *memStore) Attachments(_ context.Context, id uuid.UUID) ([]domain.Attach
 	}
 	return out, nil
 }
-func (m *memStore) AddAttachment(_ context.Context, a *domain.Attachment) error {
+func (m *memStore) AddAttachment(_ context.Context, a *domain.Attachment, max int) error {
+	n := 0
+	for _, x := range m.atts {
+		if x.TicketID == a.TicketID {
+			n++
+		}
+	}
+	if n >= max {
+		return domain.ErrAttachmentLimit
+	}
 	m.atts = append(m.atts, *a)
 	return nil
 }
@@ -111,6 +120,10 @@ func (m *memStore) MessageOnTicket(_ context.Context, ticket, id uuid.UUID) (boo
 	}
 	return false, nil
 }
+func (m *memStore) ResourceInOrganization(_ context.Context, kind string, _, _ uuid.UUID) (bool, error) {
+	return kind == "vps", nil
+}
+
 func (m *memStore) ProjectInOrganization(_ context.Context, p, org uuid.UUID) (bool, error) {
 	return m.projects[p] == org, nil
 }
@@ -143,6 +156,11 @@ func (f *memFiles) Put(_ context.Context, key string, r io.Reader, _ int64, _ st
 	b, err := io.ReadAll(r)
 	f.objects[key] = b
 	return err
+}
+
+func (f *memFiles) Delete(_ context.Context, key string) error {
+	delete(f.objects, key)
+	return nil
 }
 
 type readSeekNopCloser struct{ *bytes.Reader }

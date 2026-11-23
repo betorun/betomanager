@@ -44,7 +44,10 @@ des composants (`unknown` si aucun n'est connu).
 ### Public : `GET /kmanager/v1/status?lang=fr|en`
 
 Sans authentification, `Cache-Control: public, max-age=30` ; le calcul est
-gardé 30 s par process (vidé à chaque modification d'incident). Langue :
+gardé 30 s par process (vidé à chaque modification d'incident), un seul
+calcul à la fois, détaché de la requête (5 s au plus). Calcul en échec : la
+dernière page (moins de 5 min) est servie et le calcul n'est retenté qu'après
+5 s. Langue :
 `lang`, sinon celle de la requête. Rien d'interne : ni raison de sonde, ni
 compte, ni auteur.
 
