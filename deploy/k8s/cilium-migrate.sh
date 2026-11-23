@@ -180,7 +180,7 @@ cmd_resume() {
   [ -n "$ip" ] || die "IP du nœud introuvable (K3S_IP=…)"
   # Relevé « avant » de la dernière bascule : sert de référence.
   local last
-  last=$(ls -1d /root/cilium-migrate/*/ 2>/dev/null | while read -r d; do [ -f "$d/avant-pods.txt" ] && [ -e "$d/iptables.avant" ] && echo "$d"; done | tail -1)
+  last=$(ls -1d /root/cilium-migrate/*/ 2>/dev/null | while read -r d; do if [ -f "$d/avant-pods.txt" ] && [ -e "$d/iptables.avant" ]; then echo "$d"; fi; done | tail -1)
   if [ -n "$last" ]; then
     cp "$last"/avant-* "$DIR/" 2>/dev/null || true
     BASELINE_BAD=$(awk 'NR>1 && $4!="Running" && $4!="Completed"' "$last/avant-pods.txt" | wc -l)
@@ -197,7 +197,7 @@ cmd_rollback() {
   wait_api
   BASELINE_BAD=$(count_bad)
   local last
-  last=$(ls -1d /root/cilium-migrate/*/ 2>/dev/null | while read -r d; do [ -e "$d/config.yaml.avant" ] || [ -e "$d/config.yaml.avant.absent" ] && echo "$d"; done | tail -1)
+  last=$(ls -1d /root/cilium-migrate/*/ 2>/dev/null | while read -r d; do if [ -e "$d/config.yaml.avant" ] || [ -e "$d/config.yaml.avant.absent" ]; then echo "$d"; fi; done | tail -1)
   [ -n "$last" ] || die "aucune sauvegarde de configuration trouvée"
   read -r -p "Revenir à flannel (sauvegarde $last) ? Taper OUI : " ok
   [ "$ok" = "OUI" ] || die "annulé"
