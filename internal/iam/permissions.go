@@ -78,6 +78,11 @@ const (
 	DatabasesImport Permission = "databases.databases.import"
 	// DatabasesReset : vider une base (une copie est gardée 24 h).
 	DatabasesReset Permission = "databases.databases.reset"
+
+	// IP de sortie dédiée du projet (ADR 0014) : la voir ; la demander ou la
+	// rendre (facturée au mois).
+	EgressAddressesGet    Permission = "network.egressAddresses.get"
+	EgressAddressesManage Permission = "network.egressAddresses.manage"
 	// DatabasesStop : arrêter et relancer une base (son disque est gardé).
 	DatabasesStop Permission = "databases.databases.stop"
 
@@ -256,6 +261,8 @@ var catalog = map[Permission]PermissionInfo{
 	DatabasesConnect:      {Title: "Brancher une base de données sur un conteneur", CustomRoles: true},
 	DatabasesImport:       {Title: "Importer un dump dans une base de données (ses données peuvent être remplacées)", CustomRoles: true, Sensitive: true},
 	DatabasesReset:        {Title: "Vider une base de données (copie de sécurité gardée 24 h)", CustomRoles: true, Sensitive: true},
+	EgressAddressesGet:    {Title: "Voir l'IP de sortie dédiée du projet", CustomRoles: true},
+	EgressAddressesManage: {Title: "Demander ou rendre l'IP de sortie dédiée du projet (facturée)", CustomRoles: true},
 	DatabasesStop:         {Title: "Arrêter et relancer une base de données (ses données sont gardées)", CustomRoles: true},
 	AddonsList:            {Title: "Lister les services d'un projet", CustomRoles: true},
 	AddonsGet:             {Title: "Voir un service", CustomRoles: true},

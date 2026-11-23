@@ -76,6 +76,7 @@ func PlatformRules() []rbacv1.PolicyRule {
 		{APIGroups: []string{"metrics.k8s.io"}, Resources: []string{"pods"}, Verbs: []string{"get", "list"}},
 		{APIGroups: []string{"postgresql.cnpg.io"}, Resources: []string{"clusters", "scheduledbackups", "backups"}, Verbs: crud},
 		{APIGroups: []string{"barmancloud.cnpg.io"}, Resources: []string{"objectstores"}, Verbs: crud},
+		{APIGroups: []string{"cilium.io"}, Resources: []string{"ciliumegressgatewaypolicies"}, Verbs: crud},
 	}
 }
 

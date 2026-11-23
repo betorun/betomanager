@@ -134,5 +134,57 @@
  {
   "fr": "Le cluster est hors service",
   "en": "the cluster is disabled"
+ },
+ {
+  "fr": "Passerelle de sortie invalide : cilium ou vide",
+  "en": "invalid egress gateway: cilium or empty"
+ },
+ {
+  "fr": "Adresse de sortie introuvable",
+  "en": "egress address not found"
+ },
+ {
+  "fr": "Cette adresse de sortie est déjà déclarée",
+  "en": "this egress address is already declared"
+ },
+ {
+  "fr": "Adresse de sortie invalide : une adresse IPv4 publique",
+  "en": "invalid egress address: a public IPv4 address"
+ },
+ {
+  "fr": "Nom de nœud passerelle invalide",
+  "en": "invalid gateway node name"
+ },
+ {
+  "fr": "Cette adresse de sortie est attribuée à un projet : la rendre d'abord",
+  "en": "this egress address is assigned to a project: release it first"
+ },
+ {
+  "fr": "Les IP de sortie dédiées ne sont pas proposées dans la région de ce projet",
+  "en": "dedicated egress addresses are not available on this project's region"
+ },
+ {
+  "fr": "Aucune IP de sortie dédiée n'est libre dans la région de ce projet pour le moment",
+  "en": "no dedicated egress address is free in this project's region for now"
+ },
+ {
+  "fr": "Ce projet a déjà une IP de sortie dédiée",
+  "en": "this project already has a dedicated egress address"
+ },
+ {
+  "fr": "Ce projet n'a pas d'IP de sortie dédiée",
+  "en": "this project has no dedicated egress address"
+ },
+ {
+  "fr": "Notes trop longues (500 caractères au plus)",
+  "en": "notes too long (500 characters max)"
+ },
+ {
+  "fr": "La passerelle de sortie du cluster n'est pas installée",
+  "en": "the cluster's egress gateway is not installed"
+ },
+ {
+  "fr": "Cluster inconnu",
+  "en": "unknown cluster"
  }
 ]

@@ -50,6 +50,9 @@ type Cluster struct {
 	IngressNamespace string `gorm:"not null;default:''" json:"ingress_namespace"`
 	IngressTarget    string `gorm:"not null;default:''" json:"ingress_target"`
 	StorageClass     string `gorm:"not null;default:''" json:"storage_class"`
+	// EgressGateway : passerelle de sortie ("" : aucune, cilium) ; IP de
+	// sortie dédiées des projets (ADR 0014).
+	EgressGateway string `gorm:"not null;default:''" json:"egress_gateway"`
 
 	// Agent installé par la plateforme (lot 3) : image, fichier de clé en
 	// service (identifiant public seulement), date et auteur.

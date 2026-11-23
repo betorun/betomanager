@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/workers/queue"
 	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
+	egressSvc "github.com/thekrauss/kubemanager/internal/modules/egress/service"
 	"net/http"
 	"os"
 	"os/signal"
@@ -80,7 +81,9 @@ type App struct {
 	// clusters : registre des clusters (clusterRegistry, construit une fois).
 	clusters *clustersSvc.Registry
 	// kubeResolver : client du cluster de chaque projet (kube()).
-	kubeResolver        k8sprovider.Resolver
+	kubeResolver k8sprovider.Resolver
+	// egress : IP de sortie dédiée (ADR 0014), partagé API et worker.
+	egress              *egressSvc.Service
 	Cache               cache.CacheRedis
 	AuthCache           cache.AuthCache
 	Temporal            TemporalComponents
@@ -230,6 +233,8 @@ func (a *App) RunWorker(ctx context.Context) error {
 
 	// Santé de chaque cluster du registre (alertes ClusterDown / ClusterDegraded).
 	a.startClusterHealth(ctx)
+	// IP de sortie : celles des projets supprimés reviennent dans la réserve.
+	a.startEgressSweep(ctx)
 
 	// VPS : relais de l'outbox vers les workflows du mode compute.
 	a.startComputeRelay(ctx)

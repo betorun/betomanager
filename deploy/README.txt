@@ -425,6 +425,37 @@ pas joint par la CI) :
     sudo kubectl -n betorun-edge set image deploy/static-edge static-edge=thekrauss/static-edge:<sha>
 
 
+7 QUATER. CILIUM ET IP DE SORTIE DÉDIÉES (ADR 0014)
+---------------------------------------------------
+
+JAMAIS ESSAYÉ À CE JOUR : procédure à valider sur le terrain (préprod, coupure de
+quelques minutes : les pods sont recréés sur le nouveau réseau).
+
+Cilium remplace flannel et le kube-proxy de k3s ; sa passerelle de sortie fait
+sortir chaque projet par son IP dédiée.
+
+a) k3s sans flannel ni kube-proxy (nouveau cluster, ou réinstallation) :
+
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none \
+      --disable-network-policy --disable-kube-proxy" sh -
+
+b) Cilium (CLI cilium, sur le serveur) :
+
+    sudo env KUBECONFIG=/etc/rancher/k3s/k3s.yaml cilium install \
+      --set kubeProxyReplacement=true \
+      --set k8sServiceHost=<IP du serveur> --set k8sServicePort=6443 \
+      --set egressGateway.enabled=true --set bpf.masquerade=true
+    sudo env KUBECONFIG=/etc/rancher/k3s/k3s.yaml cilium status --wait
+
+c) Droits du compte plateforme : réappliquer deploy/k8s/rbac.yaml (règle
+   cilium.io), ou « Préparer le cluster » depuis le back-office.
+
+d) Chaque IP de sortie : l'acheter chez l'hébergeur (IP additionnelle OVH
+   rattachée au serveur), la monter sur l'interface du nœud passerelle
+   (netplan, en /32), puis dans le back-office : Clusters, le cluster,
+   passerelle de sortie « cilium », et ajouter l'IP à la réserve.
+
+
 8. ADRESSE DES CLIENTS ET RATE LIMIT
 ------------------------------------
 

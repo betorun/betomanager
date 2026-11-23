@@ -89,6 +89,10 @@ rules:
   - apiGroups: [barmancloud.cnpg.io]
     resources: [objectstores]
     verbs: [get, list, watch, create, update, patch, delete]
+  # IP de sortie dédiée des projets (Cilium, ADR 0014) : une règle par projet.
+  - apiGroups: [cilium.io]
+    resources: [ciliumegressgatewaypolicies]
+    verbs: [get, list, watch, create, update, patch, delete]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
