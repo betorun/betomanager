@@ -58,6 +58,7 @@ func newProjects() *cobra.Command {
 	create.Flags().StringVar(&org, "org", "", i18n.T("flag.proj.org"))
 	create.Flags().BoolVar(&use, "use", false, i18n.T("flag.proj.use"))
 
+	c.AddCommand(newProjectsDiskUsage())
 	c.AddCommand(&cobra.Command{
 		Use: "list", Aliases: []string{"ls"}, Short: i18n.T("proj.list.short"), Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
