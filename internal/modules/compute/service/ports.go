@@ -31,7 +31,8 @@ type ComputeProvider interface {
 	Reboot(ctx context.Context, providerID string) (string, error)
 	// Rebuild : réinstallation avec la clé SSH du client (aucun mot de passe
 	// envoyé) ; image : nom du système chez le fournisseur.
-	Rebuild(ctx context.Context, providerID, image, sshPublicKey string) (string, error)
+	// script : lancé au premier démarrage (vide : aucun).
+	Rebuild(ctx context.Context, providerID, image, sshPublicKey, script string) (string, error)
 	// ConsoleURL : accès console à courte durée.
 	ConsoleURL(ctx context.Context, providerID string) (string, error)
 	// Task : suivi d'une opération lancée chez le fournisseur.
@@ -54,6 +55,43 @@ type BackupProvider interface {
 	OrderSnapshotOption(ctx context.Context, providerID, planCode string, maxPriceCents int64) (string, error)
 	// ReleaseSnapshotOption : option résiliée (planCode : celui de l'offre).
 	ReleaseSnapshotOption(ctx context.Context, providerID, planCode string) error
+}
+
+// NetworkProvider : adresses d'un VPS (DNS inverse, blocage anti-spam) et
+// fin du service chez le fournisseur.
+type NetworkProvider interface {
+	// SetReverse : DNS inverse de l'adresse (reverse vide : retiré).
+	SetReverse(ctx context.Context, ip, reverse string) error
+	// SpamBlocked : l'adresse IPv4 est bloquée pour envoi de spam (depuis quand).
+	SpamBlocked(ctx context.Context, ipv4 string) (bool, time.Time, error)
+	UnblockSpam(ctx context.Context, ipv4 string) error
+	// StopRenewal : le service n'est plus renouvelé ; supprimé à son expiration.
+	StopRenewal(ctx context.Context, providerID string) error
+}
+
+// RescueProvider : démarrage sur le système de secours (mode compute).
+type RescueProvider interface {
+	SetRescue(ctx context.Context, providerID string, on bool) error
+}
+
+// RescueMailbox : e-mails du fournisseur (identifiants du mode secours).
+type RescueMailbox interface {
+	FindRescue(ctx context.Context, providerID string, since time.Time) (*RescueMail, error)
+	Delete(ctx context.Context, id uint32) error
+	// Check : la boîte répond (diagnostic de l'équipe) ; nombre de messages.
+	Check(ctx context.Context) (int, error)
+}
+
+// RescueMail : identifiants trouvés dans un e-mail (ID : pour l'effacer).
+type RescueMail struct {
+	ID          uint32
+	Credentials domain.RescueCredentials
+}
+
+// Sealer : chiffrement des secrets en base (même clé que les autres secrets).
+type Sealer interface {
+	Seal(plain []byte, associated string) ([]byte, error)
+	Open(sealed []byte, associated string) ([]byte, error)
 }
 
 // ProviderBackups : sauvegardes d'un VPS chez le fournisseur.
@@ -180,6 +218,12 @@ type Store interface {
 	// Sauvegardes : relevé écrit par le mode compute, lu par l'API.
 	SaveBackups(ctx context.Context, b *domain.Backups) error
 	Backups(ctx context.Context, vps uuid.UUID) (*domain.Backups, error)
+
+	// Secrets : SaveSecret remplace le secret de ce type du VPS ; TakeSecret
+	// le rend une seule fois (marqué lu), s'il n'a pas expiré.
+	SaveSecret(ctx context.Context, sec *domain.Secret) error
+	TakeSecret(ctx context.Context, vps uuid.UUID, kind string, now time.Time) (*domain.Secret, error)
+	DeleteSecrets(ctx context.Context, vps uuid.UUID, kind string) error
 
 	// OrganizationNames : nom affiché de chaque organisation.
 	OrganizationNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)

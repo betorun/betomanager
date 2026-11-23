@@ -276,3 +276,39 @@ func (s *GormStore) Backups(ctx context.Context, vps uuid.UUID) (*domain.Backups
 	}
 	return &b, err
 }
+
+// ── Secrets ─────────────────────────────────────────────────────────────
+
+// SaveSecret : un seul secret de ce type par VPS (le précédent est effacé).
+func (s *GormStore) SaveSecret(ctx context.Context, sec *domain.Secret) error {
+	if sec.ID == uuid.Nil {
+		sec.ID = uuid.New()
+	}
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("vps_id = ? AND kind = ?", sec.VPSID, sec.Kind).Delete(&domain.Secret{}).Error; err != nil {
+			return err
+		}
+		return tx.Create(sec).Error
+	})
+}
+
+// TakeSecret : lu une seule fois (marqué lu dans la même requête : deux
+// lectures simultanées n'en obtiennent qu'une) ; nil si absent, lu ou expiré.
+func (s *GormStore) TakeSecret(ctx context.Context, vps uuid.UUID, kind string, now time.Time) (*domain.Secret, error) {
+	var out domain.Secret
+	res := s.DB.WithContext(ctx).Raw(`UPDATE compute_secrets SET read_at = ?
+		WHERE id = (SELECT id FROM compute_secrets WHERE vps_id = ? AND kind = ? AND read_at IS NULL AND expires_at > ?
+			ORDER BY created_at DESC LIMIT 1 FOR UPDATE)
+		RETURNING *`, now, vps, kind, now).Scan(&out)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 || out.ID == uuid.Nil {
+		return nil, nil
+	}
+	return &out, nil
+}
+
+func (s *GormStore) DeleteSecrets(ctx context.Context, vps uuid.UUID, kind string) error {
+	return s.DB.WithContext(ctx).Where("vps_id = ? AND kind = ?", vps, kind).Delete(&domain.Secret{}).Error
+}

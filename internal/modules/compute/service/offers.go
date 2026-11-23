@@ -37,6 +37,8 @@ type Service struct {
 	// Wallet nil ou Ordering faux : commandes fermées (offres et prix seulement).
 	Wallet   Wallet
 	Ordering bool
+	// Sealer nil : mot de passe du mode secours indisponible.
+	Sealer Sealer
 	// Events nil : aucun événement temps réel.
 	Events Events
 	Now    func() time.Time

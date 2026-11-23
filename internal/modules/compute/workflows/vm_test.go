@@ -69,6 +69,10 @@ func (s *vmStore) UpdateVPS(_ context.Context, id uuid.UUID, f map[string]any) e
 			v.SSHKeyFingerprint = val.(string)
 		case "snapshot_option":
 			v.SnapshotOption = val.(string)
+		case "rescue":
+			v.Rescue = val.(string)
+		case "rescue_secret":
+			v.RescueSecret = val.(string)
 		}
 	}
 	v.Version++
@@ -93,6 +97,7 @@ type fakeCloud struct {
 	orderState string
 	orders     int
 	rebuilt    string
+	script     string
 	state      string
 	powered    []string
 }
@@ -112,8 +117,9 @@ func (f *fakeCloud) OrderState(context.Context, string) (string, string, error) 
 func (f *fakeCloud) Get(context.Context, string) (*service.ProviderVM, error) {
 	return &service.ProviderVM{ProviderID: "vps-a.vps.ovh.net", State: f.state, IPv4: "51.68.1.2"}, nil
 }
-func (f *fakeCloud) Rebuild(_ context.Context, _, image, key string) (string, error) {
+func (f *fakeCloud) Rebuild(_ context.Context, _, image, key, script string) (string, error) {
 	f.rebuilt = image + "|" + key
+	f.script = script
 	return "55", nil
 }
 func (f *fakeCloud) Task(context.Context, string, string) (*service.ProviderTask, error) {

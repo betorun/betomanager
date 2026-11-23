@@ -21,6 +21,8 @@ type Reconciler struct {
 	Provider ComputeProvider
 	// Backups nil : ni relevé des sauvegardes ni annulation des snapshots bloqués.
 	Backups BackupProvider
+	// Network nil : blocages anti-spam non relevés.
+	Network NetworkProvider
 	Events  Events
 	// StuckAfter : âge au-delà duquel un snapshot en cours est annulé (0 : 6 h).
 	StuckAfter time.Duration
@@ -123,8 +125,10 @@ func (r *Reconciler) pass(ctx context.Context, run *domain.ReconcileRun) error {
 		default:
 			id := local.ID
 			m.VPSID = &id
-			// En création : le workflow de commande s'en charge.
-			if local.State != domain.StateCreating && local.State != vm.State {
+			// En création : le workflow de commande s'en charge. Résilié et
+			// arrêté : attend sa suppression à l'expiration chez le fournisseur.
+			resigned := local.State == domain.StateDeleted && vm.State == domain.StateStopped
+			if local.State != domain.StateCreating && local.State != vm.State && !resigned {
 				m.Drift = domain.DriftState
 				run.Drifts++
 			}
@@ -133,6 +137,7 @@ func (r *Reconciler) pass(ctx context.Context, run *domain.ReconcileRun) error {
 	}
 	run.Seen = len(machines)
 	r.refreshBackups(ctx, locals, present, machines)
+	r.refreshSpam(ctx, locals, present)
 	for _, v := range locals {
 		if !present[v.ProviderID] && expectedAtProvider(v.State) {
 			run.Missing++
@@ -181,6 +186,35 @@ func (r *Reconciler) refreshBackups(ctx context.Context, locals []domain.VPS, pr
 		}
 		if changed, err := SaveBackups(ctx, r.Store, v.ID, pb, r.now()); err == nil && changed && r.Events != nil {
 			r.Events.BackupsChanged(ctx, v)
+		}
+	}
+}
+
+// refreshSpam : blocage anti-spam des adresses IPv4 (relevé ; le déblocage
+// est une décision de l'équipe).
+func (r *Reconciler) refreshSpam(ctx context.Context, locals []domain.VPS, present map[string]bool) {
+	if r.Network == nil {
+		return
+	}
+	for i := range locals {
+		v := &locals[i]
+		if !present[v.ProviderID] || v.IPv4 == "" || v.State == domain.StateDeleted || v.State == domain.StateCreating {
+			continue
+		}
+		blocked, since, err := r.Network.SpamBlocked(ctx, v.IPv4)
+		if err != nil {
+			continue
+		}
+		switch {
+		case blocked && v.SpamBlockedAt == nil:
+			if since.IsZero() {
+				since = r.now()
+			}
+			_ = r.Store.UpdateVPS(ctx, v.ID, map[string]any{"spam_blocked_at": since, "updated_at": r.now()})
+			Notify(ctx, r.Store, r.Events, v.ID)
+		case !blocked && v.SpamBlockedAt != nil:
+			_ = r.Store.UpdateVPS(ctx, v.ID, map[string]any{"spam_blocked_at": nil, "updated_at": r.now()})
+			Notify(ctx, r.Store, r.Events, v.ID)
 		}
 	}
 }

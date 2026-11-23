@@ -17,7 +17,9 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 
+	"github.com/thekrauss/kubemanager/internal/auth"
 	"github.com/thekrauss/kubemanager/internal/iam"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/mail/imapbox"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/ovh"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/realtime"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
@@ -49,6 +51,9 @@ func (a *App) computeService() *computeSvc.Service {
 	s := &computeSvc.Service{Store: &computeRepo.GormStore{DB: a.DB}, Ordering: a.Config.Compute.OrderingEnabled}
 	if e := a.computeEvents(); e != nil {
 		s.Events = e
+	}
+	if sealer, err := auth.NewSealer(a.Config.IAM.STSKeyEncryptionKey); err == nil {
+		s.Sealer = sealer
 	}
 	if billing := a.billingService(); billing != nil {
 		s.Catalogs = computeCatalogs{billing: billing}
@@ -231,12 +236,25 @@ func (a *App) RunCompute(ctx context.Context) error {
 		activities.Provider = provider
 		activities.Orderer = provider
 		activities.Backups = provider
+		activities.Rescue = provider
+		activities.Network = provider
 	}
 	if billing := a.billingService(); billing != nil {
 		activities.Wallet = billing
 	}
 	if e := a.computeEvents(); e != nil {
 		activities.Events = e
+	}
+	if sealer, err := auth.NewSealer(a.Config.IAM.STSKeyEncryptionKey); err == nil {
+		activities.Sealer = sealer
+	} else {
+		a.Logger.Warnw("compute: no secrets key, rescue passwords cannot be kept", "error", err)
+	}
+	m := a.Config.Compute.IMAP
+	if box, err := imapbox.New(imapbox.Config{Host: m.Host, Port: m.Port, Username: m.Username, Password: m.Password, Mailbox: m.Mailbox}); err == nil {
+		activities.Mailbox = &ovhvps.Mailbox{Box: box}
+	} else {
+		a.Logger.Warnw("compute: no technical mailbox, rescue passwords will be reported missing", "error", err)
 	}
 	w.RegisterActivity(activities)
 	if err := w.Start(); err != nil {
@@ -319,6 +337,18 @@ func addComputeRoutes(app *App) {
 	org.AddRoute("/vps/:vpsID/reboot", http.MethodPost, "Redémarrer un VPS", onVPS(iam.VPSReboot), tonic.Handler(r.Reboot, http.StatusAccepted))
 	org.AddRoute("/vps/:vpsID/reinstall", http.MethodPost, "Réinstaller un VPS avec un système et une clé SSH : son disque est effacé",
 		onVPS(iam.VPSReinstall), tonic.Handler(r.Reinstall, http.StatusAccepted))
+	// Mode secours : mot de passe intercepté, chiffré, affiché une seule fois.
+	org.AddRoute("/vps/:vpsID/rescue", http.MethodPost, "Redémarrer un VPS sur le système de secours",
+		onVPS(iam.VPSRescue), tonic.Handler(r.EnterRescue, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/rescue/exit", http.MethodPost, "Quitter le mode secours : le VPS redémarre sur son disque",
+		onVPS(iam.VPSRescue), tonic.Handler(r.ExitRescue, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/rescue/password", http.MethodPost, "Afficher le mot de passe du mode secours (une seule fois)",
+		onVPS(iam.VPSRescue), tonic.Handler(r.RevealRescue, http.StatusOK))
+	// Réseau et fin de service.
+	org.AddRoute("/vps/:vpsID/reverse", http.MethodPut, "Régler le DNS inverse d'une adresse du VPS (le nom doit déjà pointer vers l'adresse)",
+		onVPS(iam.VPSNetwork), tonic.Handler(r.SetReverse, http.StatusAccepted))
+	org.AddRoute("/vps/:vpsID/terminate", http.MethodPost, "Résilier un VPS : coupé tout de suite, plus renouvelé, le mois entamé n'est pas remboursé",
+		onVPS(iam.VPSDelete), tonic.Handler(r.Terminate, http.StatusAccepted))
 	// Sauvegardes et snapshot (l'option se paie : droit de paiement sur l'organisation).
 	pay := g.Perm(iam.BillingPaymentsCreate, security.OrganizationParam("id"))
 	org.AddRoute("/vps/:vpsID/backups", http.MethodGet, "Sauvegardes d'un VPS : points de restauration, sauvegardes montées, snapshot",
@@ -349,6 +379,9 @@ func addComputeRoutes(app *App) {
 	admin.AddRoute("/offers/:code", http.MethodPut, "Régler une offre de VPS (prix fournisseur, coefficient, palier)", setPrices, tonic.Handler(r.SaveOffer, http.StatusOK))
 	admin.AddRoute("/vps", http.MethodGet, "VPS de tous les clients, relevé du fournisseur, écarts et dernières réconciliations", view, tonic.Handler(r.Fleet, http.StatusOK))
 	admin.AddRoute("/reconcile", http.MethodPost, "Lancer une réconciliation des VPS avec le fournisseur", manage, tonic.Handler(r.Reconcile, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/spam/unblock", http.MethodPost, "Lever le blocage anti-spam de l'adresse d'un VPS (après vérification)", manage, tonic.Handler(r.UnblockSpam, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/smtp", http.MethodPut, "Ouvrir ou fermer le port 25 sortant d'un VPS (prochaine installation)", manage, tonic.Handler(r.SetSMTP, http.StatusOK))
+	admin.AddRoute("/mailbox-check", http.MethodPost, "Diagnostic : la boîte e-mail technique répond (mode compute)", manage, tonic.Handler(r.MailboxCheck, http.StatusAccepted))
 	admin.AddRoute("/ping", http.MethodPost, "Diagnostic : une demande traverse outbox, relais, Temporal et mode compute", manage, tonic.Handler(r.Ping, http.StatusAccepted))
 	admin.AddRoute("/requests/:requestID", http.MethodGet, "État d'une demande", view, tonic.Handler(r.Request, http.StatusOK))
 }

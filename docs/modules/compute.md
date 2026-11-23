@@ -11,7 +11,10 @@ renouvellement mensuel et suspension ; **lot 4** — actions du client (une
 opération à la fois), permissions `compute.vps.*`, temps réel, suspension
 de l'organisation, pages de la console ; **lot 5** — sauvegardes
 automatiques (restauration complète ou montage), option snapshot payante,
-annulation des snapshots bloqués. La console du serveur (terminal)
+annulation des snapshots bloqués ; **lot 6** — mode secours, mot de passe
+intercepté dans la boîte technique, chiffré et affiché une seule fois ;
+**lot 7** — DNS inverse, blocage anti-spam (déblocage par l'équipe), port 25
+sortant fermé par défaut, résiliation. La console du serveur (terminal)
 viendra plus tard derrière le domaine de la plateforme : l'adresse du
 fournisseur n'est jamais donnée au client.
 
@@ -166,6 +169,73 @@ montrées si le fournisseur les active sur le VPS (`BACKUPS_UNAVAILABLE` sinon).
 **Snapshots bloqués** : pendant la réconciliation, une opération de snapshot
 ou de restauration en cours depuis plus de 6 h est annulée (`abortSnapshot`).
 
+## Mode secours (lot 6)
+
+Le fournisseur ne donne le mot de passe du système de secours que **par
+e-mail**, au compte (boîte technique du lot 0). Il n'atteint jamais le client :
+
+```
+POST …/vps/:id/rescue (compute.vps.rescue, sensible : double authentification récente)
+  → demande vm.rescue.enter (outbox), opération entering_rescue, heure de la demande retenue
+mode compute : démarrage « rescue » (netbootMode), redémarrage, rescue = active, secret = waiting
+  → boîte IMAP lue toutes les 30 s, 15 min au plus : e-mail de secours qui cite ce VPS,
+    reçu après la demande (le plus récent) → identifiants chiffrés (compute_secrets,
+    clé des secrets de la plateforme, liés au VPS), e-mail effacé, secret = ready
+  → rien après 15 min : secret = missing, journal d'erreur, VPS signalé dans le back-office
+POST …/vps/:id/rescue/password → identifiants une seule fois (lecture et marquage dans
+  la même requête : deux lectures simultanées n'en obtiennent qu'une), expirés après 1 h
+POST …/vps/:id/rescue/exit → démarrage sur le disque, secret effacé
+```
+
+- Le mot de passe ne passe jamais par un résultat d'activité, l'historique
+  Temporal ni un journal : l'activité qui lit l'e-mail le chiffre elle-même.
+- En secours, les autres actions sont refusées (`VPS_IN_RESCUE`).
+- Lecture de l'e-mail tolérante (français, anglais, HTML) ; utilisateur `root` par défaut.
+- Back-office : bouton « Tester la boîte e-mail » (demande `compute.mailbox`).
+
+## Réseau et fin de service (lot 7)
+
+- **DNS inverse** (`compute.vps.network`) : `PUT …/vps/:id/reverse` ; le nom
+  doit déjà pointer vers l'adresse (vérifié par l'API avant la demande,
+  `REVERSE_NOT_POINTING` sinon, puis par le fournisseur).
+- **Anti-spam** : le fournisseur bloque une IPv4 qui envoie du spam ; la
+  réconciliation relève le blocage (`spam_blocked_at`), le client le voit,
+  **l'équipe seule** le lève (back-office, après vérification ; un nouveau
+  blocage dure plus longtemps chez le fournisseur).
+- **Port 25 sortant fermé par défaut** : le pare-feu du fournisseur ne filtre
+  que l'entrant ; à chaque installation et réinstallation, un script
+  (`domain/smtp_block.sh`, `postInstallScript`) installe une règle nftables
+  (repli iptables) et un service systemd qui la repose au démarrage. L'équipe
+  l'ouvre par VPS (`smtp_allowed`, back-office) : plus de règle à la prochaine
+  installation ; sur l'installation en cours, le client la retire (commandes
+  dans sa fiche). Le client étant root, la règle est un réglage par défaut,
+  pas une garantie : le blocage anti-spam du fournisseur reste le filet.
+- **Résiliation** (`compute.vps.delete`, sensible, confirmation par le nom) :
+  VPS `deleted` tout de suite côté plateforme (plus listé, plus renouvelé, nom
+  libéré, option snapshot et secours retirés) ; chez le fournisseur : arrêt,
+  puis renouvellement coupé (`serviceInfos` : `automatic=false`,
+  `deleteAtExpiration=true`) — supprimé à la fin du mois déjà payé. Pas de
+  remboursement. La purge d'une organisation après une longue suspension
+  résilie aussi ses VPS.
+
+## Vérification des appels au fournisseur
+
+Chaque appel de `repository/ovhvps` a été confronté au schéma officiel de
+l'API (méthode, chemin, champs envoyés et obligatoires, champs lus, valeurs
+d'énumération) : tous existent. Statuts à surveiller chez le fournisseur :
+
+| Appel | Statut | Remarque |
+|---|---|---|
+| `POST /vps/{sn}/rebuild`, `GET /vps/{sn}/images/available[/{id}]` | bêta | seule réinstallation non obsolète (`/reinstall` est obsolète) |
+| `POST /order/cartServiceOption/vps/{sn}` | bêta | seule commande d'option d'un VPS |
+| `GET /services`, `GET /services/{id}/options`, `DELETE /services/{id}` | bêta | résiliation de l'option snapshot |
+| `DELETE /vps/{sn}/option/{option}` | obsolète | repli seulement, si l'API des services ne trouve pas l'option |
+
+Ce que le schéma ne peut pas prouver, à confirmer par l'essai réel
+(`OVH_LIVE=1`, lot 0) : les libellés et valeurs de configuration du panier
+(`vps_datacenter`, `vps_os`), les plans des offres et de l'option snapshot,
+le format de l'e-mail du mode secours.
+
 ## Lecture chez le fournisseur (lot 2)
 
 `repository/ovhvps.Provider` implémente `ComputeProvider` en lecture :
@@ -183,7 +253,7 @@ console) rendent `ErrNotSupported` jusqu'au lot 4.
 | installing | creating | oui |
 | stopping | stopped | oui |
 | rebooting | running | oui |
-| maintenance, rescued, upgrading, backuping, migrating, autre | — | oui |
+| maintenance, rescued, upgrading, backuping, autre | — | oui |
 
 Une tâche prévue ou en cours compte aussi comme opération en cours.
 
@@ -256,6 +326,14 @@ prix. Emplacements autorisés : `gra`, `rbx`, `sbg` ; images : `ubuntu-24.04`,
 | POST | `/organizations/:id/compute/vps/:vpsID/stop` | `compute.vps.stop` |
 | POST | `/organizations/:id/compute/vps/:vpsID/reboot` | `compute.vps.reboot` |
 | POST | `/organizations/:id/compute/vps/:vpsID/reinstall` | `compute.vps.reinstall` |
+| PUT | `/organizations/:id/compute/vps/:vpsID/reverse` | `compute.vps.network` |
+| POST | `/organizations/:id/compute/vps/:vpsID/terminate` | `compute.vps.delete` |
+| POST | `/admin/compute/vps/:vpsID/spam/unblock` | `platform.compute.manage` |
+| PUT | `/admin/compute/vps/:vpsID/smtp` | `platform.compute.manage` |
+| POST | `/admin/compute/mailbox-check` | `platform.compute.manage` |
+| POST | `/organizations/:id/compute/vps/:vpsID/rescue` | `compute.vps.rescue` |
+| POST | `/organizations/:id/compute/vps/:vpsID/rescue/exit` | `compute.vps.rescue` |
+| POST | `/organizations/:id/compute/vps/:vpsID/rescue/password` | `compute.vps.rescue` |
 | GET | `/organizations/:id/compute/vps/:vpsID/backups` | `compute.vps.get` |
 | POST | `/organizations/:id/compute/vps/:vpsID/backups/restore` | `compute.vps.restore` |
 | POST | `/organizations/:id/compute/vps/:vpsID/backups/unmount` | `compute.vps.restore` |
@@ -289,6 +367,8 @@ toucher au fournisseur. Sert à vérifier un déploiement.
 | `KUBEMANAGER_COMPUTE_ENABLED` | API, worker, compute | routes, relais |
 | `KUBEMANAGER_COMPUTE_TASK_QUEUE` | worker, compute | file Temporal (défaut `compute`) |
 | `KUBEMANAGER_COMPUTE_ORDERING_ENABLED` | API | commandes réelles ouvertes |
+| `KUBEMANAGER_COMPUTE_IMAP_*` | **compute seulement** | boîte technique (HOST, PORT 993, USERNAME, PASSWORD, MAILBOX) |
+| `KUBEMANAGER_IAM_STS_KEY_ENCRYPTION_KEY` | API, compute | chiffrement des secrets (même clé sur les deux) |
 | `KUBEMANAGER_COMPUTE_OVH_*` | **compute seulement** | clés limitées à `/vps/*`, `/order/*`, `/ip/*`, `/me`, `/services/*` (résiliation de l'option snapshot) |
 
 Local : `make dev-compute` (service `kubemanager-compute`).

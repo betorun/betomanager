@@ -4,6 +4,7 @@
 package domain
 
 import (
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -55,6 +56,22 @@ type VPS struct {
 	ProviderOrderID string `gorm:"not null;default:''" json:"-"`
 	// FailureCode : raison d'un échec ou d'une suspension (domain.Failure*).
 	FailureCode string `gorm:"not null;default:''" json:"failure_code"`
+	// Rescue : mode secours (domain.Rescue*), vide hors secours ;
+	// RescueSecret : mot de passe du secours (domain.RescueSecret*).
+	Rescue       string `gorm:"not null;default:''" json:"rescue"`
+	RescueSecret string `gorm:"not null;default:''" json:"rescue_secret"`
+	// RescueRequestedAt : seuls les e-mails du fournisseur reçus après comptent.
+	RescueRequestedAt *time.Time `json:"-"`
+	// Réseau (lot 7) : DNS inverse des adresses ; SpamBlockedAt : adresse
+	// bloquée par le fournisseur pour envoi de spam (déblocage par l'équipe) ;
+	// SMTPAllowed : port 25 sortant ouvert par l'équipe (sinon fermé à
+	// chaque installation).
+	ReverseV4     string     `gorm:"column:reverse_v4;not null;default:''" json:"reverse_v4"`
+	ReverseV6     string     `gorm:"column:reverse_v6;not null;default:''" json:"reverse_v6"`
+	SpamBlockedAt *time.Time `json:"spam_blocked_at,omitempty"`
+	SMTPAllowed   bool       `gorm:"column:smtp_allowed;not null;default:false" json:"smtp_allowed"`
+	// TerminatedAt : résiliation (VPS coupé tout de suite, plus renouvelé).
+	TerminatedAt *time.Time `json:"terminated_at,omitempty"`
 	// SnapshotOption : option snapshot (domain.Snapshot*), vide si non souscrite.
 	SnapshotOption string `gorm:"not null;default:''" json:"snapshot_option"`
 	// Operation : action en cours demandée par le client (domain.Op*), vide sinon.
@@ -267,7 +284,38 @@ const (
 	OpDeletingSnapshot = "deleting_snapshot"
 	OpSubscribing      = "subscribing"
 	OpUnsubscribing    = "unsubscribing"
+	// Mode secours (lot 6).
+	OpEnteringRescue = "entering_rescue"
+	OpExitingRescue  = "exiting_rescue"
+	// Réseau et fin de service (lot 7).
+	OpSettingReverse = "setting_reverse"
+	OpUnblockingSpam = "unblocking_spam"
+	OpTerminating    = "terminating"
 )
+
+// Mode secours (Rescue).
+const RescueActive = "active"
+
+// Mot de passe du secours (RescueSecret).
+const (
+	RescueSecretWaiting = "waiting" // e-mail du fournisseur attendu
+	RescueSecretReady   = "ready"   // chiffré, à afficher une seule fois
+	RescueSecretRead    = "read"    // déjà affiché
+	RescueSecretMissing = "missing" // e-mail jamais arrivé : l'équipe est alertée
+)
+
+// SecretRescuePassword : type du secret (compute_secrets.kind).
+const SecretRescuePassword = "rescue_password"
+
+// RescueSecretTTL : un mot de passe de secours non affiché disparaît après ce délai.
+const RescueSecretTTL = time.Hour
+
+// RescueCredentials : identifiants du mode secours, chiffrés en base,
+// jamais dans l'historique Temporal ni dans les journaux.
+type RescueCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
 
 // État de l'option snapshot (SnapshotOption).
 const (
@@ -298,6 +346,13 @@ var (
 	ErrNoSnapshot               = errors.New("this VPS has no snapshot")
 	ErrRestorePointNotFound     = errors.New("restore point not found")
 	ErrSnapshotNotSold          = errors.New("the snapshot option is not sold with this offer")
+	ErrInRescue                 = errors.New("this VPS is in rescue mode: leave it first")
+	ErrNotInRescue              = errors.New("this VPS is not in rescue mode")
+	ErrRescueSecretUnavailable  = errors.New("the rescue password is not available: not received yet, already shown or expired")
+	ErrInvalidReverse           = errors.New("invalid reverse DNS: a host name that resolves to this address")
+	ErrReverseNotPointing       = errors.New("this host name does not resolve to the VPS address yet: add the DNS record first")
+	ErrNoAddress                = errors.New("this VPS has no such address")
+	ErrNotSpamBlocked           = errors.New("this address is not blocked for spam")
 )
 
 // ValidName : étiquette DNS (le nom devient le nom d'hôte).
@@ -399,7 +454,20 @@ const (
 	KindSnapshotDelete  = "vm.snapshot.delete"
 	KindSnapshotOrder   = "vm.snapshot.subscribe"
 	KindSnapshotRelease = "vm.snapshot.unsubscribe"
+	// Mode secours (lot 6).
+	KindRescueEnter = "vm.rescue.enter"
+	KindRescueExit  = "vm.rescue.exit"
+	// Réseau et fin de service (lot 7).
+	KindReverse     = "vm.reverse.set"
+	KindSpamUnblock = "vm.spam.unblock"
+	KindTerminate   = "vm.terminate"
 )
+
+// ReversePayload : DNS inverse d'une adresse (Reverse vide : retiré).
+type ReversePayload struct {
+	Family  string `json:"family"` // v4 ou v6
+	Reverse string `json:"reverse"`
+}
 
 // RestorePayload : point de restauration et mode (full : remplace le disque ;
 // mount : attaché en disque supplémentaire).
@@ -466,4 +534,25 @@ type CreatePayload struct {
 	SSHPublicKey string `json:"ssh_public_key"`
 	Period       string `json:"period"`
 	AmountMilli  int64  `json:"amount_milli"`
+}
+
+// SMTPBlockScript : script lancé au premier démarrage de chaque installation
+// (sauf port 25 ouvert par l'équipe) : ferme le port 25 sortant (anti-spam),
+// au redémarrage aussi. nftables, sinon iptables.
+//
+//go:embed smtp_block.sh
+var SMTPBlockScript string
+
+// ValidReverse : nom d'hôte complet (étiquettes DNS, 253 caractères au plus).
+func ValidReverse(h string) bool {
+	h = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(h)), ".")
+	if len(h) == 0 || len(h) > 253 || !strings.Contains(h, ".") {
+		return false
+	}
+	for _, label := range strings.Split(h, ".") {
+		if !ValidName(label) {
+			return false
+		}
+	}
+	return true
 }

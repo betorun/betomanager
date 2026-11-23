@@ -220,6 +220,100 @@ func (h *Controller) UnsubscribeSnapshot(c *gin.Context, in *VPSPath) (*domain.V
 	return h.Service.UnsubscribeSnapshot(c.Request.Context(), org, id, by)
 }
 
+// EnterRescue / ExitRescue : démarrage sur le système de secours, retour au disque.
+func (h *Controller) EnterRescue(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.EnterRescue(c.Request.Context(), org, id, by)
+}
+
+func (h *Controller) ExitRescue(c *gin.Context, in *VPSPath) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, in)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.ExitRescue(c.Request.Context(), org, id, by)
+}
+
+// RevealRescue : identifiants du mode secours, une seule fois.
+func (h *Controller) RevealRescue(c *gin.Context, in *VPSPath) (*service.RescueReveal, error) {
+	org, id, _, err := h.ids(c, in)
+	if err != nil {
+		return nil, err
+	}
+	c.Header("Cache-Control", "no-store")
+	return h.Service.RevealRescue(c.Request.Context(), org, id)
+}
+
+type ReverseInput struct {
+	VPSPath
+	service.ReverseRequest
+}
+
+// SetReverse : DNS inverse ; le nom doit déjà pointer vers l'adresse.
+func (h *Controller) SetReverse(c *gin.Context, in *ReverseInput) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, &in.VPSPath)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.SetReverse(c.Request.Context(), org, id, in.ReverseRequest, by)
+}
+
+type TerminateInput struct {
+	VPSPath
+	service.TerminateRequest
+}
+
+// Terminate : résiliation (coupé tout de suite, plus renouvelé, pas de remboursement).
+func (h *Controller) Terminate(c *gin.Context, in *TerminateInput) (*domain.VPS, error) {
+	org, id, by, err := h.ids(c, &in.VPSPath)
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.Terminate(c.Request.Context(), org, id, in.TerminateRequest, by)
+}
+
+type AdminVPSPath struct {
+	VPSID string `path:"vpsID" description:"Identifiant du VPS"`
+}
+
+func adminVPS(in *AdminVPSPath) (uuid.UUID, error) {
+	id, err := uuid.Parse(strings.TrimSpace(in.VPSID))
+	if err != nil {
+		return uuid.Nil, domain.ErrVPSNotFound
+	}
+	return id, nil
+}
+
+// UnblockSpam : l'équipe lève le blocage anti-spam (après vérification).
+func (h *Controller) UnblockSpam(c *gin.Context, in *AdminVPSPath) (*domain.VPS, error) {
+	id, err := adminVPS(in)
+	if err != nil {
+		return nil, err
+	}
+	by := ""
+	if p, ok := security.PrincipalFromContext(c); ok {
+		by = string(p)
+	}
+	return h.Service.UnblockSpam(c.Request.Context(), id, by)
+}
+
+// SetSMTP : port 25 sortant ouvert ou fermé (prochaine installation).
+func (h *Controller) SetSMTP(c *gin.Context, in *service.SMTPRequest) (*domain.VPS, error) {
+	id, err := adminVPS(&AdminVPSPath{VPSID: in.VPSID})
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.SetSMTP(c.Request.Context(), id, in.Allowed)
+}
+
+// MailboxCheck : diagnostic de la boîte technique (demande compute.mailbox).
+func (h *Controller) MailboxCheck(c *gin.Context) (*PingResponse, error) {
+	return h.enqueue(c, workflows.KindMailbox)
+}
+
 // Order : premier mois débité et demande de création déposés ensemble ;
 // le VPS passe de « pending » à « creating » puis « running ».
 func (h *Controller) Order(c *gin.Context, in *service.OrderRequest) (*domain.VPS, error) {

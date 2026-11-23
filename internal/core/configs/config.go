@@ -74,8 +74,20 @@ type ComputeConfig struct {
 	OrderingEnabled bool `mapstructure:"ordering_enabled"`
 	// TaskQueue : file Temporal du mode compute (défaut « compute »).
 	TaskQueue string `mapstructure:"task_queue"`
+	// IMAP : boîte technique du compte du fournisseur (identifiants du mode
+	// secours), lue par le mode compute seulement.
+	IMAP ComputeIMAPConfig `mapstructure:"imap"`
 	// OVH : compte du fournisseur des VPS (clé limitée à /vps/*, /order/*, /ip/*, /me, /services/*).
 	OVH ComputeOVHConfig `mapstructure:"ovh"`
+}
+
+// ComputeIMAPConfig : boîte e-mail technique (secrets, mode compute seulement).
+type ComputeIMAPConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+	Mailbox  string `mapstructure:"mailbox"`
 }
 
 // ComputeOVHConfig : identifiants OVH des VPS (secrets, mode compute seulement).

@@ -106,5 +106,37 @@
  {
   "fr": "L'option snapshot n'est pas vendue avec cette offre",
   "en": "the snapshot option is not sold with this offer"
+ },
+ {
+  "fr": "Réglages de la boîte e-mail incomplets",
+  "en": "imap: incomplete mailbox settings"
+ },
+ {
+  "fr": "Le mot de passe du mode secours n'est pas disponible : pas encore reçu, déjà affiché ou expiré",
+  "en": "the rescue password is not available: not received yet, already shown or expired"
+ },
+ {
+  "fr": "Ce VPS est en mode secours : quittez-le d'abord",
+  "en": "this VPS is in rescue mode: leave it first"
+ },
+ {
+  "fr": "Ce VPS n'est pas en mode secours",
+  "en": "this VPS is not in rescue mode"
+ },
+ {
+  "fr": "DNS inverse invalide : un nom d'hôte qui pointe vers cette adresse",
+  "en": "invalid reverse DNS: a host name that resolves to this address"
+ },
+ {
+  "fr": "Ce VPS n'a pas cette adresse",
+  "en": "this VPS has no such address"
+ },
+ {
+  "fr": "Cette adresse n'est pas bloquée pour spam",
+  "en": "this address is not blocked for spam"
+ },
+ {
+  "fr": "Ce nom d'hôte ne pointe pas encore vers l'adresse du VPS : ajoutez d'abord l'enregistrement DNS",
+  "en": "this host name does not resolve to the VPS address yet: add the DNS record first"
  }
 ]

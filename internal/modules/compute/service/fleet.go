@@ -32,6 +32,13 @@ type FleetVPS struct {
 	Observed *domain.ProviderMachine `json:"observed,omitempty"`
 	// Drift : écart relevé (domain.Drift*), vide si aucun.
 	Drift string `json:"drift"`
+	// Rescue / RescueSecret : mode secours ; « missing » = e-mail du fournisseur jamais arrivé.
+	Rescue       string `json:"rescue"`
+	RescueSecret string `json:"rescue_secret"`
+	Operation    string `json:"operation"`
+	// Réseau : blocage anti-spam (déblocage par l'équipe), port 25 ouvert.
+	SpamBlockedAt *time.Time `json:"spam_blocked_at,omitempty"`
+	SMTPAllowed   bool       `json:"smtp_allowed"`
 }
 
 // Fleet : vue « VPS » du back-office.
@@ -91,7 +98,9 @@ func (s *Service) Fleet(ctx context.Context) (*Fleet, error) {
 	for _, v := range list {
 		f := FleetVPS{ID: v.ID, OrganizationID: v.OrganizationID, OrganizationName: names[v.OrganizationID], ProjectID: v.ProjectID,
 			Name: v.Name, Offer: v.Offer, Location: v.Location, Image: v.Image, State: v.State, IPv4: v.IPv4, IPv6: v.IPv6,
-			Provider: v.Provider, ProviderID: v.ProviderID, CreatedAt: v.CreatedAt}
+			Provider: v.Provider, ProviderID: v.ProviderID, CreatedAt: v.CreatedAt,
+			Rescue: v.Rescue, RescueSecret: v.RescueSecret, Operation: v.Operation,
+			SpamBlockedAt: v.SpamBlockedAt, SMTPAllowed: v.SMTPAllowed}
 		if m, ok := byKey[key{v.Provider, v.ProviderID}]; ok && v.ProviderID != "" {
 			f.Observed = m
 			f.Drift = m.Drift
