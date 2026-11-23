@@ -74,3 +74,15 @@ func TestValidSchedule(t *testing.T) {
 		}
 	}
 }
+
+func TestValidHealthPath(t *testing.T) {
+	for p, want := range map[string]bool{
+		"/": true, "/healthz": true, "/api/health?full=1": true,
+		"": false, "healthz": false, "//evil.example": false, "/a b": false,
+		"/a#b": false, "/a\\b": false, "/a\nb": false, "/" + string(make([]byte, MaxHealthPath)): false,
+	} {
+		if got := ValidHealthPath(p); got != want {
+			t.Errorf("ValidHealthPath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

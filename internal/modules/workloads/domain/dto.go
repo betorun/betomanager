@@ -137,6 +137,9 @@ type UpdateWorkloadRequest struct {
 	ImageFrom *string `json:"image_from" description:"Conteneur dont suivre les nouvelles images (vide : ne plus suivre)"`
 	// HealthCommand : liste vide = plus de sonde (worker seulement).
 	HealthCommand *[]string `json:"health_command" description:"Worker : commande de santé (liste vide : aucune)"`
+	// HealthPath : chemin HTTP des sondes d'un conteneur web (vivacité,
+	// démarrage et disponibilité) ; absent : inchangé.
+	HealthPath *string `json:"health_path" description:"Conteneur web : chemin de santé interrogé par les sondes (ex. /healthz)"`
 	// Processus : absents = inchangés ; liste vide = commande de l'image.
 	Command  *[]string `json:"command" description:"Commande de démarrage (liste vide : celle de l'image)"`
 	Args     *[]string `json:"args" description:"Arguments (liste vide : ceux de l'image)"`

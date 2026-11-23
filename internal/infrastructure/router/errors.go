@@ -129,6 +129,7 @@ var sentinelErrors = []sentinelMapping{
 	{workloadsDomain.ErrInvalidTimeZone, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrMaxDuration, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrStartupTimeout, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{workloadsDomain.ErrInvalidHealthPath, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{githubDomain.ErrDisabled, http.StatusNotFound, "GITHUB_DISABLED", false},
 	{githubDomain.ErrStateInvalid, http.StatusBadRequest, "GITHUB_STATE_INVALID", false},
 	{githubDomain.ErrCodeRequired, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},

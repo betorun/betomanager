@@ -1006,6 +1006,16 @@ func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *d
 		}
 		spec.HealthCommand = *req.HealthCommand
 	}
+	if req.HealthPath != nil {
+		if kind != domain.KindWeb {
+			return domain.ErrNotWeb
+		}
+		if !domain.ValidHealthPath(*req.HealthPath) {
+			return domain.ErrInvalidHealthPath
+		}
+		// Les trois sondes suivent le nouveau chemin.
+		spec.HealthPath, spec.ReadinessPath = *req.HealthPath, *req.HealthPath
+	}
 	if req.Args != nil {
 		if !domain.ValidCommand(*req.Args) {
 			return domain.ErrInvalidCommand
