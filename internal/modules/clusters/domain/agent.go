@@ -75,4 +75,6 @@ type AgentState struct {
 	InstalledAt *time.Time `json:"installed_at,omitempty"`
 	// ManagedByPlatform : posé par la plateforme (sinon installé à la main).
 	ManagedByPlatform bool `json:"managed_by_platform"`
+	// EgressAgentImage : agent réseau des IP de sortie ("" : absent).
+	EgressAgentImage string `json:"egress_agent_image,omitempty"`
 }

@@ -159,3 +159,33 @@ func TestInstaller_LiveRestricted(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("agent: %+v", *st)
 }
+
+// Agent réseau : rôle limité aux ConfigMap de son namespace, DaemonSet sur
+// tous les nœuds, réseau de l'hôte, NET_ADMIN seulement.
+func TestInstaller_EgressAgent(t *testing.T) {
+	ctx := context.Background()
+	c := kubefake.NewClientset()
+	i := &Installer{Client: c}
+	require.NoError(t, i.EgressAgentRBAC(ctx))
+	role, err := c.RbacV1().Roles(domain.AgentNamespace).Get(ctx, "betorun-egress-agent", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Len(t, role.Rules, 1)
+	assert.Equal(t, []string{"configmaps"}, role.Rules[0].Resources)
+
+	img, err := i.EgressAgentImage(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, img)
+	require.NoError(t, i.EgressAgent(ctx, "thekrauss/egress-agent:abc"))
+	require.NoError(t, i.EgressAgent(ctx, "thekrauss/egress-agent:def"), "rejouée : mise à jour")
+	ds, err := c.AppsV1().DaemonSets(domain.AgentNamespace).Get(ctx, "betorun-egress-agent", metav1.GetOptions{})
+	require.NoError(t, err)
+	pod := ds.Spec.Template.Spec
+	assert.True(t, pod.HostNetwork)
+	ctr := pod.Containers[0]
+	assert.Equal(t, "thekrauss/egress-agent:def", ctr.Image)
+	assert.Equal(t, []corev1.Capability{"NET_ADMIN"}, ctr.SecurityContext.Capabilities.Add)
+	assert.False(t, *ctr.SecurityContext.Privileged)
+	assert.Equal(t, "spec.nodeName", ctr.Env[0].ValueFrom.FieldRef.FieldPath)
+	img, _ = i.EgressAgentImage(ctx)
+	assert.Equal(t, "thekrauss/egress-agent:def", img)
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 
 	"github.com/thekrauss/kubemanager/internal/modules/egress/domain"
@@ -112,12 +113,21 @@ func (s *Store) FreeCount(ctx context.Context, clusterID string) (int, error) {
 // Assign : une IP libre du cluster attribuée au projet (deux demandes
 // simultanées n'obtiennent jamais la même : SKIP LOCKED ; un projet n'en a
 // qu'une : index unique). nil : aucune libre.
-func (s *Store) Assign(ctx context.Context, clusterID string, project uuid.UUID, by string, now time.Time) (*domain.Address, error) {
+// only : adresses permises (nil : toutes ; vide : aucune).
+func (s *Store) Assign(ctx context.Context, clusterID string, project uuid.UUID, by string, now time.Time, only []string) (*domain.Address, error) {
+	if only != nil && len(only) == 0 {
+		return nil, nil
+	}
+	filter, args := "", []any{project, now, by, now, clusterID}
+	if only != nil {
+		filter = " AND address = ANY(?)"
+		args = append(args, pq.Array(only))
+	}
 	var rows []domain.Address
 	err := s.DB.WithContext(ctx).Raw(`UPDATE egress_addresses SET project_id = ?, assigned_at = ?, assigned_by = ?, updated_at = ?
-		WHERE id = (SELECT id FROM egress_addresses WHERE cluster_id = ? AND project_id IS NULL
+		WHERE id = (SELECT id FROM egress_addresses WHERE cluster_id = ? AND project_id IS NULL`+filter+`
 		            ORDER BY address LIMIT 1 FOR UPDATE SKIP LOCKED)
-		RETURNING *`, project, now, by, now, clusterID).Scan(&rows).Error
+		RETURNING *`, args...).Scan(&rows).Error
 	if uniqueViolation(err) {
 		return nil, domain.ErrAlreadyHasAddress
 	}
@@ -149,6 +159,13 @@ func (s *Store) Place(ctx context.Context, project uuid.UUID, defaultCluster str
 		return nil, nil
 	}
 	return &rows[0], nil
+}
+
+// Clusters : clusters qui ont une réserve.
+func (s *Store) Clusters(ctx context.Context) ([]string, error) {
+	var ids []string
+	err := s.DB.WithContext(ctx).Raw(`SELECT DISTINCT cluster_id FROM egress_addresses ORDER BY cluster_id`).Scan(&ids).Error
+	return ids, err
 }
 
 // Orphan : IP tenue par un projet supprimé, avec où retirer sa règle.

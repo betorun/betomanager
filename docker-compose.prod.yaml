@@ -147,6 +147,8 @@ x-app-env: &app-env
   KUBEMANAGER_KUBERNETES_CLUSTER_ID: ${CLUSTER_ID:-}
   # Image du watcher posé par « Préparer le cluster » (back-office, Clusters).
   KUBEMANAGER_KUBERNETES_AGENT_IMAGE: ${WATCHER_IMAGE:-}
+  # Agent réseau des IP de sortie dédiées (ADR 0014) ; vide : montage à la main.
+  KUBEMANAGER_KUBERNETES_EGRESS_AGENT_IMAGE: ${EGRESS_AGENT_IMAGE:-}
   KUBEMANAGER_VPS_VPS_IP: ${SERVER2_IP:?}
   # Application GitHub (builds depuis un dépôt) : tout vide, désactivée ;
   # sinon complète, clé privée dans <secrets>/github (deploy/README.txt, 5 bis).

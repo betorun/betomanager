@@ -126,6 +126,8 @@ func (a *App) clusterAgents() *clustersSvc.Agents {
 	ag := &clustersSvc.Agents{
 		Registry: a.clusterRegistry(),
 		Image:    strings.TrimSpace(a.Config.Kubernetes.AgentImage),
+		// Agent réseau des IP de sortie (ADR 0014, lot 2).
+		EgressImage: strings.TrimSpace(a.Config.Kubernetes.EgressAgentImage),
 		Prepare: func(raw []byte) (clustersSvc.AgentInstaller, string, error) {
 			rc, server, err := clustersRepo.ParseKubeconfig(raw)
 			if err != nil {

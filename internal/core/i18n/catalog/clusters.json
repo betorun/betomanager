@@ -186,5 +186,13 @@
  {
   "fr": "Cluster inconnu",
   "en": "unknown cluster"
+ },
+ {
+  "fr": "Aucune route IPv4 par défaut",
+  "en": "no IPv4 default route"
+ },
+ {
+  "fr": "Nom d'interface trop long pour étiqueter les adresses",
+  "en": "interface name too long to label addresses"
  }
 ]

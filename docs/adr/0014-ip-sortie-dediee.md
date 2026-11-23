@@ -21,9 +21,9 @@ Les clusters à venir (Proxmox) et ceux d'aujourd'hui (k3s sur VPS OVH) doivent 
 | Lot | Contenu |
 |---|---|
 | 1 | Réserve par cluster (back-office), demande / restitution par le client, règle Cilium posée et retirée, compteur et prix, affichage sur la page Réseau. Les IP sont posées à la main sur le nœud passerelle. |
-| 2 | Agent de nœud (posé par « Préparer le cluster ») qui monte les IP de la réserve sur l'interface du nœud passerelle ; achat et rattachement des IP additionnelles OVH depuis le back-office. |
+| 2 | **Fait** : agent réseau (`cmd/egress-agent`, DaemonSet posé par « Préparer le cluster ») qui monte les IP de la réserve sur l'interface du nœud passerelle ; une IP n'est donnée que si son nœud la porte. **Reste (2b)** : achat et rattachement des IP additionnelles OVH depuis le back-office (dépend des clés OVH). |
 | 3 | Fournisseur d'IP Proxmox (bloc routé vers la VM passerelle), passerelle de secours (deux nœuds), réconciliation périodique des règles. |
-| Exploitation | Terrain réinstallé avec Cilium (préprod, coupure de quelques minutes) : `deploy/README.txt`. |
+| Exploitation | **Fait le 2026-11-23** : terrain basculé sur place sous Cilium 1.20.3 (`deploy/k8s/cilium-migrate.sh`, `deploy/README.txt` 7 quater). |
 
 ## Options écartées
 

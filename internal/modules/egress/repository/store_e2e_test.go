@@ -58,7 +58,7 @@ func TestE2E_EgressStore(t *testing.T) {
 		wg.Add(1)
 		go func(i int, p uuid.UUID) {
 			defer wg.Done()
-			got[i], errs[i] = s.Assign(ctx, cluster, p, "user:x", now)
+			got[i], errs[i] = s.Assign(ctx, cluster, p, "user:x", now, nil)
 		}(i, p)
 	}
 	wg.Wait()
@@ -87,10 +87,29 @@ func TestE2E_EgressStore(t *testing.T) {
 	}
 	require.NoError(t, s.Declare(ctx, &domain.Address{ID: uuid.New(), ClusterID: cluster, Address: ipN(13), GatewayNode: "gw-1",
 		CreatedAt: now, UpdatedAt: now}))
-	_, err = s.Assign(ctx, cluster, holder, "", now)
+	_, err = s.Assign(ctx, cluster, holder, "", now, nil)
 	assert.ErrorIs(t, err, domain.ErrAlreadyHasAddress, "une seule IP par projet (index unique)")
 	n, _ = s.FreeCount(ctx, cluster)
 	assert.Equal(t, 1, n, "refus : l'IP reste libre")
+
+	// Filtre (agent réseau) : seules les adresses montées sont données.
+	other := uuid.New()
+	require.NoError(t, db.Exec(`INSERT INTO projects (id, organization_id, name, namespace, cluster_id) VALUES (?, ?, ?, ?, ?)`,
+		other, org, "p"+sfx+"z", "km-"+sfx+"z", cluster).Error)
+	none, err := s.Assign(ctx, cluster, other, "", now, []string{ipN(99)})
+	require.NoError(t, err)
+	assert.Nil(t, none, "aucune adresse libre montée")
+	none, err = s.Assign(ctx, cluster, other, "", now, []string{})
+	require.NoError(t, err)
+	assert.Nil(t, none)
+	got13, err := s.Assign(ctx, cluster, other, "", now, []string{ipN(13)})
+	require.NoError(t, err)
+	require.NotNil(t, got13)
+	assert.Equal(t, ipN(13), got13.Address)
+	require.NoError(t, s.Release(ctx, got13.ID, now))
+	ids, err := s.Clusters(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, ids, cluster)
 
 	pl, err := s.Place(ctx, holder, "main")
 	require.NoError(t, err)

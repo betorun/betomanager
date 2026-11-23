@@ -7,6 +7,7 @@ import (
 
 	"github.com/loopfz/gadgeto/tonic"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
@@ -33,9 +34,18 @@ func (a *App) egressService() *egressSvc.Service {
 		}
 		return dynamic.NewForConfig(p.Config)
 	}}
+	// Consigne et état des agents réseau, par le client du cluster.
+	nodes := &egressRepo.Nodes{Kube: func(ctx context.Context, clusterID string) (kubernetes.Interface, error) {
+		p, err := kube.ForCluster(ctx, clusterID)
+		if err != nil {
+			return nil, err
+		}
+		return p.Client, nil
+	}}
 	a.egress = &egressSvc.Service{
 		Store:          &egressRepo.Store{DB: a.DB},
 		Gateways:       map[string]egressSvc.Gateway{egressDomain.GatewayCilium: cilium},
+		Nodes:          nodes,
 		DefaultCluster: a.clusterRegistry().DefaultID,
 		Logger:         a.Logger.With("component", "egress"),
 	}

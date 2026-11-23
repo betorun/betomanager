@@ -685,6 +685,10 @@ type KubernetesConfig struct {
 	// cluster préparé depuis le back-office (ex. thekrauss/watcher:<sha>) ;
 	// l'équipe peut en donner une autre à chaque installation.
 	AgentImage string `mapstructure:"agent_image"`
+	// EgressAgentImage : image de l'agent réseau des IP de sortie dédiées
+	// (ex. thekrauss/egress-agent:<sha>), posé par « Préparer le cluster » ;
+	// vide : IP montées à la main sur le nœud passerelle.
+	EgressAgentImage string `mapstructure:"egress_agent_image"`
 }
 
 // EnvPrefix est le préfixe utilisé pour les variables d'environnement (ex: KUBEMANAGER_DATABASE_HOST).

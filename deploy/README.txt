@@ -467,9 +467,12 @@ c) Droits du compte plateforme : réappliquer deploy/k8s/rbac.yaml (règle
    cilium.io), ou « Préparer le cluster » depuis le back-office.
 
 d) Chaque IP de sortie : l'acheter chez l'hébergeur (IP additionnelle OVH
-   rattachée au serveur), la monter sur l'interface du nœud passerelle
-   (netplan, en /32), puis dans le back-office : Clusters, le cluster,
-   passerelle de sortie « cilium », et ajouter l'IP à la réserve.
+   rattachée au serveur), puis dans le back-office : Clusters, le cluster,
+   passerelle de sortie « cilium », et ajouter l'IP à la réserve. Avec
+   l'agent réseau (EGRESS_AGENT_IMAGE dans .env.prod, posé par « Préparer le
+   cluster » ou « Mettre à jour l'agent »), l'IP est montée toute seule sur
+   le nœud passerelle ; sans lui, la monter à la main (netplan, en /32) AVANT
+   de l'ajouter à la réserve.
 
 
 8. ADRESSE DES CLIENTS ET RATE LIMIT
