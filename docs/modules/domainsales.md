@@ -2,6 +2,9 @@
 
 > Revente de noms de domaine (ADR 0012, phase 5) : le client achète depuis la console, payé par son solde ; la plateforme commande chez le registraire (OVH) ; le client en est le titulaire. **Marque blanche** : rien ne montre le registraire au client.
 
+
+**Boutique ouverte ou fermée** : `domains.store_enabled` (`KUBEMANAGER_DOMAINS_STORE_ENABLED`, `DOMAIN_STORE_ENABLED` dans `.env.prod`, faux par défaut) est le pendant de `NEXT_PUBLIC_DOMAIN_STORE=1` dans la console (page `/domains` et entrée du menu). Fermée : le Copilot ne connaît ni la recherche, ni l'achat, ni le branchement d'un domaine acheté (`hiddenCopilotPaths`) ; brancher un domaine que le client possède déjà reste proposé. Les deux interrupteurs se changent ensemble.
+
 ## Architecture
 
 ```

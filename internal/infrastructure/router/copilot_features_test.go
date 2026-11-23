@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thekrauss/kubemanager/internal/core/configs"
 	"github.com/thekrauss/kubemanager/internal/core/i18n"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 )
@@ -82,4 +83,31 @@ func TestCopilotFeatureMap(t *testing.T) {
 	def, ok := cat.Lookup(tools.ToolFindFeatures)
 	require.True(t, ok)
 	assert.Contains(t, def.Description, "never invent")
+}
+
+// Boutique de domaines fermée (domains.store_enabled faux) : le Copilot ne
+// connaît ni la recherche ni l'achat ; ouverte, il les propose.
+func TestCopilotHiddenDomainStore(t *testing.T) {
+	spec, err := publicSpec(documentedAPI(t).Generator().API(), i18n.EN)
+	require.NoError(t, err)
+	fr, guides := CopilotFeatureInput(AllGroups)
+	app := &App{Config: &configs.GlobalConfig{}}
+	routes, g, screens := withoutHiddenFeatures(CopilotRoutes(AllGroups), guides, CopilotScreens(), app.hiddenCopilotPaths())
+	cat, err := tools.Build(routes, spec)
+	require.NoError(t, err)
+	require.NoError(t, tools.AddDiagnose(cat))
+	require.NoError(t, tools.AddFeatureMap(cat, spec, fr, g, screens))
+	for _, name := range []string{"buy_domain", "search_domain", "suggest_domains", "list_organization_domains"} {
+		_, ok := cat.Lookup(name)
+		assert.False(t, ok, name)
+	}
+	args, _ := json.Marshal(map[string]string{"query": "acheter un nom de domaine"})
+	out := cat.Call(context.Background(), tools.Invoker{}, tools.ToolFindFeatures, args).Content
+	assert.NotContains(t, out, "buy_domain")
+	assert.NotContains(t, out, "/domains:")
+	// Brancher son propre domaine reste possible.
+	assert.Contains(t, out, "add_workload_domain")
+
+	app.Config.Domains.StoreEnabled = true
+	assert.Empty(t, app.hiddenCopilotPaths())
 }

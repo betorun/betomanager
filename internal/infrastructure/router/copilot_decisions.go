@@ -507,3 +507,48 @@ func knownScreen(path string) bool {
 	_, ok := consoleScreens[path]
 	return ok
 }
+
+// hiddenCopilotPaths : préfixes de routes (et écrans) masqués aux clients
+// par un interrupteur : le Copilot n'en parle pas, comme la console.
+func (a *App) hiddenCopilotPaths() []string {
+	var out []string
+	if !a.Config.Domains.StoreEnabled {
+		// Boutique de domaines fermée (console : page en 404, hors du menu).
+		out = append(out, PathAPIRoot+"/organizations/:id/domains", "/domains")
+	}
+	return out
+}
+
+// withoutHiddenFeatures : outils, guides et écrans hors des préfixes masqués.
+func withoutHiddenFeatures(routes []tools.Route, guides []tools.FeatureRoute, screens []tools.Screen, hidden []string) ([]tools.Route, []tools.FeatureRoute, []tools.Screen) {
+	if len(hidden) == 0 {
+		return routes, guides, screens
+	}
+	masked := func(path string) bool {
+		for _, h := range hidden {
+			if path == h || strings.HasPrefix(path, h+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	var r []tools.Route
+	for _, x := range routes {
+		if !masked(x.Path) {
+			r = append(r, x)
+		}
+	}
+	var g []tools.FeatureRoute
+	for _, x := range guides {
+		if !masked(x.Path) && !masked(x.Screen) {
+			g = append(g, x)
+		}
+	}
+	var sc []tools.Screen
+	for _, x := range screens {
+		if !masked(x.Path) {
+			sc = append(sc, x)
+		}
+	}
+	return r, g, sc
+}

@@ -102,6 +102,10 @@ type ComputeOVHConfig struct {
 
 // DomainsConfig : registraires.
 type DomainsConfig struct {
+	// StoreEnabled : boutique de domaines ouverte aux clients (pendant de
+	// NEXT_PUBLIC_DOMAIN_STORE=1 dans la console). Faux : le Copilot ne
+	// propose ni la recherche ni l'achat d'un domaine (la console cache la page).
+	StoreEnabled bool `mapstructure:"store_enabled"`
 	// SuggestTLDs : extensions proposées en suggestion de recherche (vide : liste par défaut).
 	SuggestTLDs []string  `mapstructure:"suggest_tlds"`
 	OVH         OVHConfig `mapstructure:"ovh"`

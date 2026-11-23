@@ -121,7 +121,8 @@ func (a *App) bindCopilot(f *fizz.Fizz, h http.Handler) error {
 		return fmt.Errorf("copilot: spécification : %w", err)
 	}
 	fr, guides := CopilotFeatureInput(AllGroups)
-	return s.Bind(h, CopilotRoutes(AllGroups), spec, &copilotSvc.FeatureMap{RoutesFR: fr, Guides: guides, Screens: CopilotScreens()})
+	routes, guides, screens := withoutHiddenFeatures(CopilotRoutes(AllGroups), guides, CopilotScreens(), a.hiddenCopilotPaths())
+	return s.Bind(h, routes, spec, &copilotSvc.FeatureMap{RoutesFR: fr, Guides: guides, Screens: screens})
 }
 
 // addCopilotRoutes : routes de la console vers le Copilot (internes : hors de
