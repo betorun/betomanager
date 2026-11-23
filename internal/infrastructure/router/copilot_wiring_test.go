@@ -56,9 +56,13 @@ func TestCopilotToolsReadsAndWrites(t *testing.T) {
 			continue
 		}
 		writes++
-		require.NotEqual(t, "DELETE", r.Method, r.Name)
-		require.False(t, r.Sensitive, r.Name)
 		require.NotEmpty(t, r.Risk, r.Name)
+		// Suppression ou action sensible : carte Strong seulement (session de
+		// la personne, double authentification), risque high.
+		if r.Method == "DELETE" || r.Sensitive {
+			require.True(t, r.Strong, r.Name)
+			require.Equal(t, tools.RiskHigh, r.Risk, r.Name)
+		}
 	}
 	require.GreaterOrEqual(t, writes, 10)
 

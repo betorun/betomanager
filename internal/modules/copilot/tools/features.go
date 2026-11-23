@@ -45,6 +45,10 @@ type Feature struct {
 	// Tool : outil à appeler (lecture, ou carte que la personne valide).
 	Tool   string `json:"tool,omitempty"`
 	Action bool   `json:"action,omitempty"`
+	// Strong : carte confirmée par la double authentification de la
+	// personne ; ConfirmName : le nom de la ressource se retape.
+	Strong      bool `json:"-"`
+	ConfirmName bool `json:"-"`
 	// Screen : écran de la console où la personne le fait elle-même.
 	Screen    string `json:"screen,omitempty"`
 	Sensitive bool   `json:"needs_two_factor,omitempty"`
@@ -93,7 +97,8 @@ func AddFeatureMap(c *Catalog, rawSpec []byte, routesFR map[string]string, guide
 			return fmt.Errorf("copilot: carte : outil %q absent de la spécification", name)
 		}
 		m.features = append(m.features, Feature{Area: area(o), Summary: firstParagraph(firstNonEmpty(o.Summary, o.Description)),
-			SummaryFR: routesFR[t.Method+" "+t.Path], Tool: name, Action: t.Write, Sensitive: t.Sensitive})
+			SummaryFR: routesFR[t.Method+" "+t.Path], Tool: name, Action: t.Write, Sensitive: t.Sensitive,
+			Strong: t.Strong, ConfirmName: t.ConfirmName})
 	}
 	for _, g := range guides {
 		o, ok := op(g.Method, g.Path)
@@ -226,6 +231,12 @@ func (m *featureMap) find(query string) Result {
 		f := h.f
 		fmt.Fprintf(&b, "- [%s] %s → ", f.Area, f.Summary)
 		switch {
+		case f.Tool != "" && f.Action && f.Strong:
+			fmt.Fprintf(&b, "action card: %s (sensitive: you propose it, the person validates and confirms with two-factor authentication", f.Tool)
+			if f.ConfirmName {
+				b.WriteString("; irreversible, they retype the resource name")
+			}
+			b.WriteString(")")
 		case f.Tool != "" && f.Action:
 			fmt.Fprintf(&b, "action card: %s (you propose it, the person validates)", f.Tool)
 		case f.Tool != "":
@@ -233,7 +244,7 @@ func (m *featureMap) find(query string) Result {
 		default:
 			fmt.Fprintf(&b, "done by the person in the console: %s", f.Screen)
 		}
-		if f.Sensitive {
+		if f.Sensitive && !f.Strong {
 			b.WriteString(" (needs two-factor authentication)")
 		}
 		if f.Note != "" {

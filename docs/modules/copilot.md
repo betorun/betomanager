@@ -24,16 +24,30 @@ Champs de `CopilotTool` ([copilot_wiring.go](../../internal/infrastructure/route
 Une fois toutes les routes enregistrées, `bindCopilot` parcourt les groupes (`CopilotRoutes`), génère la spécification OpenAPI **publique en anglais** et appelle `tools.Build` : le schéma de chaque outil (paramètres de chemin et de requête, corps, descriptions) vient de l'opération correspondante. Une route marquée mais absente de la spécification publique fait échouer la construction. Règles vérifiées (`checkRoute`) :
 
 - une lecture est un `GET` ;
-- une écriture n'est jamais un `GET` ni un `DELETE` (pas de suppression par le Copilot) ;
-- une écriture dont la permission est sensible (`Sensitive` dans `internal/iam/permissions.go`, double authentification) est refusée ;
-- une écriture déclare un risque `low` ou `medium` ; un `Undo` doit viser une écriture aux mêmes paramètres de chemin.
+- une écriture n'est jamais un `GET` ;
+- une suppression ou une écriture dont la permission est sensible (`Sensitive` dans `internal/iam/permissions.go`) n'est qu'une carte sensible (`Strong`, risque `high`, voir lot A4) ; `ConfirmName` exige un `TargetTool` de lecture dont les paramètres de chemin sont fournis par la carte ;
+- une autre écriture déclare un risque `low` ou `medium` ; un `Undo` doit viser une écriture aux mêmes paramètres de chemin.
 
 Un échec de construction désactive le Copilot (erreur journalisée, l'API démarre quand même). S'y ajoute un outil composite, `diagnose_workload` ([diagnose.go](../../internal/modules/copilot/tools/diagnose.go)) : fiche, état en direct, événements et fin des journaux d'un conteneur, chaque morceau passant par sa route.
 
-**Couverture (lot A1)** : chaque route publique a une décision, outil, guide ou hors Copilot ([copilot_decisions.go](../../internal/infrastructure/router/copilot_decisions.go)). Une route déjà marquée `ForCopilot` dans son câblage garde son outil ; les autres sont décidées dans la table `copilotDecisions` (« MÉTHODE chemin » sans `/kmanager/v1`), appliquée à la fin de `AddAllRoutes`. 125 outils, 106 guides, 44 hors Copilot (275 routes publiques, novembre 2026).
+**Couverture (lot A1)** : chaque route publique a une décision, outil, guide ou hors Copilot ([copilot_decisions.go](../../internal/infrastructure/router/copilot_decisions.go)). Une route déjà marquée `ForCopilot` dans son câblage garde son outil ; les autres sont décidées dans la table `copilotDecisions` (« MÉTHODE chemin » sans `/kmanager/v1`), appliquée à la fin de `AddAllRoutes`. 166 outils (dont 41 cartes sensibles), 65 guides, 44 hors Copilot (275 routes publiques, novembre 2026).
 - **Guide** (`CopilotGuide{Screen, Note}`) : le Copilot connaît la route et envoie vers l'écran de la console (`consoleScreens`) sans l'exécuter : action sensible, suppression, envoi de fichier, secret montré une fois, compte de la personne (routes `Authenticated()`), lecture que le jeton délégué n'a pas le droit de faire (dépôts GitHub : `workloads.github.manage`). `CopilotGuideRoutes` les liste (carte des fonctionnalités, lot A2).
 - **Hors Copilot** : parcours de connexion et mécanique technique (jetons, découverte, temps réel).
 - `TestCopilotCoverage` refuse : une route publique sans décision ; une décision sans route ; un écran inconnu ; un outil sur une route `Authenticated()` (jeton délégué refusé) ; un outil de lecture dont la permission n'est pas une lecture (refusé en portée `read`). Une fonctionnalité nouvelle ne peut donc ni échapper au Copilot ni lui rester inconnue.
+
+## Cartes sensibles : double authentification de la personne (lot A4)
+
+Une suppression ou une action sensible (permission `Sensitive` : données remplacées, argent, accès) n'est jamais jouée avec un jeton délégué : c'est une **carte sensible** (`CopilotTool{Strong: true}`, risque `high`, déclarée par `asStrong` dans la table de couverture).
+
+- **Proposition** : comme toute carte ; la cible est relue avec les droits de la personne par l'outil déclaré (`TargetTool`, ex. `get_database`). `ConfirmName` : la personne retape ce nom (suppressions de ressources entières, données remplacées) ; nom illisible : pas de carte.
+- **Validation** (`POST /copilot/actions/:token/approve`, corps facultatif `{confirm}`) :
+  1. nom retapé faux → `400 CONFIRMATION_MISMATCH`, la carte reste validable (rien n'est réservé) ;
+  2. l'action est jouée avec **la session de la personne** (son jeton Bearer), jamais un jeton délégué : le garde IAM de la route exige alors sa confirmation récente, comme dans la console ;
+  3. confirmation manquante ou trop ancienne → la réponse `401 STEP_UP_REQUIRED` de la route est rendue telle quelle (`max_age`…), la carte est libérée (`ProposalStore.Release`) ; l'intercepteur de la console ouvre sa fenêtre de double authentification puis **rejoue la validation** ; annulée : la carte reste validable (« Confirmation annulée : rien n'a été fait ») ;
+  4. réussie : jouée une fois (clé d'idempotence = jeton de la carte ; un refus ne la consomme pas), note `validated with their two-factor confirmation`.
+- Le Copilot ne demande **jamais** un code, un mot de passe ou un secret dans la conversation (prompt) : la console le fait elle-même.
+- Restent des guides : recharge par mobile money, commande et réinstallation de VPS, envois de fichiers, création de clés ou secrets montrés une fois, compte de la personne, politiques IAM brutes, rôles personnalisés, politiques de refus, connexion d'entreprise.
+- Console : badge « Double authentification », bordure rouge, champ « Pour confirmer, tapez « nom » » ; bouton de validation actif seulement si le nom correspond.
 
 ## Carte des fonctionnalités et noyau d'outils (lot A2)
 

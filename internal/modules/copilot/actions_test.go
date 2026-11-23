@@ -57,6 +57,11 @@ func (m *memProposals) Claim(_ context.Context, token string) error {
 	m.claimed[token] = true
 	return nil
 }
+func (m *memProposals) Release(_ context.Context, token string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.claimed, token)
+}
 func (m *memProposals) Drop(_ context.Context, token string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

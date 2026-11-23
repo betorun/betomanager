@@ -37,6 +37,10 @@ type Proposal struct {
 	CreatedAt      time.Time      `json:"created_at"`
 	ExpiresAt      time.Time      `json:"expires_at"`
 	UndoOf         string         `json:"undo_of,omitempty"`
+	// Strong : carte sensible, jouée avec la session de la personne (double
+	// authentification exigée par l'API) ; ConfirmName : Target se retape.
+	Strong      bool `json:"strong,omitempty"`
+	ConfirmName bool `json:"confirm_name,omitempty"`
 }
 
 // View : ce que la console affiche d'une proposition (jamais l'utilisateur
@@ -49,6 +53,10 @@ type View struct {
 	Details   map[string]any `json:"details,omitempty"`
 	ExpiresAt time.Time      `json:"expires_at"`
 	Undo      bool           `json:"undo,omitempty"`
+	// Strong : la validation demande la double authentification ;
+	// ConfirmName : la personne retape Target avant de valider.
+	Strong      bool `json:"strong,omitempty"`
+	ConfirmName bool `json:"confirm_name,omitempty"`
 }
 
 // view : détails = arguments hors identifiants de chemin (déjà résumés par Target).
@@ -63,7 +71,7 @@ func (p *Proposal) View(pathParams map[string]bool) View {
 		details = nil
 	}
 	return View{Token: p.Token, Tool: p.Request.Tool, Risk: p.Risk, Target: p.Target,
-		Details: details, ExpiresAt: p.ExpiresAt, Undo: p.UndoOf != ""}
+		Details: details, ExpiresAt: p.ExpiresAt, Undo: p.UndoOf != "", Strong: p.Strong, ConfirmName: p.ConfirmName}
 }
 
 var (
@@ -77,6 +85,9 @@ type ProposalStore interface {
 	Save(ctx context.Context, p *Proposal, ttl time.Duration) error
 	Load(ctx context.Context, token, userID string) (*Proposal, error)
 	Claim(ctx context.Context, token string) error
+	// Release : la carte redevient validable (confirmation d'identité
+	// demandée : rien n'a été fait).
+	Release(ctx context.Context, token string)
 	Drop(ctx context.Context, token string)
 }
 
@@ -138,6 +149,10 @@ func (s *proposals) Claim(ctx context.Context, token string) error {
 		return ErrProposalHandled
 	}
 	return nil
+}
+
+func (s *proposals) Release(ctx context.Context, token string) {
+	_ = s.rdb.Del(ctx, claimKey(token)).Err()
 }
 
 func (s *proposals) Drop(ctx context.Context, token string) {

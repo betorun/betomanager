@@ -40,6 +40,15 @@ func asGuide(screen string, note ...string) copilotDecision {
 }
 func outOfCopilot(why string) copilotDecision { return copilotDecision{out: why} }
 
+// asStrong : carte sensible (suppression, action sensible, argent, accès) :
+// jouée avec la session de la personne, qui confirme avec sa double
+// authentification ; target : outil qui lit le nom de la ressource (nom à
+// retaper si confirm).
+func asStrong(name, target string, confirm bool, hint ...string) copilotDecision {
+	return asTool(CopilotTool{Name: name, Write: true, Risk: tools.RiskHigh, Strong: true,
+		TargetTool: target, ConfirmName: confirm, Hint: strings.Join(hint, " ")})
+}
+
 // consoleScreens : écrans de la console des clients vers lesquels le Copilot
 // peut envoyer (kweb, app/(dashboard)). Un écran inconnu fait échouer le test.
 var consoleScreens = map[string]consoleScreen{
@@ -121,10 +130,10 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /organizations/:id/billing/topups":                    asTool(CopilotTool{Name: "list_topups"}),
 	"GET /organizations/:id/billing/topups/:topupID":           asTool(CopilotTool{Name: "get_topup"}),
 	"POST /organizations/:id/billing/topups":                   asGuide("/billing"),
-	"PUT /organizations/:id/billing/plan":                      asGuide("/billing"),
-	"PUT /organizations/:id/billing/profile":                   asGuide("/billing"),
+	"PUT /organizations/:id/billing/plan":                      asStrong("change_billing_plan", "", false, "Give the plan price from list_billing_plans first."),
+	"PUT /organizations/:id/billing/profile":                   asStrong("update_billing_profile", "", false),
 	"GET /projects/:id/billing/budget":                         asTool(CopilotTool{Name: "get_project_budget"}),
-	"PUT /projects/:id/billing/budget":                         asGuide("/billing"),
+	"PUT /projects/:id/billing/budget":                         asStrong("set_project_budget", "get_project", false),
 	"GET /organizations/:id/legal":                             asTool(CopilotTool{Name: "get_organization_legal"}),
 	"POST /organizations/:id/legal/accept":                     asGuide("/billing", "accepter les conditions se fait au moment de payer"),
 	"GET /legal/:kind":                                         asTool(CopilotTool{Name: "get_legal_document"}),
@@ -133,9 +142,9 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /organizations/:id/domains":                     asTool(CopilotTool{Name: "list_organization_domains"}),
 	"GET /organizations/:id/domains/search":              asTool(CopilotTool{Name: "search_domain"}),
 	"GET /organizations/:id/domains/suggestions":         asTool(CopilotTool{Name: "suggest_domains"}),
-	"POST /organizations/:id/domains":                    asGuide("/domains", "achat payé par le solde"),
-	"POST /organizations/:id/domains/:orderID/attach":    asGuide("/domains"),
-	"PUT /organizations/:id/domains/:orderID/auto-renew": asGuide("/domains"),
+	"POST /organizations/:id/domains":                    asStrong("buy_domain", "", false, "Paid from the balance: give the yearly price from search_domain first."),
+	"POST /organizations/:id/domains/:orderID/attach":    asStrong("attach_domain", "", false),
+	"PUT /organizations/:id/domains/:orderID/auto-renew": asStrong("set_domain_auto_renew", "", false),
 
 	// ── VPS ────────────────────────────────────────────────────────────
 	"GET /organizations/:id/compute/offers":                           asTool(CopilotTool{Name: "list_vps_offers"}),
@@ -147,29 +156,29 @@ var copilotDecisions = map[string]copilotDecision{
 	"POST /organizations/:id/compute/vps/:vpsID/reboot":               asTool(CopilotTool{Name: "reboot_vps", Write: true, Risk: tools.RiskMedium}),
 	"POST /organizations/:id/compute/vps/:vpsID/snapshot":             asTool(CopilotTool{Name: "create_vps_snapshot", Write: true, Risk: tools.RiskLow}),
 	"PUT /organizations/:id/compute/vps/:vpsID/reverse":               asTool(CopilotTool{Name: "set_vps_reverse_dns", Write: true, Risk: tools.RiskLow}),
-	"DELETE /organizations/:id/compute/vps/:vpsID/snapshot":           asGuide("/vps"),
+	"DELETE /organizations/:id/compute/vps/:vpsID/snapshot":           asStrong("delete_vps_snapshot", "get_vps", false),
 	"POST /organizations/:id/compute/vps":                             asGuide("/vps/new", "commande payée par le solde"),
-	"POST /organizations/:id/compute/vps/:vpsID/backups/restore":      asGuide("/vps"),
-	"POST /organizations/:id/compute/vps/:vpsID/backups/unmount":      asGuide("/vps"),
+	"POST /organizations/:id/compute/vps/:vpsID/backups/restore":      asStrong("restore_vps_backup", "get_vps", true),
+	"POST /organizations/:id/compute/vps/:vpsID/backups/unmount":      asStrong("unmount_vps_backup", "get_vps", false),
 	"POST /organizations/:id/compute/vps/:vpsID/reinstall":            asGuide("/vps", "efface le disque"),
-	"POST /organizations/:id/compute/vps/:vpsID/rescue":               asGuide("/vps"),
-	"POST /organizations/:id/compute/vps/:vpsID/rescue/exit":          asGuide("/vps"),
+	"POST /organizations/:id/compute/vps/:vpsID/rescue":               asStrong("enter_vps_rescue", "get_vps", false),
+	"POST /organizations/:id/compute/vps/:vpsID/rescue/exit":          asStrong("exit_vps_rescue", "get_vps", false),
 	"POST /organizations/:id/compute/vps/:vpsID/rescue/password":      asGuide("/vps", "mot de passe montré une seule fois"),
-	"POST /organizations/:id/compute/vps/:vpsID/snapshot/revert":      asGuide("/vps"),
-	"POST /organizations/:id/compute/vps/:vpsID/snapshot/subscribe":   asGuide("/vps"),
-	"POST /organizations/:id/compute/vps/:vpsID/snapshot/unsubscribe": asGuide("/vps"),
-	"POST /organizations/:id/compute/vps/:vpsID/terminate":            asGuide("/vps"),
+	"POST /organizations/:id/compute/vps/:vpsID/snapshot/revert":      asStrong("revert_vps_snapshot", "get_vps", true, "The disk goes back to the snapshot: later changes are lost."),
+	"POST /organizations/:id/compute/vps/:vpsID/snapshot/subscribe":   asStrong("subscribe_vps_snapshot", "get_vps", false, "Billed: one month taken from the balance, renewed with the VPS."),
+	"POST /organizations/:id/compute/vps/:vpsID/snapshot/unsubscribe": asStrong("unsubscribe_vps_snapshot", "get_vps", false, "The snapshot is deleted; the current month is not refunded."),
+	"POST /organizations/:id/compute/vps/:vpsID/terminate":            asStrong("terminate_vps", "get_vps", true, "Cut off at once, no longer renewed, the current month is not refunded."),
 
 	// ── Projets ────────────────────────────────────────────────────────
 	"GET /projects/:id":                                 asTool(CopilotTool{Name: "get_project"}),
 	"PATCH /projects/:id":                               asTool(CopilotTool{Name: "update_project", Write: true, Risk: tools.RiskLow}),
 	"POST /projects":                                    asGuide("/projects/new"),
-	"DELETE /projects/:id":                              asGuide("/projects"),
+	"DELETE /projects/:id":                              asStrong("delete_project", "get_project", true, "Deletes everything in the project: containers, databases, services, sites, disks."),
 	"GET /projects/:id/disk-usage":                      asTool(CopilotTool{Name: "get_project_disk_usage"}),
 	"GET /projects/:id/alert-webhooks":                  asTool(CopilotTool{Name: "list_alert_webhooks"}),
 	"POST /projects/:id/alert-webhooks":                 asGuide("/projects", "le secret de signature n'est montré qu'une fois"),
 	"POST /projects/:id/alert-webhooks/:webhookID/test": asTool(CopilotTool{Name: "test_alert_webhook", Write: true, Risk: tools.RiskLow}),
-	"DELETE /projects/:id/alert-webhooks/:webhookID":    asGuide("/projects"),
+	"DELETE /projects/:id/alert-webhooks/:webhookID":    asStrong("delete_alert_webhook", "", false),
 
 	// ── Conteneurs ─────────────────────────────────────────────────────
 	"PATCH /workloads/:id": asTool(CopilotTool{Name: "update_workload", Write: true, Risk: tools.RiskMedium,
@@ -177,14 +186,14 @@ var copilotDecisions = map[string]copilotDecision{
 		Hint: "Change image, size or settings. Environment variables go through update_workload_variables; secrets are never set by you."}),
 	"POST /workloads/:id/duplicate":           asTool(CopilotTool{Name: "duplicate_workload", Write: true, Risk: tools.RiskLow}),
 	"GET /workloads/:id/disk":                 asTool(CopilotTool{Name: "get_workload_disk_options"}),
-	"DELETE /workloads/:id":                   asGuide("/workloads"),
-	"DELETE /workloads/:id/domains/:domainID": asGuide("/workloads"),
+	"DELETE /workloads/:id":                   asStrong("delete_workload", "get_workload", true, "The container, its domains and its disk data are deleted."),
+	"DELETE /workloads/:id/domains/:domainID": asStrong("remove_workload_domain", "get_workload", false),
 
 	// ── GitHub ─────────────────────────────────────────────────────────
 	"PUT /workloads/:id/github":         asTool(CopilotTool{Name: "link_workload_github", Write: true, Risk: tools.RiskLow}),
 	"PATCH /workloads/:id/github":       asTool(CopilotTool{Name: "update_workload_github", Write: true, Risk: tools.RiskLow}),
 	"POST /workloads/:id/github/deploy": asTool(CopilotTool{Name: "deploy_workload_from_github", Write: true, Risk: tools.RiskLow}),
-	"DELETE /workloads/:id/github":      asGuide("/workloads"),
+	"DELETE /workloads/:id/github":      asStrong("unlink_workload_github", "get_workload", false),
 	"POST /projects/:id/github/workloads": asTool(CopilotTool{Name: "create_workload_from_github", Write: true, Risk: tools.RiskLow,
 		Hint: "One action: container, GitHub link and first build. Needs a GitHub account linked to the project (see the console)."}),
 	// Lecture des dépôts : permission workloads.github.manage (pas une lecture) :
@@ -193,13 +202,13 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /projects/:id/github/installations/:installationID/repositories":                  asGuide("/workloads/new"),
 	"GET /projects/:id/github/installations/:installationID/repositories/:repoID/branches": asGuide("/workloads/new"),
 	"POST /projects/:id/github/installations/url":                                          asGuide("/workloads/new", "relier un compte GitHub se fait sur la page de GitHub"),
-	"DELETE /projects/:id/github/installations/:installationID":                            asGuide("/workloads/new"),
+	"DELETE /projects/:id/github/installations/:installationID":                            asStrong("unlink_github_account", "", false),
 	"GET /integrations/github/status":                                                      outOfCopilot(outTechnics),
 	"POST /integrations/github/callback":                                                   outOfCopilot(outAuth),
 
 	// ── Builds ─────────────────────────────────────────────────────────
 	"POST /projects/:id/builds/upload":           asGuide("/builds", "envoi d'une archive depuis l'ordinateur"),
-	"DELETE /projects/:id/builds/:buildID/image": asGuide("/builds"),
+	"DELETE /projects/:id/builds/:buildID/image": asStrong("delete_build_image", "", false),
 
 	// ── Sites statiques ────────────────────────────────────────────────
 	"POST /projects/:id/sites":                                            asTool(CopilotTool{Name: "create_site", Write: true, Risk: tools.RiskLow}),
@@ -208,8 +217,8 @@ var copilotDecisions = map[string]copilotDecision{
 	"POST /projects/:id/sites/:siteID/deployments/:deploymentID/activate": asTool(CopilotTool{Name: "activate_site_deployment", Write: true, Risk: tools.RiskMedium}),
 	"POST /projects/:id/sites/:siteID/domains":                            asTool(CopilotTool{Name: "add_site_domain", Write: true, Risk: tools.RiskLow}),
 	"POST /projects/:id/sites/:siteID/domains/:domainID/verify":           asTool(CopilotTool{Name: "verify_site_domain", Write: true, Risk: tools.RiskLow}),
-	"DELETE /projects/:id/sites/:siteID":                                  asGuide("/sites"),
-	"DELETE /projects/:id/sites/:siteID/domains/:domainID":                asGuide("/sites"),
+	"DELETE /projects/:id/sites/:siteID":                                  asStrong("delete_site", "get_site", true, "Its files and domains are deleted."),
+	"DELETE /projects/:id/sites/:siteID/domains/:domainID":                asStrong("remove_site_domain", "get_site", false),
 
 	// ── Services (addons) ──────────────────────────────────────────────
 	"GET /projects/:id/addons/templates":         asTool(CopilotTool{Name: "list_addon_templates"}),
@@ -220,8 +229,8 @@ var copilotDecisions = map[string]copilotDecision{
 	"POST /projects/:id/addons/:addonID/disk":    asTool(CopilotTool{Name: "resize_addon_disk", Write: true, Risk: tools.RiskMedium}),
 	"POST /projects/:id/addons/:addonID/upgrade": asTool(CopilotTool{Name: "upgrade_addon", Write: true, Risk: tools.RiskMedium,
 		Hint: "The service restarts and can never go back to the previous version."}),
-	"POST /projects/:id/addons/:addonID/backups/:backupID/restore": asGuide("/services", "les données actuelles sont remplacées"),
-	"DELETE /projects/:id/addons/:addonID":                         asGuide("/services"),
+	"POST /projects/:id/addons/:addonID/backups/:backupID/restore": asStrong("restore_addon_backup", "get_addon", true, "Current data is replaced (a copy is taken first)."),
+	"DELETE /projects/:id/addons/:addonID":                         asStrong("delete_addon", "get_addon", true, "The service and its disk are deleted; attached containers keep their variable."),
 	"GET /addons/waitlist":                                         asGuide("/services"),
 	"PUT /addons/waitlist/:template":                               asGuide("/services"),
 	"DELETE /addons/waitlist/:template":                            asGuide("/services"),
@@ -231,25 +240,25 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /projects/:id/databases/:databaseID/imports/:importID": asTool(CopilotTool{Name: "get_database_import"}),
 	"POST /projects/:id/databases/:databaseID/import":           asGuide("/services", "envoi d'un fichier pg_dump depuis l'ordinateur"),
 	"POST /projects/:id/databases/:databaseID/import/inspect":   asGuide("/services", "envoi d'un fichier pg_dump depuis l'ordinateur"),
-	"POST /projects/:id/databases/:databaseID/reset":            asGuide("/services", "vide la base (copie gardée 24 h)"),
-	"POST /projects/:id/databases/:databaseID/reset/undo":       asGuide("/services"),
-	"DELETE /projects/:id/databases/:databaseID":                asGuide("/services", "les données sont perdues"),
+	"POST /projects/:id/databases/:databaseID/reset":            asStrong("reset_database", "get_database", true, "Empties the database (a copy is kept 24 h)."),
+	"POST /projects/:id/databases/:databaseID/reset/undo":       asStrong("undo_database_reset", "get_database", false),
+	"DELETE /projects/:id/databases/:databaseID":                asStrong("delete_database", "get_database", true, "Its data is lost."),
 
 	// ── Réseau ─────────────────────────────────────────────────────────
 	"POST /projects/:id/network/egress": asTool(CopilotTool{Name: "request_egress_ip", Write: true, Risk: tools.RiskMedium,
 		Hint: "Billed every month: give the price from get_price_catalog (egress_ip_monthly) before proposing it."}),
-	"DELETE /projects/:id/network/egress": asGuide("/network"),
+	"DELETE /projects/:id/network/egress": asStrong("release_egress_ip", "get_project", false, "The partner allow-listing this IP will refuse the traffic; the IP may go to someone else."),
 
 	// ── Registres externes ─────────────────────────────────────────────
 	"GET /projects/:id/registries":             asTool(CopilotTool{Name: "list_registries"}),
 	"POST /projects/:id/registries/:host/test": asTool(CopilotTool{Name: "test_registry_access", Write: true, Risk: tools.RiskLow}),
 	"PUT /projects/:id/registries/:host":       asGuide("/registries", "le jeton du registre se saisit dans la console, jamais dans la conversation"),
-	"DELETE /projects/:id/registries/:host":    asGuide("/registries"),
+	"DELETE /projects/:id/registries/:host":    asStrong("remove_registry_access", "", false),
 
 	// ── Accès, rôles, groupes, politiques ──────────────────────────────
 	"GET /rbac/:projectID/members":                       asTool(CopilotTool{Name: "list_project_members"}),
-	"DELETE /rbac/:projectID/members/:userID":            asGuide("/access"),
-	"POST /rbac/assign-role":                             asGuide("/access"),
+	"DELETE /rbac/:projectID/members/:userID":            asStrong("remove_project_member", "", false),
+	"POST /rbac/assign-role":                             asStrong("assign_project_role", "", false, "Grants access: say exactly who gets which role on which project."),
 	"GET /rbac/roles":                                    asGuide("/access"),
 	"GET /iam/policy":                                    asTool(CopilotTool{Name: "get_iam_policy", Hint: "Who has which role on a resource (project or organization)."}),
 	"POST /iam/policy":                                   asGuide("/access"),
@@ -268,10 +277,10 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /organizations/:id/groups/:groupID":             asTool(CopilotTool{Name: "get_group"}),
 	"GET /organizations/:id/groups/:groupID/members":     asTool(CopilotTool{Name: "list_group_members"}),
 	"POST /organizations/:id/groups":                     asTool(CopilotTool{Name: "create_group", Write: true, Risk: tools.RiskLow}),
-	"PATCH /organizations/:id/groups/:groupID":           asGuide("/groups"),
-	"DELETE /organizations/:id/groups/:groupID":          asGuide("/groups"),
-	"POST /organizations/:id/groups/:groupID/members":    asGuide("/groups"),
-	"DELETE /organizations/:id/groups/:groupID/members":  asGuide("/groups"),
+	"PATCH /organizations/:id/groups/:groupID":           asStrong("update_group", "get_group", false),
+	"DELETE /organizations/:id/groups/:groupID":          asStrong("delete_group", "get_group", true, "Its roles everywhere are removed."),
+	"POST /organizations/:id/groups/:groupID/members":    asStrong("add_group_member", "get_group", false, "Grants the group's roles: say exactly who."),
+	"DELETE /organizations/:id/groups/:groupID/members":  asStrong("remove_group_member", "get_group", false),
 	"GET /organizations/:id/denyPolicies":                asTool(CopilotTool{Name: "list_organization_deny_policies"}),
 	"GET /organizations/:id/denyPolicies/:policyID":      asTool(CopilotTool{Name: "get_organization_deny_policy"}),
 	"POST /organizations/:id/denyPolicies":               asGuide("/deny-policies"),
@@ -301,10 +310,10 @@ var copilotDecisions = map[string]copilotDecision{
 	"POST /projects/:id/serviceAccounts/:saID/apiKeys":               asGuide("/service-accounts", "le secret n'est montré qu'une fois"),
 	"POST /projects/:id/serviceAccounts/:saID/keys":                  asGuide("/service-accounts", "la clé privée n'est remise qu'une fois"),
 	"POST /projects/:id/serviceAccounts/:saID/federation":            asGuide("/service-accounts"),
-	"DELETE /projects/:id/serviceAccounts/:saID":                     asGuide("/service-accounts"),
-	"DELETE /projects/:id/serviceAccounts/:saID/apiKeys/:keyID":      asGuide("/service-accounts"),
-	"DELETE /projects/:id/serviceAccounts/:saID/keys/:keyID":         asGuide("/service-accounts"),
-	"DELETE /projects/:id/serviceAccounts/:saID/federation/:trustID": asGuide("/service-accounts"),
+	"DELETE /projects/:id/serviceAccounts/:saID":                     asStrong("delete_service_account", "get_service_account", true, "Its keys and roles are deleted."),
+	"DELETE /projects/:id/serviceAccounts/:saID/apiKeys/:keyID":      asStrong("revoke_service_account_api_key", "get_service_account", false),
+	"DELETE /projects/:id/serviceAccounts/:saID/keys/:keyID":         asStrong("disable_service_account_key", "get_service_account", false),
+	"DELETE /projects/:id/serviceAccounts/:saID/federation/:trustID": asStrong("delete_service_account_federation", "get_service_account", false),
 	"GET /users/api-keys":                                            asGuide("/api-keys"),
 	"GET /users/api-keys/:id":                                        asGuide("/api-keys"),
 	"GET /users/api-keys/audit":                                      asGuide("/api-keys"),

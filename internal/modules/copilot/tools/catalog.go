@@ -34,6 +34,9 @@ type Risk string
 const (
 	RiskLow    Risk = "low"    // sans interruption (redémarrage progressif, domaine ajouté)
 	RiskMedium Risk = "medium" // effet visible (arrêt, retour arrière, nouveau déploiement)
+	// RiskHigh : carte sensible (Strong) : suppression, données remplacées,
+	// argent, accès ; la personne confirme avec sa double authentification.
+	RiskHigh Risk = "high"
 )
 
 // Route : une route marquée ForCopilot (déclarée par le routeur).
@@ -63,8 +66,19 @@ type Route struct {
 	// (ex. stop_workload ↔ start_workload).
 	Undo string
 	// Sensitive : la permission de la route exige la double authentification.
-	// Refusé à la construction : une délégation ne peut pas la satisfaire.
+	// Une délégation ne peut pas la satisfaire : seulement en carte Strong.
 	Sensitive bool
+	// Strong : carte sensible. À la validation, l'action est jouée avec la
+	// session de la personne elle-même (jamais un jeton délégué) : l'API exige
+	// alors sa confirmation récente (double authentification) comme dans la
+	// console. Obligatoire pour une action sensible ou une suppression.
+	Strong bool
+	// ConfirmName : la personne retape le nom de la ressource avant de
+	// valider (suppressions, données remplacées).
+	ConfirmName bool
+	// TargetTool : outil de lecture qui donne le nom de la ressource visée
+	// (mêmes paramètres de chemin) ; vide : règle par défaut.
+	TargetTool string
 }
 
 // Tool : un outil prêt à être proposé au modèle et exécuté.
@@ -246,20 +260,45 @@ func Build(routes []Route, rawSpec []byte) (*Catalog, error) {
 			return nil, fmt.Errorf("copilot: outil %q : inverse %q absent ou incompatible", t.Name, t.Undo)
 		}
 	}
+	// Outil qui lit le nom de la cible : une lecture dont les paramètres de
+	// chemin sont tous fournis par la carte.
+	for _, t := range c.tools {
+		if t.TargetTool == "" {
+			continue
+		}
+		rd, ok := c.tools[t.TargetTool]
+		if !ok || rd.Write {
+			return nil, fmt.Errorf("copilot: outil %q : lecture de la cible %q absente", t.Name, t.TargetTool)
+		}
+		mine := t.PathParams()
+		for _, p := range rd.pathParams {
+			if !mine[p] {
+				return nil, fmt.Errorf("copilot: outil %q : %q exige le paramètre %q", t.Name, t.TargetTool, p)
+			}
+		}
+	}
 	return c, nil
 }
 
-// checkRoute : une lecture est un GET ; une écriture n'est jamais un GET,
-// jamais un DELETE (pas de suppression par le Copilot), jamais sensible.
+// checkRoute : une lecture est un GET ; une écriture n'est jamais un GET. Une
+// suppression ou une action sensible n'est qu'une carte Strong (jouée avec la
+// session de la personne, double authentification comprise), de risque
+// « high » ; une suppression fait retaper le nom.
 func checkRoute(r Route) error {
 	switch {
 	case !r.Write && r.Method != http.MethodGet:
 		return fmt.Errorf("copilot: %s %s : seules les lectures (GET) sont des outils", r.Method, r.Path)
-	case r.Write && (r.Method == http.MethodGet || r.Method == http.MethodDelete):
+	case !r.Write && (r.Strong || r.ConfirmName):
+		return fmt.Errorf("copilot: outil %q : une lecture n'est pas une carte sensible", r.Name)
+	case r.Write && r.Method == http.MethodGet:
 		return fmt.Errorf("copilot: outil %q : écriture %s refusée", r.Name, r.Method)
-	case r.Write && r.Sensitive:
-		return fmt.Errorf("copilot: outil %q : action sensible, réservée à la personne", r.Name)
-	case r.Write && r.Risk != RiskLow && r.Risk != RiskMedium:
+	case r.Write && (r.Sensitive || r.Method == http.MethodDelete) && !r.Strong:
+		return fmt.Errorf("copilot: outil %q : action sensible ou suppression : carte Strong seulement", r.Name)
+	case r.ConfirmName && r.TargetTool == "":
+		return fmt.Errorf("copilot: outil %q : nom à retaper sans outil qui le lit (TargetTool)", r.Name)
+	case r.Strong && r.Risk != RiskHigh:
+		return fmt.Errorf("copilot: outil %q : carte sensible : risque high", r.Name)
+	case r.Write && !r.Strong && r.Risk != RiskLow && r.Risk != RiskMedium:
 		return fmt.Errorf("copilot: outil %q : risque non déclaré", r.Name)
 	}
 	return nil
@@ -336,6 +375,13 @@ func fromOperation(r Route, op specOperation, components map[string]json.RawMess
 	}
 	if r.Write {
 		desc += " ACTION: calling this tool does NOT run it; it shows the person a card to validate."
+	}
+	if r.Strong {
+		desc += " SENSITIVE: when validating, the person confirms with their two-factor authentication in the console" +
+			" (never ask for a code in the chat)."
+	}
+	if r.ConfirmName {
+		desc += " IRREVERSIBLE: the person retypes the resource name on the card; warn them clearly of what is lost."
 	}
 	if r.Hint != "" {
 		desc += " " + r.Hint

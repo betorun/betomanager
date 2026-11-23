@@ -36,13 +36,17 @@ func (r *BoundRunner) propose(ctx context.Context, t *tools.Tool, args json.RawM
 	if err != nil {
 		return toolError(err.Error())
 	}
+	if t.ConfirmName && strings.TrimSpace(target) == "" {
+		return toolError("the name of the resource could not be read: this action cannot be proposed")
+	}
 	token, err := NewToken()
 	if err != nil {
 		return toolError("the action could not be prepared")
 	}
 	now := r.Svc.CurrentTime().UTC()
 	p := &Proposal{Token: token, UserID: r.UserID, ConversationID: r.ConversationID, Request: *prepared,
-		Risk: t.Risk, Target: target, CreatedAt: now, ExpiresAt: now.Add(ProposalTTL)}
+		Risk: t.Risk, Target: target, CreatedAt: now, ExpiresAt: now.Add(ProposalTTL),
+		Strong: t.Strong, ConfirmName: t.ConfirmName}
 	if err := r.Svc.ProposalsStore().Save(ctx, p, ProposalTTL); err != nil {
 		r.Svc.Logger.Warnw("copilot: proposal not saved", "error", err)
 		return toolError("the action could not be prepared")
@@ -68,6 +72,13 @@ func (r *BoundRunner) target(ctx context.Context, t *tools.Tool, p *tools.Prepar
 	var tool string
 	args := map[string]any{}
 	switch {
+	case t.TargetTool != "":
+		// Outil de lecture déclaré : ses paramètres de chemin, pris de la carte.
+		rd, _ := r.Cat.Lookup(t.TargetTool)
+		tool = t.TargetTool
+		for name := range rd.PathParams() {
+			args[name] = p.Args[name]
+		}
 	case strings.Contains(t.Path, "/workloads/:id"):
 		tool, args["id"] = tools.ToolGetWorkload, p.Args["id"]
 	case strings.Contains(t.Path, ":siteID"):
@@ -90,14 +101,19 @@ func (r *BoundRunner) target(ctx context.Context, t *tools.Tool, p *tools.Prepar
 		return "", fmt.Errorf("the target resource was not found or is not accessible (HTTP %d)", res.Status)
 	}
 	var v struct {
-		Name     string `json:"name"`
-		Hostname string `json:"hostname"`
+		Name        string `json:"name"`
+		Hostname    string `json:"hostname"`
+		DisplayName string `json:"display_name"`
+		AccountID   string `json:"account_id"`
+		Title       string `json:"title"`
 	}
 	_ = json.Unmarshal([]byte(res.Content), &v)
-	if v.Name != "" {
-		return v.Name, nil
+	for _, n := range []string{v.Name, v.DisplayName, v.Hostname, v.AccountID, v.Title} {
+		if strings.TrimSpace(n) != "" {
+			return strings.TrimSpace(n), nil
+		}
 	}
-	return v.Hostname, nil
+	return "", nil
 }
 
 func (s *Service) ProposalsStore() ProposalStore {
