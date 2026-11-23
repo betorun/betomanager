@@ -14,6 +14,7 @@ const (
 	pathIdentityCLIAuthorizeURL = "/identity/cli/authorize-url"
 	pathIdentityCLIToken        = "/identity/cli/token"
 	pathIdentitySessionVerify   = "/identity/session/verify"
+	pathIdentityMFA             = "/identity/mfa"
 	pathIdentityBootstrapStatus = "/identity/bootstrap/status"
 
 	pathIAMSession     = "/iam/session"

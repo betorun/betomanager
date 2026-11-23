@@ -104,6 +104,18 @@ func (c *Client) BrowserLoginToken(ctx context.Context, code, verifier, redirect
 	return credentialsFrom(&out, c.now()), nil
 }
 
+// MFAStatus : seconds facteurs enregistrés sur le compte.
+type MFAStatus struct {
+	TOTP              bool `json:"totp"`
+	RecoveryRemaining int  `json:"recovery_codes_remaining"`
+	Passkeys          int  `json:"passkeys"`
+}
+
+func (c *Client) MFAStatus(ctx context.Context) (*MFAStatus, error) {
+	var out MFAStatus
+	return &out, c.Do(ctx, http.MethodGet, pathIdentityMFA, nil, &out)
+}
+
 // VerifySession : second facteur vérifié dans la session courante (step-up) ;
 // le nouveau jeton d'accès remplace l'actuel.
 func (c *Client) VerifySession(ctx context.Context, code string) error {

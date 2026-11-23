@@ -47,6 +47,14 @@ var readCode = func(prompt string) (string, error) {
 // stepUp : demande le code et le fait vérifier dans la session courante.
 func stepUp(ctx context.Context, cl *api.Client, out io.Writer) error {
 	p := ui.New(out)
+	// Rien à demander si le compte n'a aucun facteur saisissable au clavier ;
+	// en cas d'échec de la lecture, l'API tranchera après la saisie.
+	if st, err := cl.MFAStatus(ctx); err == nil && !st.TOTP && st.RecoveryRemaining == 0 {
+		if st.Passkeys > 0 {
+			return errors.New(i18n.T("stepup.passkey_only"))
+		}
+		return errors.New(i18n.T("stepup.no_factor"))
+	}
 	p.Warn(i18n.T("stepup.intro"))
 	for attempt := 1; ; attempt++ {
 		code, err := readCode(i18n.T("stepup.prompt"))
