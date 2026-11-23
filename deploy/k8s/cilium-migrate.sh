@@ -58,11 +58,13 @@ restart_pods() {
     done
 }
 
+# Pods hors service : on attend d'en avoir au plus autant qu'avant la bascule
+# (BASELINE_BAD) ; ceux déjà cassés avant (image introuvable…) le restent.
+BASELINE_BAD=0
+count_bad() { kubectl get pods -A --no-headers 2>/dev/null | awk '$4!="Running" && $4!="Completed"' | wc -l; }
 wait_pods() {
   for _ in $(seq 1 60); do
-    local bad
-    bad=$(kubectl get pods -A --no-headers 2>/dev/null | awk '$4!="Running" && $4!="Completed"' | wc -l)
-    [ "$bad" -eq 0 ] && return 0
+    [ "$(count_bad)" -le "$BASELINE_BAD" ] && return 0
     sleep 10
   done
   echo "ATTENTION : des pods ne sont pas revenus :"
@@ -104,6 +106,7 @@ cmd_migrate() {
 
   say "1/7 relevé avant"
   snapshot avant
+  BASELINE_BAD=$(count_bad)
   echo
   read -r -p "Basculer ce cluster sur Cilium (coupure de quelques minutes) ? Taper OUI : " ok
   [ "$ok" = "OUI" ] || die "annulé"
@@ -161,6 +164,7 @@ cmd_migrate() {
 cmd_rollback() {
   say "retour à flannel"
   wait_api
+  BASELINE_BAD=$(count_bad)
   local last
   last=$(ls -1d /root/cilium-migrate/*/ 2>/dev/null | while read -r d; do [ -e "$d/config.yaml.avant" ] || [ -e "$d/config.yaml.avant.absent" ] && echo "$d"; done | tail -1)
   [ -n "$last" ] || die "aucune sauvegarde de configuration trouvée"
