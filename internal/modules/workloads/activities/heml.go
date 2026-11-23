@@ -7,6 +7,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/infrastructure/heartbeat"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/helm"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/helm/charts"
+	netDomain "github.com/thekrauss/kubemanager/internal/modules/network/domain"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
@@ -572,9 +573,9 @@ func defaultIfEmptyKind(k string) string {
 }
 
 // defaultEgressPublicPorts : ports TCP sortants autorisés vers Internet
-// (subnets privés exclus par le chart). Couvre HTTP(S), SMTP submission et
-// les bases managées courantes. Le port 25 reste fermé (anti-spam).
-var defaultEgressPublicPorts = []int{80, 443, 465, 587, 3306, 5432, 6379, 27017}
+// (subnets privés exclus par le chart) : ceux de la politique réseau des
+// projets (network/domain.EgressPorts), affichée au client.
+var defaultEgressPublicPorts = netDomain.EgressPorts
 
 func fallback(s, def string) string {
 	if s == "" {

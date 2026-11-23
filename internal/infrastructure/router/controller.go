@@ -23,6 +23,7 @@ import (
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
 	"github.com/thekrauss/kubemanager/internal/modules/legal"
 	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
+	"github.com/thekrauss/kubemanager/internal/modules/network"
 	"github.com/thekrauss/kubemanager/internal/modules/projects"
 	projectRepos "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	projectSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
@@ -75,6 +76,7 @@ type ControllerContainer struct {
 	Registries *registries.Controller
 	Copilot    *copilot.Controller
 	Databases  *databases.Controller
+	Network    *network.Controller
 	// Addons : services additionnels (Redis via Valkey…).
 	Addons *addons.Controller
 	// DiskUsage : usage réel des disques des projets.
@@ -114,6 +116,7 @@ func AddAllRoutes(a *App) {
 	addIAMRoutes(a)
 	addCopilotRoutes(a)
 	addDatabaseRoutes(a)
+	addNetworkRoutes(a)
 	addAddonRoutes(a)
 	addDiskResizeRoutes(a)
 	addAlertPreferenceRoutes(a)
