@@ -123,7 +123,7 @@ logging.auditLogs.read
 Familles ajoutées depuis (liste complète et titres dans le catalogue) :
 
 ```
-workloads.variables.*   workloads.domains.*   workloads.builds.*   workloads.github.manage
+workloads.variables.*   workloads.domains.*   workloads.builds.*   workloads.github.manage/read
 workloads.registries.*
 databases.databases.list/get/create/delete/connect/import/reset
 iam.groups.*

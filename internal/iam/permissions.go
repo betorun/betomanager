@@ -55,8 +55,12 @@ const (
 	BuildsCancel            Permission = "workloads.builds.cancel"
 	BuildsDelete            Permission = "workloads.builds.delete"
 	WorkloadsGitHubManage   Permission = "workloads.github.manage"
-	RegistriesList          Permission = "workloads.registries.list"
-	RegistriesManage        Permission = "workloads.registries.manage"
+	// WorkloadsGitHubRead : voir les comptes GitHub reliés au projet, leurs
+	// dépôts et leurs branches (sans rien relier ni déployer). Une lecture :
+	// accordée au jeton délégué du Copilot en portée « read ».
+	WorkloadsGitHubRead Permission = "workloads.github.read"
+	RegistriesList      Permission = "workloads.registries.list"
+	RegistriesManage    Permission = "workloads.registries.manage"
 
 	// sites
 	SitesList   Permission = "sites.sites.list"
@@ -247,6 +251,7 @@ var catalog = map[Permission]PermissionInfo{
 	BuildsCancel:            {Title: "Annuler un build", CustomRoles: true},
 	BuildsDelete:            {Title: "Supprimer une image construite", CustomRoles: true},
 	WorkloadsGitHubManage:   {Title: "Gérer la connexion GitHub et les dépôts liés aux conteneurs", CustomRoles: true},
+	WorkloadsGitHubRead:     {Title: "Voir les comptes GitHub reliés au projet, leurs dépôts et leurs branches", CustomRoles: true},
 	RegistriesList:          {Title: "Voir les registres d'images externes du projet", CustomRoles: true},
 	RegistriesManage:        {Title: "Gérer les accès aux registres d'images externes", CustomRoles: true},
 	WorkloadMetrics:         {Title: "Voir les métriques d'un conteneur", CustomRoles: true},

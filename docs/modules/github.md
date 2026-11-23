@@ -15,16 +15,18 @@ Migration 000022 :
 
 Préfixe `/kmanager/v1`. `:id` = projet (routes `/projects/:id/github`) ou conteneur (routes `/workloads/:id/github`).
 
+`workloads.github.read` (développeur, éditeur, propriétaire, développeur conteneurs) : voir les comptes reliés, leurs dépôts et leurs branches ; c'est une lecture, ouverte au Copilot (`list_github_accounts`, `list_github_repositories`, `list_github_branches`). Relier, délier et déployer restent `workloads.github.manage` (éditeur).
+
 | Méthode | Chemin | Permission | Description |
 |---|---|---|---|
 | GET | `/integrations/github/status` | authentifié | Fonction disponible sur la plateforme ? |
 | POST | `/integrations/github/callback` | authentifié (+ `workloads.github.manage` vérifiée par le service sur le projet de l'état) | Retour de GitHub : lie l'installation au projet |
 | POST | `/integrations/github/webhook` | public, signature HMAC | Livraison de GitHub (route interne) |
-| GET | `/projects/:id/github/installations` | `workloads.github.manage` | Comptes GitHub liés au projet |
+| GET | `/projects/:id/github/installations` | `workloads.github.read` | Comptes GitHub liés au projet |
 | POST | `/projects/:id/github/installations/url` | `workloads.github.manage` | URL d'installation (état valable 10 min, pour l'appelant seul) |
 | DELETE | `/projects/:id/github/installations/:installationID` | `workloads.github.manage` | Délier : liens supprimés, conteneurs intacts |
-| GET | `/projects/:id/github/installations/:installationID/repositories` | `workloads.github.manage` | Dépôts (`q`, `page`, `per_page` ≤ 100) |
-| GET | `/projects/:id/github/installations/:installationID/repositories/:repoID/branches` | `workloads.github.manage` | Branches (100 au plus) et branche par défaut |
+| GET | `/projects/:id/github/installations/:installationID/repositories` | `workloads.github.read` | Dépôts (`q`, `page`, `per_page` ≤ 100) |
+| GET | `/projects/:id/github/installations/:installationID/repositories/:repoID/branches` | `workloads.github.read` | Branches (100 au plus) et branche par défaut |
 | POST | `/projects/:id/github/workloads` | `workloads.github.manage` (+ `workloads.workloads.create` par le service) | Conteneur + lien + premier build (`202`) |
 | GET | `/workloads/:id/github` | `workloads.workloads.get` | Lien, dernier commit déployé, dernier build (outil Copilot `get_workload_github`) |
 | PUT | `/workloads/:id/github` | `workloads.github.manage` | Lier ou remplacer le lien (répare un lien désactivé) |

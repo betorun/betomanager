@@ -38,6 +38,9 @@ type ActionResult struct {
 	// Result : réponse JSON de la route en cas de succès (ex. le build lancé,
 	// que la console suit en direct), bornée.
 	Result json.RawMessage `json:"result,omitempty"`
+	// Plan : carte « mettre en ligne » validée : état initial du plan, joué
+	// en arrière-plan (suivi : GET /copilot/plans/:token).
+	Plan *service.PlanState `json:"plan,omitempty"`
 }
 
 // actionError : refus avant exécution (introuvable, déjà traitée…).
@@ -142,6 +145,10 @@ func (h *Controller) Approve(c *gin.Context) {
 	// consomme pas la carte).
 	if p.ConfirmName && strings.TrimSpace(in.Confirm) != strings.TrimSpace(p.Target) {
 		jsonError(c, http.StatusBadRequest, "CONFIRMATION_MISMATCH", "the name typed does not match the resource")
+		return
+	}
+	if p.Plan != nil {
+		h.approvePlan(c, p, user, session, acr)
 		return
 	}
 	var token string
