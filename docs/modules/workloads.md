@@ -94,6 +94,8 @@ Table `workload_variables` (migration 000018) : une ligne **chiffrée** par nom 
 
 Les conteneurs d'un même projet se joignent directement ([network-policy.yaml](../../internal/infrastructure/helm/charts/standard-app/templates/network-policy.yaml), `networkPolicy.projectNetwork`) : une règle d'entrée et une règle de sortie (la sortie Internet exclut les adresses privées) vers les pods du même espace portant `app.kubernetes.io/part-of: kubemanager` et le même `km-project-id`, tous ports. Un autre projet est dans un autre espace : jamais visé. Sans identifiant de projet, aucune règle (un label vide viserait tout).
 
+Vue du client : `GET /projects/:id/network` ([network.md](network.md)), indépendante du système qui applique les règles.
+
 Adresse interne d'un conteneur web : `http://<nom>` (Service, port 80 ; les conteneurs d'un projet partagent son espace, le nom court suffit, la forme longue `http://<nom>.<espace>.svc` marche aussi), renvoyée par `LiveStatus.internal_url` et affichée par la CLI et la console. Worker et cron n'en ont pas. Un conteneur existant reçoit les règles à son prochain déploiement.
 
 ## Retours du test Bomba (19/11)

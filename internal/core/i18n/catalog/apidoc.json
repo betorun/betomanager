@@ -2718,5 +2718,17 @@
  {
   "fr": "Région proposée par défaut",
   "en": "Region offered by default"
+ },
+ {
+  "fr": "Réseau",
+  "en": "Network"
+ },
+ {
+  "fr": "Réseau privé du projet : qui peut joindre qui, adresses internes et publiques.",
+  "en": "The project's private network: who can reach whom, internal and public addresses."
+ },
+ {
+  "fr": "Réseau privé du projet : conteneurs et bases, leurs adresses internes et publiques, liens déclarés (bases branchées, attentes au démarrage) et règles appliquées",
+  "en": "The project's private network: containers and databases, their internal and public addresses, declared links (attached databases, startup waits) and the rules enforced"
  }
 ]

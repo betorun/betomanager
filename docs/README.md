@@ -39,6 +39,7 @@ Chaque page décrit un module avec la même structure : rôle, endpoints, DB, ac
 - [realtime](modules/realtime.md) — Centrifugo (WebSocket events)
 - [sites](modules/sites.md) — sites statiques (upload .zip, S3, binaire static-edge, domaines perso)
 - [databases](modules/databases.md) — Postgres gérées (CloudNativePG) : branchement, import, contenu, remise à zéro
+- [network](modules/network.md) — réseau privé d'un projet : membres, liens, règles (modèle indépendant de Kubernetes)
 - [addons](modules/addons.md) — services additionnels (Redis via Valkey) : catalogue, branchement, mise à jour, « Me prévenir »
 - [diskusage](modules/diskusage.md) — usage réel des disques : mesure horaire, alertes 80/100 %, arrêt à 120 %
 - [diskresize](modules/diskresize.md) — agrandir un disque par copie (conteneurs et services), reprenable après un échec
