@@ -139,6 +139,9 @@ const (
 	VPSReinstall Permission = "compute.vps.reinstall"
 	VPSRestore   Permission = "compute.vps.restore"
 	VPSSnapshot  Permission = "compute.vps.snapshot"
+	VPSRescue    Permission = "compute.vps.rescue"
+	VPSNetwork   Permission = "compute.vps.network"
+	VPSDelete    Permission = "compute.vps.delete"
 
 	// billing / logging
 	BillingAccountsGet    Permission = "billing.accounts.get"
@@ -291,6 +294,9 @@ var catalog = map[Permission]PermissionInfo{
 	VPSReinstall: {Title: "Réinstaller un VPS (efface son disque)", CustomRoles: true, Sensitive: true},
 	VPSRestore:   {Title: "Restaurer un VPS depuis une sauvegarde ou son snapshot", CustomRoles: true, Sensitive: true},
 	VPSSnapshot:  {Title: "Créer ou supprimer le snapshot d'un VPS", CustomRoles: true},
+	VPSRescue:    {Title: "Mode secours d'un VPS et son mot de passe", CustomRoles: true, Sensitive: true},
+	VPSNetwork:   {Title: "Régler le DNS inverse d'un VPS", CustomRoles: true},
+	VPSDelete:    {Title: "Résilier un VPS", CustomRoles: true, Sensitive: true},
 
 	PlatformClustersList:           {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
 	PlatformClusterKeysList:        {Title: "Lister les clés de cluster", PlatformOnly: true},

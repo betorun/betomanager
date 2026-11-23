@@ -111,6 +111,8 @@ func ready(v *domain.VPS) error {
 		return domain.ErrSuspended
 	case v.Operation != "":
 		return domain.ErrBusy
+	case v.Rescue != "":
+		return domain.ErrInRescue
 	case v.ProviderID == "" || (v.State != domain.StateRunning && v.State != domain.StateStopped):
 		return domain.ErrNotReady
 	}

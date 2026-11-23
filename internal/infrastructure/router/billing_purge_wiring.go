@@ -103,6 +103,13 @@ func (p *orgPurger) PurgeOrganization(ctx context.Context, org uuid.UUID, archiv
 			failed++
 		}
 	}
+	// VPS : résiliés (coupés, plus renouvelés chez le fournisseur).
+	if c := p.a.computeSuspender(); c != nil {
+		if err := c.TerminateOrganization(ctx, org); err != nil {
+			log.Warnw("purge: VPS not all cancelled", "error", err)
+			failed++
+		}
+	}
 	if p.sites != nil {
 		ss, err := p.list(ctx, purgeSitesSQL, org)
 		if err != nil {

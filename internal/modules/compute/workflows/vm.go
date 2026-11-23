@@ -447,7 +447,7 @@ func (a *Activities) Reinstall(ctx context.Context, vpsID, providerID, image, ss
 	if name == "" {
 		return "", nonRetryable("image not sold with this offer", errTypeProvider, nil)
 	}
-	task, err := p.Rebuild(ctx, providerID, name, sshKey)
+	task, err := p.Rebuild(ctx, providerID, name, sshKey, installScript(v))
 	if err != nil {
 		return "", nonRetryable(err.Error(), errTypeProvider, err)
 	}
@@ -481,7 +481,7 @@ func (a *Activities) Rebuild(ctx context.Context, vpsID, providerID, sshKey stri
 	if err != nil {
 		return "", err
 	}
-	task, err := p.Rebuild(ctx, providerID, o.ImageMap()[v.Image], sshKey)
+	task, err := p.Rebuild(ctx, providerID, o.ImageMap()[v.Image], sshKey, installScript(v))
 	if err != nil {
 		return "", nonRetryable(err.Error(), errTypeProvider, err)
 	}
@@ -557,6 +557,14 @@ func (a *Activities) MarkObserved(ctx context.Context, vpsID, state string) erro
 	}
 	service.Notify(ctx, a.Store, a.Events, v.ID)
 	return nil
+}
+
+// installScript : port 25 sortant fermé, sauf ouverture par l'équipe.
+func installScript(v *domain.VPS) string {
+	if v.SMTPAllowed {
+		return ""
+	}
+	return domain.SMTPBlockScript
 }
 
 // FailCreate : VPS en échec, mois remboursé (idempotent par référence).

@@ -2334,5 +2334,37 @@
  {
   "fr": "Résilier l'option snapshot : le snapshot est supprimé, le mois entamé n'est pas remboursé",
   "en": "Cancel the snapshot option: the snapshot is deleted, the current month is not refunded"
+ },
+ {
+  "fr": "Quitter le mode secours : le VPS redémarre sur son disque",
+  "en": "Leave rescue mode: the VPS reboots on its disk"
+ },
+ {
+  "fr": "Afficher le mot de passe du mode secours (une seule fois)",
+  "en": "Show the rescue mode password (only once)"
+ },
+ {
+  "fr": "Redémarrer un VPS sur le système de secours",
+  "en": "Reboot a VPS on the rescue system"
+ },
+ {
+  "fr": "Nom du VPS, pour confirmer la résiliation",
+  "en": "VPS name, to confirm the cancellation"
+ },
+ {
+  "fr": "Adresse : v4 ou v6",
+  "en": "Address: v4 or v6"
+ },
+ {
+  "fr": "Nom d'hôte complet qui pointe déjà vers l'adresse (vide : retirer)",
+  "en": "Full host name that already points to the address (empty: remove)"
+ },
+ {
+  "fr": "Régler le DNS inverse d'une adresse du VPS (le nom doit déjà pointer vers l'adresse)",
+  "en": "Set the reverse DNS of a VPS address (the name must already point to the address)"
+ },
+ {
+  "fr": "Résilier un VPS : coupé tout de suite, plus renouvelé, le mois entamé n'est pas remboursé",
+  "en": "Cancel a VPS: stopped at once, no longer renewed, the current month is not refunded"
  }
 ]

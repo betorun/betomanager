@@ -550,5 +550,17 @@
  {
   "fr": "Créer ou supprimer le snapshot d'un VPS",
   "en": "Create or delete a VPS snapshot"
+ },
+ {
+  "fr": "Mode secours d'un VPS et son mot de passe",
+  "en": "VPS rescue mode and its password"
+ },
+ {
+  "fr": "Régler le DNS inverse d'un VPS",
+  "en": "Set a VPS reverse DNS"
+ },
+ {
+  "fr": "Résilier un VPS",
+  "en": "Cancel a VPS"
  }
 ]

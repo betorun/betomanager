@@ -173,7 +173,7 @@ func TranslateState(raw string) (state string, busy bool) {
 	case "rebooting":
 		return domain.StateRunning, true
 	}
-	// maintenance, rescued, upgrading, backuping, migrating, inconnu.
+	// maintenance, rescued, upgrading, backuping (états du fournisseur), ou inconnu.
 	return "", true
 }
 
@@ -242,14 +242,16 @@ var ErrImageNotFound = errors.New("compute: image not available for this VPS")
 // Rebuild : réinstallation avec la clé du client, sans mot de passe envoyé
 // par e-mail (doNotSendPassword). image : nom affiché chez le fournisseur
 // (« Ubuntu 24.04 ») ; son identifiant est cherché parmi les images du VPS.
-func (p *Provider) Rebuild(ctx context.Context, sn, image, sshPublicKey string) (string, error) {
+func (p *Provider) Rebuild(ctx context.Context, sn, image, sshPublicKey, script string) (string, error) {
 	id, err := p.imageID(ctx, sn, image)
 	if err != nil {
 		return "", err
 	}
-	return p.action(ctx, sn, "rebuild", map[string]any{
-		"imageId": id, "publicSshKey": sshPublicKey, "doNotSendPassword": true,
-	})
+	body := map[string]any{"imageId": id, "publicSshKey": sshPublicKey, "doNotSendPassword": true}
+	if script != "" {
+		body["postInstallScript"] = script
+	}
+	return p.action(ctx, sn, "rebuild", body)
 }
 
 func (p *Provider) imageID(ctx context.Context, sn, name string) (string, error) {

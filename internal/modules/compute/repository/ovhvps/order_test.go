@@ -135,7 +135,7 @@ func TestRebuildAndPower(t *testing.T) {
 		"POST /vps/vps-a/rebuild":            `{"id":55,"state":"todo"}`,
 		"POST /vps/vps-a/stop":               `{"id":56}`,
 	})
-	task, err := p.Rebuild(context.Background(), "vps-a", "ubuntu 24.04", "ssh-ed25519 AAAA")
+	task, err := p.Rebuild(context.Background(), "vps-a", "ubuntu 24.04", "ssh-ed25519 AAAA", "")
 	require.NoError(t, err)
 	assert.Equal(t, "55", task)
 	assert.Equal(t, map[string]any{"imageId": "i2", "publicSshKey": "ssh-ed25519 AAAA", "doNotSendPassword": true},
@@ -143,6 +143,6 @@ func TestRebuildAndPower(t *testing.T) {
 	task, err = p.Stop(context.Background(), "vps-a")
 	require.NoError(t, err)
 	assert.Equal(t, "56", task)
-	_, err = p.Rebuild(context.Background(), "vps-a", "Windows", "k")
+	_, err = p.Rebuild(context.Background(), "vps-a", "Windows", "k", "")
 	assert.ErrorIs(t, err, ErrImageNotFound)
 }

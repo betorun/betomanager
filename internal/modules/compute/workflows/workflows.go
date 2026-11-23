@@ -67,6 +67,18 @@ func RequestWorkflow(ctx workflow.Context, in service.RequestInput) error {
 		runErr = subscribeSnapshot(ctx, in.RequestID)
 	case domain.KindSnapshotRelease:
 		runErr = releaseSnapshot(ctx, in.RequestID)
+	case domain.KindRescueEnter:
+		runErr = enterRescue(ctx, in.RequestID)
+	case domain.KindRescueExit:
+		runErr = exitRescue(ctx, in.RequestID)
+	case domain.KindReverse:
+		runErr = reverseVM(ctx, in.RequestID)
+	case domain.KindSpamUnblock:
+		runErr = unblockSpam(ctx, in.RequestID)
+	case domain.KindTerminate:
+		runErr = terminateVM(ctx, in.RequestID)
+	case KindMailbox:
+		runErr = workflow.ExecuteActivity(ctx, a.CheckMailbox).Get(ctx, nil)
 	case KindReconcile:
 		runErr = workflow.ExecuteActivity(reconcileOptions(ctx), a.Reconcile).Get(ctx, nil)
 	default:
@@ -103,6 +115,10 @@ type Activities struct {
 	Orderer  service.Orderer         // nil : pas de commande possible
 	Wallet   service.Wallet          // remboursements
 	Backups  service.BackupProvider  // sauvegardes (nil : aucun fournisseur)
+	Rescue   service.RescueProvider  // mode secours
+	Network  service.NetworkProvider // adresses, fin de service
+	Mailbox  service.RescueMailbox   // e-mails du fournisseur (nil : non configurée)
+	Sealer   service.Sealer          // chiffrement des secrets
 	Events   service.Events          // temps réel (nil : aucun)
 	Now      func() time.Time
 }
@@ -135,7 +151,7 @@ func (a *Activities) Reconcile(ctx context.Context) error {
 	if a.Provider == nil {
 		return temporal.NewNonRetryableApplicationError("no compute provider configured", "NoProvider", nil)
 	}
-	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Backups: a.Backups, Events: a.Events,
+	_, err := (&service.Reconciler{Store: a.Store, Provider: a.Provider, Backups: a.Backups, Network: a.Network, Events: a.Events,
 		StuckAfter: StuckSnapshotAfter, Now: a.Now}).Run(ctx)
 	return err
 }
