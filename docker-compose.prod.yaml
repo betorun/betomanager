@@ -177,6 +177,9 @@ x-app-env: &app-env
   KUBEMANAGER_LLM_DAILY_BUDGET_MICRO_USD: ${LLM_DAILY_BUDGET_MICRO_USD:-2000000}
   # Revente de domaines (OVH, marque blanche) : page vide sans clés ; achats
   # réels seulement avec OVH_ORDERING_ENABLED=true.
+  # Boutique de domaines ouverte aux clients : même valeur que
+  # NEXT_PUBLIC_DOMAIN_STORE de la console (le Copilot suit cet interrupteur).
+  KUBEMANAGER_DOMAINS_STORE_ENABLED: ${DOMAIN_STORE_ENABLED:-false}
   KUBEMANAGER_DOMAINS_OVH_ENDPOINT: ${OVH_ENDPOINT:-https://eu.api.ovh.com/1.0}
   KUBEMANAGER_DOMAINS_OVH_SUBSIDIARY: ${OVH_SUBSIDIARY:-FR}
   KUBEMANAGER_DOMAINS_OVH_APPLICATION_KEY: ${OVH_APPLICATION_KEY:-}
