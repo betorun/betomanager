@@ -1660,6 +1660,10 @@
   "en": "Worker: health command (empty list: none)"
  },
  {
+  "fr": "Conteneur web : chemin de santé interrogé par les sondes (ex. /healthz)",
+  "en": "Web container: health path checked by the probes (e.g. /healthz)"
+ },
+ {
   "fr": "Nom d'un conteneur du projet : chaque nouvelle image de celui-ci est déployée ici aussi",
   "en": "Name of a container in the project: each of its new images is deployed here too"
  },

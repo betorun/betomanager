@@ -32,21 +32,22 @@ const (
 )
 
 var (
-	ErrInvalidKind      = errors.New("invalid kind: web, worker, cron or service")
-	ErrKindImmutable    = errors.New("the kind of a container cannot change: create a new container")
-	ErrScheduleRequired = errors.New("a cron container needs a schedule (e.g. \"0 2 * * *\")")
-	ErrInvalidSchedule  = errors.New("invalid schedule: 5 fields (minute hour day month weekday) or @hourly, @daily, @weekly, @monthly")
-	ErrInvalidCommand   = errors.New("invalid command or args: at most 32 parts of 4096 characters, without NUL")
-	ErrNotWeb           = errors.New("this action is only available for a web container")
-	ErrPortRequired     = errors.New("a service container needs its port (target_port, e.g. 6379)")
-	ErrSingleInstance   = errors.New("a service container runs a single instance: its data lives on its disk")
-	ErrInvalidWaitFor   = errors.New("wait_for: at most 8 addresses name:port of the project")
-	ErrDiskResizeRoute  = errors.New("a disk grows by copy: use the disk resize (POST /workloads/{id}/disk)")
-	ErrManaged          = errors.New("this container is managed by a service: change it from the Services page")
-	ErrNotCron          = errors.New("this action is only available for a cron container")
-	ErrInvalidTimeZone  = errors.New("invalid time zone: use an IANA name such as Africa/Dakar")
-	ErrMaxDuration      = errors.New("max_duration_seconds: at most 86400 (24 hours)")
-	ErrStartupTimeout   = errors.New("startup_timeout_seconds: between 10 and 600 seconds")
+	ErrInvalidKind       = errors.New("invalid kind: web, worker, cron or service")
+	ErrKindImmutable     = errors.New("the kind of a container cannot change: create a new container")
+	ErrScheduleRequired  = errors.New("a cron container needs a schedule (e.g. \"0 2 * * *\")")
+	ErrInvalidSchedule   = errors.New("invalid schedule: 5 fields (minute hour day month weekday) or @hourly, @daily, @weekly, @monthly")
+	ErrInvalidCommand    = errors.New("invalid command or args: at most 32 parts of 4096 characters, without NUL")
+	ErrNotWeb            = errors.New("this action is only available for a web container")
+	ErrPortRequired      = errors.New("a service container needs its port (target_port, e.g. 6379)")
+	ErrSingleInstance    = errors.New("a service container runs a single instance: its data lives on its disk")
+	ErrInvalidWaitFor    = errors.New("wait_for: at most 8 addresses name:port of the project")
+	ErrDiskResizeRoute   = errors.New("a disk grows by copy: use the disk resize (POST /workloads/{id}/disk)")
+	ErrManaged           = errors.New("this container is managed by a service: change it from the Services page")
+	ErrNotCron           = errors.New("this action is only available for a cron container")
+	ErrInvalidTimeZone   = errors.New("invalid time zone: use an IANA name such as Africa/Dakar")
+	ErrMaxDuration       = errors.New("max_duration_seconds: at most 86400 (24 hours)")
+	ErrStartupTimeout    = errors.New("startup_timeout_seconds: between 10 and 600 seconds")
+	ErrInvalidHealthPath = errors.New("health_path: a path starting with /, at most 256 characters, without spaces")
 )
 
 // NormalizeKind : sorte connue ; vide = web (conteneurs antérieurs, appels internes).
@@ -203,4 +204,21 @@ const MaxStartupTimeoutSeconds = 600
 // ValidStartupTimeout : 0 (défaut) ou entre 10 s et 10 min.
 func ValidStartupTimeout(s int) bool {
 	return s == 0 || (s >= 10 && s <= MaxStartupTimeoutSeconds)
+}
+
+// MaxHealthPath : longueur maximale d'un chemin de santé.
+const MaxHealthPath = 256
+
+// ValidHealthPath : chemin HTTP absolu, sans espace ni caractère de contrôle
+// (la requête « ?a=b » est permise, le fragment non).
+func ValidHealthPath(p string) bool {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || len(p) > MaxHealthPath {
+		return false
+	}
+	for _, r := range p {
+		if r <= ' ' || r == 0x7f || r == '#' || r == '\\' {
+			return false
+		}
+	}
+	return true
 }

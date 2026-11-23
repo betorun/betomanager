@@ -75,7 +75,7 @@ Colonne `workloads.kind` (migration 000028), **immuable** après la création. R
 
 | Sorte | Objet K8s | Port / Service / Ingress / sondes HTTP | Notes |
 |-------|-----------|----------------------------------------|-------|
-| `web` (défaut) | Deployment | oui (port 8080 par défaut) | domaines personnalisés possibles ; sondes HTTP sur `health_path` / `readiness_path` (défaut `/`) |
+| `web` (défaut) | Deployment | oui (port 8080 par défaut) | domaines personnalisés possibles ; sondes HTTP sur `health_path` / `readiness_path` (défaut `/`) ; `PATCH /workloads/:id` `health_path` change le chemin des trois sondes (chemin absolu, 256 caractères au plus) |
 | `worker` | Deployment | non | processus continu (file d'attente, bot) ; sonde facultative `health_command` |
 | `cron` | CronJob | non | `schedule` obligatoire, `time_zone` IANA, `max_duration_seconds` (défaut 3600, ≤ 86400) ; 1 réplique, ni HPA ni PDB |
 
