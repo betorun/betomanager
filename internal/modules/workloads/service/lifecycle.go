@@ -361,6 +361,9 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 			for _, c := range p.Status.ContainerStatuses {
 				ps.RestartCount += c.RestartCount
 				ps.Ready = ps.Ready || c.Ready
+				if ps.LastTermination == nil {
+					ps.LastTermination = termination(c)
+				}
 			}
 			status.Pods = append(status.Pods, ps)
 			if status.PullFailure == nil {
@@ -370,6 +373,19 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 	}
 
 	return status, nil
+}
+
+// termination : dernière fin d'exécution d'un conteneur (en cours de fin,
+// sinon la précédente), nil s'il n'a jamais fini.
+func termination(c corev1.ContainerStatus) *domain.Termination {
+	t := c.State.Terminated
+	if t == nil {
+		t = c.LastTerminationState.Terminated
+	}
+	if t == nil {
+		return nil
+	}
+	return &domain.Termination{Reason: t.Reason, ExitCode: t.ExitCode, FinishedAt: t.FinishedAt.Time}
 }
 
 // pullFailure : cause d'un conteneur bloqué sur son image (ADR 0011). Le

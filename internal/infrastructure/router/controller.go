@@ -22,6 +22,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identity "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
+	"github.com/thekrauss/kubemanager/internal/modules/insights"
 	"github.com/thekrauss/kubemanager/internal/modules/legal"
 	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
 	"github.com/thekrauss/kubemanager/internal/modules/network"
@@ -83,6 +84,8 @@ type ControllerContainer struct {
 	Addons *addons.Controller
 	// DiskUsage : usage réel des disques des projets.
 	DiskUsage *diskusage.Controller
+	// Insights : « L'assistant a remarqué » (constats d'un projet).
+	Insights *insights.Controller
 	// DiskResize : agrandissement des disques par copie.
 	DiskResize *diskresize.Controller
 	// Alerts : préférences d'e-mail et désabonnement.
@@ -130,6 +133,7 @@ func AddAllRoutes(a *App) {
 	addLegalRoutes(a)
 	addSupportRoutes(a)
 	addStatusRoutes(a)
+	addInsightsRoutes(a)
 	// Copilot : outils et guides de la table de couverture (copilot_decisions.go).
 	applyCopilotDecisions(AllGroups)
 }

@@ -133,7 +133,7 @@ func (c *Catalog) Definitions() []llm.Tool {
 // certains fournisseurs (128 outils) et égarerait le modèle.
 var CoreTools = []string{
 	ToolFindFeatures, ToolDiagnoseWorkload,
-	"list_projects", "get_project_status", "get_project_network",
+	"list_projects", "get_project_status", "get_project_network", "get_project_insights",
 	"list_workloads", "get_workload", "get_workload_status", "get_workload_logs", "get_workload_events",
 	"list_builds", "get_build", "get_build_logs", "build_from_git", "create_workload", "restart_workload",
 	"list_databases", "list_addons", "list_sites",

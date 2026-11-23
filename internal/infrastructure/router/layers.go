@@ -230,6 +230,8 @@ func (a *App) initDomainLayers() error {
 		DiskResize:  a.newDiskResizeController(),
 		Alerts:      a.newAlertsController(),
 	}
+	// Constats : réutilisent les services des contrôleurs ci-dessus.
+	a.Controllers.Insights = a.newInsightsController()
 
 	a.Logger.Info("Domain layers successfully initialized.")
 	return nil

@@ -206,6 +206,16 @@ type PodStatus struct {
 	RestartCount int32     `json:"restart_count"`
 	StartedAt    time.Time `json:"started_at,omitempty"`
 	NodeName     string    `json:"node_name,omitempty"`
+	// LastTermination : dernière fin d'exécution du conteneur (raison et code
+	// de sortie : OOMKilled / 137, Error / 1…) ; absente s'il n'a jamais fini.
+	LastTermination *Termination `json:"last_termination,omitempty"`
+}
+
+// Termination : fin d'exécution d'un conteneur.
+type Termination struct {
+	Reason     string    `json:"reason,omitempty"`
+	ExitCode   int32     `json:"exit_code"`
+	FinishedAt time.Time `json:"finished_at,omitempty"`
 }
 
 // WorkloadMetrics : consommation live (metrics.k8s.io) vs reserved (DB).

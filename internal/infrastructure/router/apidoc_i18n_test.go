@@ -22,6 +22,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
 	"github.com/thekrauss/kubemanager/internal/modules/egress"
+	"github.com/thekrauss/kubemanager/internal/modules/insights"
 	"github.com/thekrauss/kubemanager/internal/modules/legal"
 	"github.com/thekrauss/kubemanager/internal/modules/network"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
@@ -91,6 +92,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Egress:      &egress.Controller{},
 				Addons:      &addons.Controller{},
 				DiskUsage:   &diskusage.Controller{},
+				Insights:    &insights.Controller{},
 				DiskResize:  &diskresize.Controller{},
 				Alerts:      &alerts.Controller{},
 			},
