@@ -107,9 +107,41 @@ func (s *Store) AppendNote(ctx context.Context, userID, conversationID, note str
 	return s.rdb.Set(ctx, key(userID, conversationID), raw, TTL).Err()
 }
 
-// Clear : oublie une conversation.
+// Clear : oublie une conversation (et ses preuves).
 func (s *Store) Clear(ctx context.Context, userID, conversationID string) error {
-	return s.rdb.Del(ctx, key(userID, conversationID)).Err()
+	return s.rdb.Del(ctx, key(userID, conversationID), evidenceKey(userID, conversationID)).Err()
+}
+
+// Preuves de la conversation (lot A3) : seulement des jetons (identifiants,
+// adresses, nombres, hôtes) extraits des résultats d'outils, jamais leur
+// texte ; même durée de vie que la conversation.
+func evidenceKey(userID, conversationID string) string {
+	return "betorun:copilot:evidence:" + userID + ":" + conversationID
+}
+
+// LoadEvidence : jetons prouvés lors des tours précédents.
+func (s *Store) LoadEvidence(ctx context.Context, userID, conversationID string) ([]string, error) {
+	raw, err := s.rdb.Get(ctx, evidenceKey(userID, conversationID)).Bytes()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var ts []string
+	if json.Unmarshal(raw, &ts) != nil {
+		return nil, nil
+	}
+	return ts, nil
+}
+
+// SaveEvidence : jetons prouvés de la conversation (remplacés).
+func (s *Store) SaveEvidence(ctx context.Context, userID, conversationID string, tokens []string) error {
+	raw, err := json.Marshal(tokens)
+	if err != nil {
+		return err
+	}
+	return s.rdb.Set(ctx, evidenceKey(userID, conversationID), raw, TTL).Err()
 }
 
 // History : messages au format llm. Deux messages consécutifs du même rôle

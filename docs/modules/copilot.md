@@ -30,7 +30,25 @@ Une fois toutes les routes enregistrées, `bindCopilot` parcourt les groupes (`C
 
 Un échec de construction désactive le Copilot (erreur journalisée, l'API démarre quand même). S'y ajoute un outil composite, `diagnose_workload` ([diagnose.go](../../internal/modules/copilot/tools/diagnose.go)) : fiche, état en direct, événements et fin des journaux d'un conteneur, chaque morceau passant par sa route.
 
-À ce jour : 35 routes marquées (projets, conteneurs, domaines, variables, sites, builds, bases de données, GitHub), dont 13 écritures : `create_workload`, `add_workload_domain`, `verify_workload_domain`, `start_workload`, `restart_workload`, `build_from_git`, `cancel_build`, `create_database`, `restore_database` (risque `low`) ; `stop_workload`, `rollback_workload`, `update_workload_variables` (sans `secrets`), `attach_database` (risque `medium`). Seul couple inverse : `stop_workload` ↔ `start_workload`.
+**Couverture (lot A1)** : chaque route publique a une décision, outil, guide ou hors Copilot ([copilot_decisions.go](../../internal/infrastructure/router/copilot_decisions.go)). Une route déjà marquée `ForCopilot` dans son câblage garde son outil ; les autres sont décidées dans la table `copilotDecisions` (« MÉTHODE chemin » sans `/kmanager/v1`), appliquée à la fin de `AddAllRoutes`. 125 outils, 106 guides, 44 hors Copilot (275 routes publiques, novembre 2026).
+- **Guide** (`CopilotGuide{Screen, Note}`) : le Copilot connaît la route et envoie vers l'écran de la console (`consoleScreens`) sans l'exécuter : action sensible, suppression, envoi de fichier, secret montré une fois, compte de la personne (routes `Authenticated()`), lecture que le jeton délégué n'a pas le droit de faire (dépôts GitHub : `workloads.github.manage`). `CopilotGuideRoutes` les liste (carte des fonctionnalités, lot A2).
+- **Hors Copilot** : parcours de connexion et mécanique technique (jetons, découverte, temps réel).
+- `TestCopilotCoverage` refuse : une route publique sans décision ; une décision sans route ; un écran inconnu ; un outil sur une route `Authenticated()` (jeton délégué refusé) ; un outil de lecture dont la permission n'est pas une lecture (refusé en portée `read`). Une fonctionnalité nouvelle ne peut donc ni échapper au Copilot ni lui rester inconnue.
+
+## Carte des fonctionnalités et noyau d'outils (lot A2)
+
+- **`find_features`** ([tools/features.go](../../internal/modules/copilot/tools/features.go)) : la carte de tout ce que betorun sait faire, générée au démarrage (aucun texte écrit à la main) : chaque outil (lecture ou carte d'action) et chaque route « guide » (écran de la console, double authentification, note), avec son résumé anglais (spécification publique), sa description française (la route) et sa section ; plus les écrans de la console (`consoleScreens`, titres anglais et français). Recherche par mots-clés sans accents, au singulier, en français ou en anglais ; 15 résultats au plus. Sans correspondance : `NO MATCH`, avec la consigne de dire que betorun ne le propose pas et de proposer un ticket. Requête vide : les sections et tous les écrans.
+- **Noyau** (`tools.CoreTools`, 22 outils, ~3 000 jetons) : seuls ces outils sont présentés au modèle en début de tour. Les outils que `find_features` nomme (`read tool: x`, `action card: x`) lui sont ajoutés pour la suite du tour (`agent.ScopedRunner`) : jamais le catalogue entier (~127 outils, ~15 000 jetons à chaque appel, au-delà de la limite de 128 outils de certains fournisseurs). Un outil du noyau absent du catalogue fait échouer `TestCopilotFeatureMap`.
+- **Prompt** : règle « zéro invention » en tête (tout fait vient d'un outil ; `find_features` avant d'affirmer qu'une fonctionnalité existe ou de citer un écran ; prix seulement par `get_price_catalog` / `get_billing_estimate` ; ticket de support quand la personne est bloquée).
+
+## Vérification des réponses (lot A3)
+
+[grounding](../../internal/modules/copilot/grounding/grounding.go) : chaque élément vérifiable d'une réponse doit avoir une **preuve**.
+
+- **Preuves** (`grounding.Evidence`) : jetons extraits (identifiants, adresses IP, nombres normalisés, hôtes) des résultats d'outils du tour, des cartes proposées, du message et des pièces jointes, de la page, des échanges gardés, et des tours précédents (`betorun:copilot:evidence:<personne>:<conversation>`, mêmes 24 h que la conversation, effacés avec elle). Jamais le texte des résultats : la mémoire ne devient pas un second stockage des journaux ou des configurations.
+- **Contrôles** (`grounding.Check`) : identifiant (UUID) ; adresse IPv4 (sauf `0.0.0.0` et `127.0.0.1`, conseils généraux) ; montant accolé à une monnaie (XAF, FCFA, EUR, €, USD, $ ; « 7 300 », « 7300 », « 2 500,5 » et « 2500.5 » se valent) ; lien relatif vers la console (écran de `consoleScreens`, ou page d'une ressource `/workloads/`, `/builds/`, `/sites/`, `/vps/`, `/support/` dont l'identifiant est prouvé) ; adresse web (hôte prouvé) ; nom d'outil interne (jamais montré).
+- **Correction** : un élément sans preuve → événement SSE `revising`, le modèle réécrit une fois sa réponse avec la liste (`grounding.Feedback` ; il peut relire un outil) ; ce qui reste sans preuve est retiré (`grounding.Sanitize` : lien → son texte, valeur → « (non vérifié) ») ; la console remplace le brouillon par la réponse vérifiée (événement `replace {answer}`). Métriques `kubemanager_copilot_grounding_total{outcome=clean|revised|sanitized}` et `grounding_violations_total{kind}`.
+- Limite : le brouillon est diffusé en direct avant la vérification ; la console le masque dès `revising` (« Je vérifie ma réponse… ») et affiche la version vérifiée.
 
 ## Contrôle des droits
 
@@ -75,7 +93,7 @@ Corps : `message` (1 à 4000 caractères), `conversation_id` (UUID, sinon un nou
 
 Avant le flux, réponses JSON ordinaires : `503 COPILOT_DISABLED`, `400 INVALID_REQUEST`, `429 COPILOT_RATE_LIMITED` (12 messages par personne et par minute, Redis ; Redis injoignable = refus).
 
-Événements : `meta {conversation_id}` · `delta {text}` · `tool {id, name, status: running|ok|failed}` · `action {carte}` · `done {answer, stop, tool_calls}` · `error {code, message}` avec `COPILOT_BUDGET`, `COPILOT_TOO_LONG`, `COPILOT_CANCELED` ou `COPILOT_UNAVAILABLE`. En-têtes `Cache-Control: no-cache, no-transform` et `X-Accel-Buffering: no`.
+Événements : `meta {conversation_id}` · `delta {text}` · `tool {id, name, status: running|ok|failed}` · `action {carte}` · `revising {}` · `replace {answer}` (réponse vérifiée, lot A3) · `done {answer, stop, tool_calls}` · `error {code, message}` avec `COPILOT_BUDGET`, `COPILOT_TOO_LONG`, `COPILOT_CANCELED` ou `COPILOT_UNAVAILABLE`. En-têtes `Cache-Control: no-cache, no-transform` et `X-Accel-Buffering: no`.
 
 Un résultat d'outil est borné à 12 Kio pour le modèle (fin gardée pour les journaux).
 

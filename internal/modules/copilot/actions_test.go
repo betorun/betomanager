@@ -115,7 +115,7 @@ func actionService(t *testing.T) (*service.Service, *api, *fakeMinter) {
 		{Name: "stop_workload", Method: "POST", Path: "/workloads/:id/stop", Write: true, Risk: tools.RiskMedium, Undo: "start_workload"},
 		{Name: "start_workload", Method: "POST", Path: "/workloads/:id/start", Write: true, Risk: tools.RiskLow, Undo: "stop_workload"},
 		{Name: "update_workload_variables", Method: "PATCH", Path: "/workloads/:id/variables", Write: true, Risk: tools.RiskMedium, Omit: []string{"secrets"}},
-	}, []byte(actionSpec))
+	}, []byte(actionSpec), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

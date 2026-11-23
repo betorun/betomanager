@@ -118,5 +118,17 @@
  {
   "fr": "copilot: outil %q : inverse %q absent ou incompatible",
   "en": "copilot: tool %q: inverse %q missing or incompatible"
+ },
+ {
+  "fr": "parcours de connexion ou de compte, mené par la console",
+  "en": "sign-in or account flow, handled by the console"
+ },
+ {
+  "fr": "mécanique technique (jetons, découverte), sans intérêt pour la personne",
+  "en": "technical plumbing (tokens, discovery), of no interest to the person"
+ },
+ {
+  "fr": "copilot: carte : outil %q absent de la spécification",
+  "en": "copilot: feature map: tool %q missing from the specification"
  }
 ]

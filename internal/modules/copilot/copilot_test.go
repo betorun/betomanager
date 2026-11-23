@@ -28,7 +28,7 @@ func enabledService(t *testing.T) *service.Service {
 		{Name: tools.ToolGetWorkloadStatus, Method: "GET", Path: "/w/:id/status"},
 		{Name: tools.ToolGetWorkloadEvents, Method: "GET", Path: "/w/:id/events"},
 		{Name: tools.ToolGetWorkloadLogs, Method: "GET", Path: "/w/:id/logs"},
-	}, []byte(spec))
+	}, []byte(spec), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
