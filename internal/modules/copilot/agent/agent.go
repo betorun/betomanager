@@ -54,6 +54,44 @@ type ToolRunner interface {
 	Run(ctx context.Context, name string, args json.RawMessage) tools.Result
 }
 
+// ScopedRunner : catalogue présenté par morceaux (noyau, puis outils nommés
+// par find_features ou appelés par le modèle). Sans lui : tout le catalogue.
+type ScopedRunner interface {
+	Core() []string
+	DefinitionsOf(names []string) []llm.Tool
+}
+
+// toolSet : outils présentés au modèle pendant un tour.
+type toolSet struct {
+	scoped ScopedRunner
+	names  []string
+	has    map[string]bool
+}
+
+func newToolSet(runner ToolRunner) *toolSet {
+	s, ok := runner.(ScopedRunner)
+	if !ok {
+		return nil
+	}
+	ts := &toolSet{scoped: s, has: map[string]bool{}}
+	ts.add(s.Core()...)
+	return ts
+}
+
+func (ts *toolSet) add(names ...string) bool {
+	added := false
+	for _, n := range names {
+		if !ts.has[n] {
+			ts.has[n] = true
+			ts.names = append(ts.names, n)
+			added = true
+		}
+	}
+	return added
+}
+
+func (ts *toolSet) defs() []llm.Tool { return ts.scoped.DefinitionsOf(ts.names) }
+
 // Agent : sans état ; un Run par message.
 type Agent struct {
 	LLM    llm.Provider
@@ -108,7 +146,13 @@ func (a *Agent) Run(ctx context.Context, turn Turn, runner ToolRunner, emit Emit
 	defer cancel()
 
 	msgs := append(append([]llm.Message(nil), turn.History...), llm.Message{Role: llm.RoleUser, Text: turn.Message})
-	defs := runner.Definitions()
+	set := newToolSet(runner)
+	var defs []llm.Tool
+	if set != nil {
+		defs = set.defs()
+	} else {
+		defs = runner.Definitions()
+	}
 	var res Result
 	var answer strings.Builder
 
@@ -161,6 +205,18 @@ func (a *Agent) Run(ctx context.Context, turn Turn, runner ToolRunner, emit Emit
 			msgs = append(msgs, llm.Message{Role: llm.RoleTool, ToolResult: &llm.ToolResult{
 				CallID: call.ID, Content: frame(call.Name, r), IsError: r.IsError,
 			}})
+			if set != nil {
+				grown := false
+				if !r.IsError {
+					grown = set.add(call.Name) // outil existant appelé directement
+				}
+				if call.Name == tools.ToolFindFeatures && !r.IsError {
+					grown = set.add(tools.NamedTools(r.Content)...) || grown
+				}
+				if grown {
+					defs = set.defs()
+				}
+			}
 		}
 		// Le texte d'avant les outils (« Je regarde… ») reste affiché, mais
 		// la réponse finale repart d'une ligne neuve.

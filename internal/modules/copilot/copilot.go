@@ -28,6 +28,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/agent"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/grounding"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/service"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/store"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
@@ -177,6 +178,17 @@ func (h *Controller) Chat(c *gin.Context) {
 
 	sse.send("meta", gin.H{"conversation_id": convID})
 
+	// Preuves (lot A3) : jetons des tours précédents, message et pièces
+	// jointes, page, échanges gardés ; les résultats d'outils s'y ajoutent.
+	ev := grounding.NewEvidence()
+	if ts, err := s.Store.LoadEvidence(ctx, user.String(), convID); err == nil {
+		ev.AddTokens(ts)
+	}
+	for _, m := range stored {
+		ev.Add(m.Text)
+	}
+	runner.Evidence = ev
+
 	page := agent.Page{Path: in.Page.Path, ProjectID: in.Page.ProjectID, WorkloadID: in.Page.WorkloadID,
 		BuildID: in.Page.BuildID, SiteID: in.Page.SiteID}
 	turn := agent.Turn{
@@ -186,6 +198,8 @@ func (h *Controller) Chat(c *gin.Context) {
 		// Budget par personne et par jour (llm.Budget) : pas encore par organisation.
 		Caller: llm.Caller{OrgID: "user:" + user.String(), UserID: user.String(), TurnID: uuid.NewString()},
 	}
+	ev.Add(turn.Message)
+	ev.Add(strings.Join([]string{page.Path, page.ProjectID, page.WorkloadID, page.BuildID, page.SiteID}, " "))
 	ag := &agent.Agent{LLM: s.LLM, Limits: lim}
 	res, err := ag.Run(ctx, turn, runner, sse)
 	service.TurnsTotal.WithLabelValues(string(res.Stop)).Inc()
@@ -194,6 +208,12 @@ func (h *Controller) Chat(c *gin.Context) {
 		s.Logger.Warnw("copilot: no answer", "kind", llm.KindOf(err), "error", err)
 		sse.send("error", gin.H{"code": code, "message": msg})
 		return
+	}
+	if res.Answer != "" {
+		res.Answer = h.verify(ctx, ag, turn, runner, sse, res.Answer, ev, c.GetHeader("Accept-Language"))
+		if err := s.Store.SaveEvidence(context.WithoutCancel(ctx), user.String(), convID, ev.Tokens()); err != nil {
+			s.Logger.Warnw("copilot: evidence not saved", "error", err)
+		}
 	}
 	if res.Answer != "" {
 		// Contexte détaché : la personne a pu fermer l'onglet, l'échange a eu lieu.
@@ -205,6 +225,55 @@ func (h *Controller) Chat(c *gin.Context) {
 }
 
 // errorCode : erreur du modèle → code stable pour la console.
+// verify : la réponse ne cite que des éléments prouvés. Sinon le modèle la
+// réécrit une fois, avec la liste de ce qui n'a pas de preuve (il peut
+// relire un outil) ; s'il insiste, ces éléments sont retirés. La console
+// remplace la réponse affichée (événement replace).
+func (h *Controller) verify(ctx context.Context, ag *agent.Agent, turn agent.Turn, runner *service.BoundRunner,
+	sse *sse, answer string, ev *grounding.Evidence, acceptLanguage string) string {
+	s := h.Service
+	vs := grounding.Check(answer, ev, s.Grounding)
+	if len(vs) == 0 {
+		service.GroundingTotal.WithLabelValues("clean").Inc()
+		return answer
+	}
+	for _, v := range vs {
+		service.GroundingViolationsTotal.WithLabelValues(v.Kind).Inc()
+	}
+	s.Logger.Infow("copilot: answer not grounded, revising", "violations", vs)
+	sse.send("revising", gin.H{})
+	fix := turn
+	fix.History = append(append([]llm.Message(nil), turn.History...),
+		llm.Message{Role: llm.RoleUser, Text: turn.Message}, llm.Message{Role: llm.RoleAssistant, Text: answer})
+	fix.Message = grounding.Feedback(vs)
+	quiet := &toolEventsOnly{sse: sse}
+	revised := answer
+	if res, err := ag.Run(ctx, fix, runner, quiet); err == nil && strings.TrimSpace(res.Answer) != "" {
+		revised = strings.TrimSpace(res.Answer)
+	}
+	outcome := "revised"
+	if left := grounding.Check(revised, ev, s.Grounding); len(left) > 0 {
+		label := "(non vérifié)"
+		if agent.Language(acceptLanguage) == "English" {
+			label = "(unverified)"
+		}
+		revised = grounding.Sanitize(revised, left, label)
+		outcome = "sanitized"
+		s.Logger.Warnw("copilot: answer sanitized", "violations", left)
+	}
+	service.GroundingTotal.WithLabelValues(outcome).Inc()
+	sse.send("replace", gin.H{"answer": revised})
+	return revised
+}
+
+// toolEventsOnly : pendant une réécriture, l'activité des outils reste
+// visible ; le texte, lui, arrive d'un bloc (événement replace).
+type toolEventsOnly struct{ sse *sse }
+
+func (t *toolEventsOnly) Text(string)                      {}
+func (t *toolEventsOnly) ToolStart(id, name string)        { t.sse.ToolStart(id, name) }
+func (t *toolEventsOnly) ToolEnd(id, name string, ok bool) { t.sse.ToolEnd(id, name, ok) }
+
 func errorCode(err error) (string, string) {
 	switch llm.KindOf(err) {
 	case llm.KindBudgetExceeded:

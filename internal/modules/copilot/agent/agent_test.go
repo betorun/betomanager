@@ -123,3 +123,58 @@ func TestPromptKeepsOnlyCleanContext(t *testing.T) {
 		t.Fatalf("prompt = %s", p)
 	}
 }
+
+// scopedRunner : catalogue par morceaux (noyau + outils nommés par find_features).
+type scopedRunner struct {
+	fakeRunner
+	all map[string]bool
+}
+
+func (s *scopedRunner) Core() []string { return []string{"find_features", "list_projects"} }
+func (s *scopedRunner) DefinitionsOf(names []string) []llm.Tool {
+	var out []llm.Tool
+	for _, n := range names {
+		if s.all[n] {
+			out = append(out, llm.Tool{Name: n, Description: "d", Parameters: json.RawMessage(`{"type":"object","properties":{}}`)})
+		}
+	}
+	return out
+}
+
+func toolNames(defs []llm.Tool) []string {
+	var out []string
+	for _, d := range defs {
+		out = append(out, d.Name)
+	}
+	return out
+}
+
+// Le modèle commence avec le noyau ; les outils nommés par find_features lui
+// sont présentés au tour suivant, jamais le catalogue entier.
+func TestRunScopedTools(t *testing.T) {
+	p := llmtest.New("p",
+		llmtest.Call("c1", "find_features", `{"query":"vps"}`),
+		llmtest.Call("c2", "list_vps", `{}`),
+		llmtest.Say("Vous avez un VPS."),
+	)
+	run := &scopedRunner{all: map[string]bool{"find_features": true, "list_projects": true, "list_vps": true, "stop_vps": true, "get_wallet": true}}
+	run.content = "- [VPS] List VPS → read tool: list_vps\n- [VPS] Stop → action card: stop_vps\n"
+	if _, err := (&Agent{LLM: p}).Run(context.Background(), turn(), run, &recorder{}); err != nil {
+		t.Fatal(err)
+	}
+	reqs := p.Requests()
+	if len(reqs) != 3 {
+		t.Fatalf("requêtes : %d", len(reqs))
+	}
+	if got := strings.Join(toolNames(reqs[0].Tools), ","); got != "find_features,list_projects" {
+		t.Fatalf("premier appel : %s", got)
+	}
+	if got := strings.Join(toolNames(reqs[1].Tools), ","); got != "find_features,list_projects,list_vps,stop_vps" {
+		t.Fatalf("après find_features : %s", got)
+	}
+	for _, d := range reqs[2].Tools {
+		if d.Name == "get_wallet" {
+			t.Fatal("jamais le catalogue entier")
+		}
+	}
+}

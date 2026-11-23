@@ -113,6 +113,49 @@ func (c *Catalog) Definitions() []llm.Tool {
 	return out
 }
 
+// CoreTools : outils présentés au modèle dès le début d'un tour. Les autres
+// (plus d'une centaine) le sont quand find_features les nomme : un catalogue
+// entier à chaque appel coûterait ~15 000 jetons, dépasserait la limite de
+// certains fournisseurs (128 outils) et égarerait le modèle.
+var CoreTools = []string{
+	ToolFindFeatures, ToolDiagnoseWorkload,
+	"list_projects", "get_project_status", "get_project_network",
+	"list_workloads", "get_workload", "get_workload_status", "get_workload_logs", "get_workload_events",
+	"list_builds", "get_build", "get_build_logs", "build_from_git", "create_workload", "restart_workload",
+	"list_databases", "list_addons", "list_sites",
+	"get_price_catalog", "get_platform_status", "create_support_ticket",
+}
+
+// Names : noms de tous les outils (vérification des réponses : jamais montrés).
+func (c *Catalog) Names() []string { return append([]string(nil), c.order...) }
+
+// Core : outils du noyau présents dans ce catalogue.
+func (c *Catalog) Core() []string {
+	out := make([]string, 0, len(CoreTools))
+	for _, n := range CoreTools {
+		if _, ok := c.tools[n]; ok {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// DefinitionsOf : définitions de ces outils (inconnus ignorés), ordre du catalogue.
+func (c *Catalog) DefinitionsOf(names []string) []llm.Tool {
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
+	out := make([]llm.Tool, 0, len(names))
+	for _, n := range c.order {
+		if want[n] {
+			t := c.tools[n]
+			out = append(out, llm.Tool{Name: t.Name, Description: t.Description, Parameters: t.Schema})
+		}
+	}
+	return out
+}
+
 // Add : ajoute un outil composite (ex. diagnose_workload).
 func (c *Catalog) Add(t *Tool) error {
 	if !nameRe.MatchString(t.Name) {
@@ -142,6 +185,7 @@ type specMedia struct {
 }
 
 type specOperation struct {
+	Tags        []string    `json:"tags"`
 	Summary     string      `json:"summary"`
 	Description string      `json:"description"`
 	Parameters  []specParam `json:"parameters"`

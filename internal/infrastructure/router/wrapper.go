@@ -36,6 +36,9 @@ type Route struct {
 	Raw *RawDoc
 	// Copilot : outil du Copilot (copilot_wiring.go), nil sinon.
 	Copilot *CopilotTool
+	// CopilotGuide : route connue du Copilot, faite dans la console
+	// (copilot_decisions.go), nil sinon.
+	CopilotGuide *CopilotGuide
 }
 
 type RouteGroup struct {

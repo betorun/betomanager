@@ -130,4 +130,6 @@ func AddAllRoutes(a *App) {
 	addLegalRoutes(a)
 	addSupportRoutes(a)
 	addStatusRoutes(a)
+	// Copilot : outils et guides de la table de couverture (copilot_decisions.go).
+	applyCopilotDecisions(AllGroups)
 }

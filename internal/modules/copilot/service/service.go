@@ -17,6 +17,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/iam/sts"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/agent"
+	"github.com/thekrauss/kubemanager/internal/modules/copilot/grounding"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/store"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 )
@@ -47,8 +48,16 @@ func (r *BoundRunner) propose(ctx context.Context, t *tools.Tool, args json.RawM
 		return toolError("the action could not be prepared")
 	}
 	r.proposed++
+	view := p.View(t.PathParams())
 	if r.OnProposal != nil {
-		r.OnProposal(p.View(t.PathParams()))
+		r.OnProposal(view)
+	}
+	// La carte (cible relue avec les droits de la personne, détails) est
+	// une preuve : le modèle peut la décrire.
+	if r.Evidence != nil {
+		if raw, err := json.Marshal(view); err == nil {
+			r.Evidence.Add(string(raw))
+		}
 	}
 	return tools.Result{Status: http.StatusAccepted, Content: awaiting}
 }
@@ -135,12 +144,26 @@ type Service struct {
 	Mu      sync.RWMutex
 	Handler http.Handler
 	Catalog *tools.Catalog
+	// Grounding : ce qu'une réponse peut citer sans preuve (écrans, pages de
+	// ressources, noms d'outils à ne jamais montrer), posé par Bind.
+	Grounding grounding.Rules
 }
+
+// ResourcePages : pages de la console d'une ressource (identifiant à prouver).
+var ResourcePages = []string{"/workloads/", "/builds/", "/sites/", "/vps/", "/support/"}
 
 // Bind : branche le moteur HTTP de l'API et construit les outils depuis la
 // spécification publique (routes marquées ForCopilot). Appelé une fois les
 // routes enregistrées.
-func (s *Service) Bind(h http.Handler, routes []tools.Route, publicSpec []byte) error {
+// FeatureMap : ce que la carte des fonctionnalités ajoute aux outils (guides,
+// descriptions françaises, écrans de la console) ; nil : pas de carte.
+type FeatureMap struct {
+	RoutesFR map[string]string
+	Guides   []tools.FeatureRoute
+	Screens  []tools.Screen
+}
+
+func (s *Service) Bind(h http.Handler, routes []tools.Route, publicSpec []byte, features *FeatureMap) error {
 	cat, err := tools.Build(routes, publicSpec)
 	if err != nil {
 		return err
@@ -148,8 +171,20 @@ func (s *Service) Bind(h http.Handler, routes []tools.Route, publicSpec []byte) 
 	if err := tools.AddDiagnose(cat); err != nil {
 		return err
 	}
+	rules := grounding.Rules{Screens: map[string]bool{}, ResourcePages: ResourcePages, ToolNames: map[string]bool{}, Hosts: map[string]bool{}}
+	if features != nil {
+		if err := tools.AddFeatureMap(cat, publicSpec, features.RoutesFR, features.Guides, features.Screens); err != nil {
+			return err
+		}
+		for _, sc := range features.Screens {
+			rules.Screens[sc.Path] = true
+		}
+	}
+	for _, n := range cat.Names() {
+		rules.ToolNames[n] = true
+	}
 	s.Mu.Lock()
-	s.Handler, s.Catalog = h, cat
+	s.Handler, s.Catalog, s.Grounding = h, cat, rules
 	s.Mu.Unlock()
 	return nil
 }
@@ -203,9 +238,16 @@ type BoundRunner struct {
 	ConversationID string
 	OnProposal     func(View)
 	proposed       int
+	// Evidence : preuves du tour (jetons des résultats d'outils), pour la
+	// vérification de la réponse (nil : pas de vérification).
+	Evidence *grounding.Evidence
 }
 
 func (r *BoundRunner) Definitions() []llm.Tool { return r.Cat.Definitions() }
+
+// Core, DefinitionsOf : catalogue présenté par morceaux (agent.ScopedRunner).
+func (r *BoundRunner) Core() []string                          { return r.Cat.Core() }
+func (r *BoundRunner) DefinitionsOf(names []string) []llm.Tool { return r.Cat.DefinitionsOf(names) }
 
 func (r *BoundRunner) Run(ctx context.Context, name string, args json.RawMessage) tools.Result {
 	if t, ok := r.Cat.Lookup(name); ok && t.Write {
@@ -218,6 +260,9 @@ func (r *BoundRunner) Run(ctx context.Context, name string, args json.RawMessage
 		return res
 	}
 	res := r.Cat.Call(ctx, r.Inv, name, args)
+	if r.Evidence != nil && !res.IsError {
+		r.Evidence.Add(res.Content)
+	}
 	outcome := "ok"
 	if res.IsError {
 		outcome = "error"
@@ -248,6 +293,17 @@ var (
 		Namespace: "kubemanager", Subsystem: "copilot", Name: "turns_total",
 		Help: "Messages traités par le Copilot, par raison d'arrêt.",
 	}, []string{"stop"})
+	// GroundingTotal : vérification des réponses (clean : rien d'inventé ;
+	// revised : corrigée par le modèle ; sanitized : éléments retirés).
+	GroundingTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "kubemanager", Subsystem: "copilot", Name: "grounding_total",
+		Help: "Réponses du Copilot vérifiées, par issue (clean|revised|sanitized).",
+	}, []string{"outcome"})
+	// GroundingViolationsTotal : éléments sans preuve trouvés, par sorte.
+	GroundingViolationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "kubemanager", Subsystem: "copilot", Name: "grounding_violations_total",
+		Help: "Éléments de réponse sans preuve (première vérification), par sorte.",
+	}, []string{"kind"})
 	toolCallsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "kubemanager", Subsystem: "copilot", Name: "tool_calls_total",
 		Help: "Appels d'outils du Copilot, par outil et résultat (ok|error).",
