@@ -434,6 +434,11 @@ quelques minutes : les pods sont recréés sur le nouveau réseau).
 Cilium remplace flannel et le kube-proxy de k3s ; sa passerelle de sortie fait
 sortir chaque projet par son IP dédiée.
 
+Cluster existant à un nœud (terrain) : bascule sur place, données gardées,
+avec relevé avant/après et retour arrière : deploy/k8s/cilium-migrate.sh
+(check, puis migrate ; rollback au besoin). Les étapes a) et b) ci-dessous
+valent pour un nouveau cluster.
+
 a) k3s sans flannel ni kube-proxy (nouveau cluster, ou réinstallation) :
 
     curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none \
