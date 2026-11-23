@@ -88,3 +88,27 @@ func TestEnv_SetAndBadArgument(t *testing.T) {
 	_, err = run(t, "workloads", "env", "set", "web", "SANSEGAL")
 	require.Error(t, err)
 }
+
+// Mot de passe tapé à la place du nom : refusé avant toute invite, sans être
+// répété ni envoyé.
+func TestVariables_InvalidNameRefusedBeforePrompt(t *testing.T) {
+	var patched map[string]any
+	fakeVariablesAPI(t, &patched)
+	saved := readCode
+	defer func() { readCode = saved }()
+	asked := 0
+	readCode = func(string) (string, error) { asked++; return "x", nil }
+
+	for _, args := range [][]string{
+		{"workloads", "secrets", "set", "web", "Motdepasse2026."},
+		{"workloads", "secrets", "unset", "web", "9LIVES"},
+		{"workloads", "env", "set", "web", "MA-VAR=1"},
+	} {
+		_, err := run(t, args...)
+		require.Error(t, err, args)
+		assert.Contains(t, err.Error(), "nom de variable invalide")
+		assert.NotContains(t, err.Error(), "Motdepasse2026")
+	}
+	assert.Zero(t, asked, "aucune invite ouverte")
+	assert.Nil(t, patched, "rien d'envoyé")
+}

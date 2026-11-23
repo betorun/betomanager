@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,6 +11,24 @@ import (
 	"github.com/thekrauss/kubemanager/internal/cli/api"
 	"github.com/thekrauss/kubemanager/internal/cli/i18n"
 )
+
+// variableNameRe : même règle que l'API (workloads/domain), vérifiée avant
+// toute saisie : un mot de passe tapé à la place du nom est refusé tout de
+// suite, au lieu d'ouvrir une invite à son nom.
+var variableNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
+
+// checkVariableNames : le nom fautif n'est pas répété (ce peut être un secret).
+func checkVariableNames(names []string) error {
+	for _, name := range names {
+		if strings.Contains(name, "=") {
+			return errors.New(i18n.T("wl.secrets.no_argv"))
+		}
+		if !variableNameRe.MatchString(name) {
+			return errors.New(i18n.T("wl.env.bad_name"))
+		}
+	}
+	return nil
+}
 
 // secretsFromEnv : valeurs lues dans les variables d'environnement du même nom.
 func secretsFromEnv(names []string) (map[string]string, error) {
@@ -90,6 +109,9 @@ func newVariablesUnset() *cobra.Command {
 	return &cobra.Command{
 		Use: "unset " + i18n.T("arg.name") + " <KEY>...", Short: i18n.T("wl.env.unset.short"), Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkVariableNames(args[1:]); err != nil {
+				return err
+			}
 			return applyVariables(cmd, args[0], api.PatchVariablesRequest{Unset: args[1:]})
 		},
 	}
@@ -109,6 +131,9 @@ func newWorkloadsEnv() *cobra.Command {
 					// L'argument n'est pas répété : ce peut être un secret collé par erreur.
 					return errors.New(i18n.T("wl.env.bad"))
 				}
+				if !variableNameRe.MatchString(k) {
+					return errors.New(i18n.T("wl.env.bad_name"))
+				}
 				env[k] = v
 			}
 			return applyVariables(cmd, args[0], api.PatchVariablesRequest{Env: env})
@@ -127,6 +152,9 @@ func newWorkloadsSecrets() *cobra.Command {
 		Use: "set " + i18n.T("arg.name") + " <KEY>...", Short: i18n.T("wl.secrets.set.short"), Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			names := args[1:]
+			if err := checkVariableNames(names); err != nil {
+				return err
+			}
 			secrets := make(map[string]string, len(names))
 			switch {
 			case fromFile != "":

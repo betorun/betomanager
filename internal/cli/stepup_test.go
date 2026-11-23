@@ -20,11 +20,12 @@ import (
 
 // fakeAuthAPI : API betorun (connexion de la CLI, step-up) en mémoire.
 type fakeAuthAPI struct {
-	mu        sync.Mutex
-	challenge string // PKCE reçu à l'ouverture de la page d'autorisation
-	redirect  string
-	writes    atomic.Int32
-	noFactor  bool
+	mu          sync.Mutex
+	challenge   string // PKCE reçu à l'ouverture de la page d'autorisation
+	redirect    string
+	writes      atomic.Int32
+	noFactor    bool
+	passkeyOnly bool
 }
 
 func newAuthAPI(t *testing.T) (*httptest.Server, *fakeAuthAPI) {
@@ -67,6 +68,16 @@ func newAuthAPI(t *testing.T) (*httptest.Server, *fakeAuthAPI) {
 			_, _ = w.Write([]byte(`{"code":"INVALID_CODE","message":"invalid verification code"}`))
 		default:
 			_, _ = w.Write([]byte(`{"status":"authenticated","access_token":"tok-mfa","expires_in":600,"mfa":true}`))
+		}
+	})
+	mux.HandleFunc("GET /kmanager/v1/identity/mfa", func(w http.ResponseWriter, _ *http.Request) {
+		switch {
+		case f.noFactor:
+			_, _ = w.Write([]byte(`{"totp":false,"recovery_codes_remaining":0,"passkeys":0}`))
+		case f.passkeyOnly:
+			_, _ = w.Write([]byte(`{"totp":false,"recovery_codes_remaining":0,"passkeys":1}`))
+		default:
+			_, _ = w.Write([]byte(`{"totp":true,"recovery_codes_remaining":8,"passkeys":0}`))
 		}
 	})
 	mux.HandleFunc("GET /kmanager/v1/identity/bootstrap/status", func(w http.ResponseWriter, _ *http.Request) {
@@ -170,9 +181,18 @@ func TestCLI_StepUpInTerminal(t *testing.T) {
 	f.noFactor = true
 	require.NoError(t, config.SaveCredentials(&config.Credentials{AccessToken: "tok-ancien", RefreshToken: "rt",
 		ExpiresAt: time.Now().Add(time.Hour)}))
-	readCode = func(string) (string, error) { return "123456", nil }
+	prompted := 0
+	readCode = func(string) (string, error) { prompted++; return "123456", nil }
 	_, err = run(t, "access", "grant", "moussa@ex.sn", "viewer")
 	assert.Contains(t, describe(err), "Paramètres → Sécurité")
+	assert.Zero(t, prompted, "aucun code demandé à un compte sans second facteur")
+
+	// Passkey seule : inutilisable dans un terminal, renvoi vers la console.
+	f.noFactor, f.passkeyOnly = false, true
+	_, err = run(t, "access", "grant", "moussa@ex.sn", "viewer")
+	assert.Contains(t, describe(err), "passkey")
+	assert.Zero(t, prompted)
+	f.passkeyOnly = false
 
 	// CI ou script : aucune saisie possible, message explicite.
 	f.noFactor = false
