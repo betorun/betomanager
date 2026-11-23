@@ -2366,5 +2366,333 @@
  {
   "fr": "Résilier un VPS : coupé tout de suite, plus renouvelé, le mois entamé n'est pas remboursé",
   "en": "Cancel a VPS: stopped at once, no longer renewed, the current month is not refunded"
+ },
+ {
+  "fr": "Conditions",
+  "en": "Terms"
+ },
+ {
+  "fr": "Conditions générales de vente et politique d'usage acceptable : textes publiés et acceptation par l'organisation.",
+  "en": "Terms of sale and acceptable use policy: published texts and acceptance by the organization."
+ },
+ {
+  "fr": "Statut",
+  "en": "Status"
+ },
+ {
+  "fr": "État des services de la plateforme, incidents en cours et maintenances programmées.",
+  "en": "Platform service status, ongoing incidents and scheduled maintenance."
+ },
+ {
+  "fr": "Version en vigueur d'un document (ou une version publiée plus ancienne), en français ou en anglais",
+  "en": "Version in force of a document (or an older published version), in French or English"
+ },
+ {
+  "fr": "Documents en vigueur et versions acceptées par l'organisation",
+  "en": "Documents in force and versions accepted by the organization"
+ },
+ {
+  "fr": "Accepter la version en vigueur d'un document au nom de l'organisation",
+  "en": "Accept the version in force of a document on behalf of the organization"
+ },
+ {
+  "fr": "État des services, incidents des 7 derniers jours et maintenances à venir (mis à jour toutes les 30 secondes)",
+  "en": "Service status, incidents from the last 7 days and upcoming maintenance (refreshed every 30 seconds)"
+ },
+ {
+  "fr": "Langue du texte : fr ou en (par défaut : la langue de la requête)",
+  "en": "Text language: fr or en (default: the request language)"
+ },
+ {
+  "fr": "Langue des titres : fr ou en (par défaut : la langue de la requête)",
+  "en": "Title language: fr or en (default: the request language)"
+ },
+ {
+  "fr": "Langue des textes : fr ou en (par défaut : la langue de la requête)",
+  "en": "Text language: fr or en (default: the request language)"
+ },
+ {
+  "fr": "Numéro d'une version publiée (par défaut : la version en vigueur)",
+  "en": "Number of a published version (default: the version in force)"
+ },
+ {
+  "fr": "Document : terms_vps (conditions de vente des VPS) ou aup (politique d'usage acceptable)",
+  "en": "Document: terms_vps (VPS terms of sale) or aup (acceptable use policy)"
+ },
+ {
+  "fr": "Document : terms_vps ou aup",
+  "en": "Document: terms_vps or aup"
+ },
+ {
+  "fr": "Numéro de la version",
+  "en": "Version number"
+ },
+ {
+  "fr": "Langue du texte : fr ou en",
+  "en": "Text language: fr or en"
+ },
+ {
+  "fr": "Titre",
+  "en": "Title"
+ },
+ {
+  "fr": "Texte au format Markdown",
+  "en": "Text in Markdown format"
+ },
+ {
+  "fr": "Date de publication",
+  "en": "Publication date"
+ },
+ {
+  "fr": "Version en vigueur",
+  "en": "Version in force"
+ },
+ {
+  "fr": "Titre de la version en vigueur, dans la langue de la requête",
+  "en": "Title of the version in force, in the request language"
+ },
+ {
+  "fr": "Date de publication de la version en vigueur",
+  "en": "Publication date of the version in force"
+ },
+ {
+  "fr": "Dernière version acceptée par l'organisation (null : jamais)",
+  "en": "Latest version accepted by the organization (null: never)"
+ },
+ {
+  "fr": "Date de cette acceptation",
+  "en": "Date of that acceptance"
+ },
+ {
+  "fr": "Qui l'a acceptée",
+  "en": "Who accepted it"
+ },
+ {
+  "fr": "La version en vigueur reste à accepter",
+  "en": "The version in force is still to be accepted"
+ },
+ {
+  "fr": "Documents publiés et leur acceptation par l'organisation",
+  "en": "Published documents and their acceptance by the organization"
+ },
+ {
+  "fr": "Document accepté : terms_vps ou aup",
+  "en": "Accepted document: terms_vps or aup"
+ },
+ {
+  "fr": "Version acceptée : celle en vigueur",
+  "en": "Accepted version: the one in force"
+ },
+ {
+  "fr": "Document accepté",
+  "en": "Accepted document"
+ },
+ {
+  "fr": "Version acceptée",
+  "en": "Accepted version"
+ },
+ {
+  "fr": "Date de l'acceptation",
+  "en": "Acceptance date"
+ },
+ {
+  "fr": "Composant : api, vps, domains",
+  "en": "Component: api, vps, domains"
+ },
+ {
+  "fr": "Nom du composant, dans la langue de la requête",
+  "en": "Component name, in the request language"
+ },
+ {
+  "fr": "État : operational, degraded, outage ou unknown",
+  "en": "State: operational, degraded, outage or unknown"
+ },
+ {
+  "fr": "Statut de l'incident à ce message : investigating, identified, monitoring ou resolved",
+  "en": "Incident status at this message: investigating, identified, monitoring or resolved"
+ },
+ {
+  "fr": "Message, dans la langue de la requête",
+  "en": "Message, in the request language"
+ },
+ {
+  "fr": "Date du message",
+  "en": "Message date"
+ },
+ {
+  "fr": "Identifiant de l'incident",
+  "en": "Incident identifier"
+ },
+ {
+  "fr": "Titre, dans la langue de la requête",
+  "en": "Title, in the request language"
+ },
+ {
+  "fr": "Description, dans la langue de la requête",
+  "en": "Description, in the request language"
+ },
+ {
+  "fr": "Impact : minor, major ou maintenance",
+  "en": "Impact: minor, major or maintenance"
+ },
+ {
+  "fr": "Statut : investigating, identified, monitoring ou resolved",
+  "en": "Status: investigating, identified, monitoring or resolved"
+ },
+ {
+  "fr": "Composants touchés",
+  "en": "Affected components"
+ },
+ {
+  "fr": "Début de l'incident",
+  "en": "Incident start"
+ },
+ {
+  "fr": "Fin de l'incident",
+  "en": "Incident end"
+ },
+ {
+  "fr": "Début prévu de la maintenance",
+  "en": "Planned maintenance start"
+ },
+ {
+  "fr": "Fin prévue de la maintenance",
+  "en": "Planned maintenance end"
+ },
+ {
+  "fr": "Messages, du plus récent au plus ancien",
+  "en": "Messages, newest first"
+ },
+ {
+  "fr": "État d'ensemble : operational, degraded, outage ou unknown",
+  "en": "Overall state: operational, degraded, outage or unknown"
+ },
+ {
+  "fr": "Composants et leur état",
+  "en": "Components and their state"
+ },
+ {
+  "fr": "Incidents en cours et résolus depuis 7 jours, les plus récents d'abord",
+  "en": "Ongoing incidents and incidents resolved in the last 7 days, newest first"
+ },
+ {
+  "fr": "Maintenances programmées à venir, les plus proches d'abord",
+  "en": "Upcoming scheduled maintenance, soonest first"
+ },
+ {
+  "fr": "Date du calcul de cette page",
+  "en": "Time this page was computed"
+ },
+ {
+  "fr": "Message, texte brut (10 000 caractères au plus)",
+  "en": "Message, plain text (at most 10,000 characters)"
+ },
+ {
+  "fr": "Catégorie (REQUEST : ouverture du port 25, déblocage d'une adresse…)",
+  "en": "Category (REQUEST: opening port 25, unblocking an address…)"
+ },
+ {
+  "fr": "Demande détaillée, texte brut (10 000 caractères au plus)",
+  "en": "Detailed request, plain text (at most 10,000 characters)"
+ },
+ {
+  "fr": "Priorité proposée (l'équipe peut la changer)",
+  "en": "Suggested priority (the team may change it)"
+ },
+ {
+  "fr": "Projet concerné",
+  "en": "Related project"
+ },
+ {
+  "fr": "Identifiant de la ressource concernée",
+  "en": "Identifier of the related resource"
+ },
+ {
+  "fr": "Type de la ressource concernée (ex: vps)",
+  "en": "Kind of the related resource (e.g. vps)"
+ },
+ {
+  "fr": "Sujet de la demande (3 à 150 caractères)",
+  "en": "Request subject (3 to 150 characters)"
+ },
+ {
+  "fr": "Étiquettes libres (10 au plus)",
+  "en": "Free tags (at most 10)"
+ },
+ {
+  "fr": "Tickets de l'organisation, activité la plus récente d'abord",
+  "en": "Organization tickets, most recent activity first"
+ },
+ {
+  "fr": "Priorité",
+  "en": "Priority"
+ },
+ {
+  "fr": "Taille de la page (100 au plus)",
+  "en": "Page size (at most 100)"
+ },
+ {
+  "fr": "Catégorie",
+  "en": "Category"
+ },
+ {
+  "fr": "Décalage",
+  "en": "Offset"
+ },
+ {
+  "fr": "Recherche dans le sujet, la description et l'e-mail de l'auteur",
+  "en": "Search in the subject, the description and the author's e-mail"
+ },
+ {
+  "fr": "Ouvrir un ticket",
+  "en": "Open a ticket"
+ },
+ {
+  "fr": "Joindre un fichier (multipart, champ file : PDF, image ou texte, 10 Mo)",
+  "en": "Attach a file (multipart, file field: PDF, image or text, 10 MB)"
+ },
+ {
+  "fr": "Fichier : PDF, JPEG, PNG, WebP ou texte, 10 Mo au plus",
+  "en": "File: PDF, JPEG, PNG, WebP or text, at most 10 MB"
+ },
+ {
+  "fr": "Message du ticket auquel rattacher le fichier",
+  "en": "Ticket message the file belongs to"
+ },
+ {
+  "fr": "Télécharger une pièce jointe",
+  "en": "Download an attachment"
+ },
+ {
+  "fr": "Identifiant de la pièce jointe",
+  "en": "Attachment identifier"
+ },
+ {
+  "fr": "Un ticket, avec ses messages, pièces jointes et événements",
+  "en": "A ticket, with its messages, attachments and events"
+ },
+ {
+  "fr": "Répondre à un ticket (un ticket résolu est rouvert, un ticket fermé refuse)",
+  "en": "Reply to a ticket (a resolved ticket is reopened, a closed ticket refuses)"
+ },
+ {
+  "fr": "Rouvrir un ticket résolu (un ticket fermé ne se rouvre pas)",
+  "en": "Reopen a resolved ticket (a closed ticket cannot be reopened)"
+ },
+ {
+  "fr": "Identifiant du ticket",
+  "en": "Ticket identifier"
+ },
+ {
+  "fr": "Marquer un ticket comme résolu",
+  "en": "Mark a ticket as resolved"
+ },
+ {
+  "fr": "Demandes à l'équipe betorun : questions, facturation, abus, demandes (port 25, déblocage d'adresse…).",
+  "en": "Requests to the betorun team: questions, billing, abuse, requests (port 25, address unblocking…)."
+ },
+ {
+  "fr": "Support client",
+  "en": "Customer support"
  }
 ]

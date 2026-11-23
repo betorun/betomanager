@@ -6,7 +6,10 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/modules/compute"
 	computeDomain "github.com/thekrauss/kubemanager/internal/modules/compute/domain"
+	legalDomain "github.com/thekrauss/kubemanager/internal/modules/legal/domain"
 	mailSvc "github.com/thekrauss/kubemanager/internal/modules/mail/service"
+	statusDomain "github.com/thekrauss/kubemanager/internal/modules/status/domain"
+	supportDomain "github.com/thekrauss/kubemanager/internal/modules/support/domain"
 
 	"github.com/thekrauss/kubemanager/internal/auth/sso"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
@@ -224,6 +227,49 @@ var sentinelErrors = []sentinelMapping{
 	{iam.ErrInvalidDenyPermission, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{mailSvc.ErrNotSuppressed, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{mailSvc.ErrNoSuppressions, http.StatusServiceUnavailable, "UNAVAILABLE", false},
+	// Conditions de vente et politique d'usage (docs/modules/legal.md).
+	// Support (docs/modules/support.md).
+	{supportDomain.ErrTicketNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{supportDomain.ErrMacroNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{supportDomain.ErrAttachmentNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{supportDomain.ErrInvalidSubject, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidDescription, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidBody, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidStatus, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidPriority, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidCategory, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidTags, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidResource, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrProjectNotInOrg, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidAssignee, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrInvalidMacro, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrMessageNotOnTicket, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrAttachmentMissing, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{supportDomain.ErrTicketClosed, http.StatusConflict, "TICKET_CLOSED", false},
+	{supportDomain.ErrAttachmentTooLarge, http.StatusRequestEntityTooLarge, "ATTACHMENT_TOO_LARGE", false},
+	{supportDomain.ErrAttachmentType, http.StatusBadRequest, "ATTACHMENT_TYPE_NOT_ALLOWED", false},
+	{supportDomain.ErrAttachmentLimit, http.StatusConflict, "ATTACHMENT_LIMIT", false},
+	{supportDomain.ErrAttachmentsUnavailable, http.StatusServiceUnavailable, "ATTACHMENTS_UNAVAILABLE", false},
+	{legalDomain.ErrUnknownKind, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{legalDomain.ErrDocumentNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{legalDomain.ErrNotDraft, http.StatusConflict, "LEGAL_VERSION_PUBLISHED", false},
+	{legalDomain.ErrDraftExists, http.StatusConflict, "LEGAL_DRAFT_EXISTS", false},
+	{legalDomain.ErrInvalidDocument, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{legalDomain.ErrDocumentTooLong, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{legalDomain.ErrNothingToCopy, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{legalDomain.ErrInvalidLegalQuery, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{legalDomain.ErrNotCurrent, http.StatusConflict, "LEGAL_VERSION_NOT_CURRENT", false},
+	{legalDomain.ErrTermsNotAccepted, http.StatusConflict, "TERMS_NOT_ACCEPTED", false},
+	// Page de statut (docs/modules/status.md).
+	{statusDomain.ErrIncidentNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{statusDomain.ErrIncidentResolved, http.StatusConflict, "INCIDENT_RESOLVED", false},
+	{statusDomain.ErrInvalidIncident, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{statusDomain.ErrIncidentTooLong, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{statusDomain.ErrInvalidImpact, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{statusDomain.ErrInvalidStatus, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{statusDomain.ErrInvalidComponents, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{statusDomain.ErrInvalidWindow, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{statusDomain.ErrInvalidStatusUpdate, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{computeDomain.ErrOfferNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{computeDomain.ErrInvalidOffer, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{computeDomain.ErrUnavailable, http.StatusServiceUnavailable, "UNAVAILABLE", false},
@@ -251,6 +297,11 @@ var sentinelErrors = []sentinelMapping{
 	{computeDomain.ErrReverseNotPointing, http.StatusConflict, "REVERSE_NOT_POINTING", false},
 	{computeDomain.ErrNoAddress, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{computeDomain.ErrNotSpamBlocked, http.StatusConflict, "NOT_SPAM_BLOCKED", false},
+	{computeDomain.ErrOutOfStock, http.StatusConflict, "OUT_OF_STOCK", false},
+	{computeDomain.ErrQuotaReached, http.StatusConflict, "VPS_QUOTA_REACHED", false},
+	{computeDomain.ErrNewAccountLimit, http.StatusConflict, "NEW_ACCOUNT_LIMIT", false},
+	{computeDomain.ErrNotAbuseSuspended, http.StatusConflict, "NOT_ABUSE_SUSPENDED", false},
+	{computeDomain.ErrNotOrphan, http.StatusConflict, "NOT_ORPHAN", false},
 	{iam.ErrMFANotConfigured, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{iam.ErrInvalidDomain, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{sso.ErrNoSSO, http.StatusNotFound, "SSO_NOT_CONFIGURED", false},

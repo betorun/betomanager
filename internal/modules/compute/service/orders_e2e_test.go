@@ -29,7 +29,13 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/compute/service"
 )
 
-const e2eDSN = "postgres://postgres:pw@127.0.0.1:55433/postgres?sslmode=disable"
+// e2eDSN : base des tests (IAM_E2E_DSN pour en viser une autre).
+var e2eDSN = func() string {
+	if d := os.Getenv("IAM_E2E_DSN"); d != "" {
+		return d
+	}
+	return "postgres://postgres:pw@127.0.0.1:55433/postgres?sslmode=disable"
+}()
 
 const testKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA74/lOopHYYorBomTQtkD2FGCfu4OIN/VlNbSYUgYqW test@exemple"
 
@@ -61,6 +67,11 @@ func TestE2E_ComputeOrdersAndRenewals(t *testing.T) {
 	// L'équipe tarife VPS-1 : 6,49 € → 9 000 FCFA.
 	_, err = s.SaveOffer(ctx, service.OfferUpdate{Code: "VPS-1", Name: "VPS-1", ProviderPlanCode: "vps-2025-model1", ProviderPriceCents: 649,
 		CoefficientBP: 20000, RoundTo: 500, Locations: []string{"gra"}, Images: map[string]string{"ubuntu-24.04": "Ubuntu 24.04"}, Public: true, Position: 1}, "user:staff")
+	require.NoError(t, err)
+	// Garde-fous du lot 8 hors sujet ici : organisation dispensée.
+	_, err = s.SaveLimits(ctx, service.LimitsUpdate{MaxVPSPerOrg: 5, NewAccountDays: 30, NewAccountMaxVPS: 1, NewAccountOffers: []string{"VPS-1"}}, "user:staff")
+	require.NoError(t, err)
+	_, err = s.SetOrgLimits(ctx, org, service.OrgLimitsUpdate{Trusted: true}, "user:staff")
 	require.NoError(t, err)
 	order := service.OrderRequest{OrganizationID: org.String(), ProjectID: project.String(), Name: "web", Offer: "vps-1",
 		Location: "GRA", Image: "ubuntu-24.04", SSHPublicKey: testKey, MonthlyPrice: 9000}

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/thekrauss/kubemanager/internal/modules/compute"
+	"github.com/thekrauss/kubemanager/internal/modules/support"
 
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
@@ -20,6 +21,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
+	"github.com/thekrauss/kubemanager/internal/modules/legal"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +41,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/projects"
 	realtimeCtrl "github.com/thekrauss/kubemanager/internal/modules/realtime"
 	"github.com/thekrauss/kubemanager/internal/modules/sites"
+	"github.com/thekrauss/kubemanager/internal/modules/status"
 	workload "github.com/thekrauss/kubemanager/internal/modules/workloads"
 )
 
@@ -78,6 +81,9 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Billing:     &billing.Controller{},
 				DomainSales: &domainsales.Controller{},
 				Compute:     &compute.Controller{},
+				Legal:       &legal.Controller{},
+				Status:      &status.Controller{},
+				Support:     &support.Controller{},
 				Databases:   &databases.Controller{},
 				Addons:      &addons.Controller{},
 				DiskUsage:   &diskusage.Controller{},

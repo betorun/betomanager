@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/thekrauss/kubemanager/internal/modules/compute/domain"
+	legalContract "github.com/thekrauss/kubemanager/internal/modules/legal/contract"
 )
 
 // Catalogs : taux de la grille de l'organisation (module billing).
@@ -20,14 +21,16 @@ type Catalogs interface {
 
 // OfferView : une offre vue par le client (prix dans sa monnaie).
 type OfferView struct {
-	Code      string            `json:"code"`
-	Name      string            `json:"name"`
-	Monthly   int64             `json:"monthly"`
-	Currency  string            `json:"currency"`
-	Specs     map[string]any    `json:"specs"`
-	Locations []string          `json:"locations"`
-	Images    []string          `json:"images"`
-	ImageName map[string]string `json:"-"`
+	Code      string         `json:"code"`
+	Name      string         `json:"name"`
+	Monthly   int64          `json:"monthly"`
+	Currency  string         `json:"currency"`
+	Specs     map[string]any `json:"specs"`
+	Locations []string       `json:"locations"`
+	Images    []string       `json:"images"`
+	// Stock : disponibilité par emplacement (absent : pas encore relevé).
+	Stock     map[string]StockView `json:"stock"`
+	ImageName map[string]string    `json:"-"`
 }
 
 // Service : VPS.
@@ -37,6 +40,9 @@ type Service struct {
 	// Wallet nil ou Ordering faux : commandes fermées (offres et prix seulement).
 	Wallet   Wallet
 	Ordering bool
+	// Terms nil : aucune acceptation exigée (tests) ; sinon CGV VPS et
+	// politique d'usage acceptées par l'organisation avant toute commande.
+	Terms legalContract.TermsGate
 	// Sealer nil : mot de passe du mode secours indisponible.
 	Sealer Sealer
 	// Events nil : aucun événement temps réel.
@@ -63,6 +69,7 @@ func (s *Service) Offers(ctx context.Context, org uuid.UUID) ([]OfferView, error
 		return nil, err
 	}
 	out := []OfferView{}
+	stock := s.stockIndex(ctx)
 	for _, o := range all {
 		price := o.Price(rate)
 		if !o.Public || price == 0 || o.ProviderPlanCode == "" {
@@ -77,6 +84,10 @@ func (s *Service) Offers(ctx context.Context, org uuid.UUID) ([]OfferView, error
 			}
 		}
 		sort.Strings(v.Images)
+		v.Stock = map[string]StockView{}
+		for loc, st := range stock[o.Code] {
+			v.Stock[loc] = StockView{Status: st.Status, Days: st.Days}
+		}
 		out = append(out, v)
 	}
 	return out, nil

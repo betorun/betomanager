@@ -1,0 +1,23 @@
+[
+ {"fr": "Ticket introuvable", "en": "support ticket not found"},
+ {"fr": "Le sujet doit faire entre 3 et 150 caractères", "en": "the subject must be 3 to 150 characters long"},
+ {"fr": "La description doit faire entre 1 et 10 000 caractères", "en": "the description must be 1 to 10,000 characters long"},
+ {"fr": "Le message doit faire entre 1 et 10 000 caractères", "en": "the message must be 1 to 10,000 characters long"},
+ {"fr": "Statut de ticket inconnu", "en": "unknown ticket status"},
+ {"fr": "Priorité de ticket inconnue", "en": "unknown ticket priority"},
+ {"fr": "Catégorie de ticket inconnue", "en": "unknown ticket category"},
+ {"fr": "10 étiquettes au plus, de 40 caractères chacune", "en": "at most 10 tags of 40 characters each"},
+ {"fr": "resource_kind et resource_id vont ensemble", "en": "resource_kind and resource_id go together"},
+ {"fr": "Ce projet n'appartient pas à l'organisation", "en": "this project does not belong to the organization"},
+ {"fr": "Ce ticket est fermé et ne peut pas être rouvert ; ouvrez-en un nouveau.", "en": "this ticket is closed and cannot be reopened; open a new one"},
+ {"fr": "Agent de support inconnu", "en": "unknown support agent"},
+ {"fr": "Réponse type introuvable", "en": "support macro not found"},
+ {"fr": "Une réponse type a un titre (1 à 150 caractères) et un texte", "en": "a macro needs a title (1 to 150 characters) and a body"},
+ {"fr": "Pièce jointe introuvable", "en": "attachment not found"},
+ {"fr": "Le fichier dépasse 10 Mo", "en": "the file exceeds 10 MB"},
+ {"fr": "Type de fichier refusé (PDF, JPEG, PNG, WebP ou texte)", "en": "file type not allowed (PDF, JPEG, PNG, WebP or text)"},
+ {"fr": "Ce ticket a déjà 20 pièces jointes", "en": "this ticket already has 20 attachments"},
+ {"fr": "Champ « file » manquant", "en": "missing \"file\" field"},
+ {"fr": "Les pièces jointes ne sont pas disponibles pour le moment", "en": "attachments are not available for now"},
+ {"fr": "Ce message n'appartient pas au ticket", "en": "this message does not belong to the ticket"}
+]

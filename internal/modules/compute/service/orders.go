@@ -12,6 +12,7 @@ import (
 
 	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/compute/domain"
+	legalContract "github.com/thekrauss/kubemanager/internal/modules/legal/contract"
 )
 
 // DefaultProvider : fournisseur des nouveaux VPS.
@@ -72,6 +73,14 @@ func (s *Service) Order(ctx context.Context, req OrderRequest, by string) (*doma
 	price := offer.Price(rate)
 	if req.MonthlyPrice != price {
 		return nil, domain.ErrPriceChanged
+	}
+	if s.Terms != nil {
+		if err := s.Terms.RequireAccepted(ctx, org, legalContract.KindTermsVPS, legalContract.KindAUP); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.checkOrderAllowed(ctx, org, offer.Code, location); err != nil {
+		return nil, err
 	}
 
 	now := s.now()

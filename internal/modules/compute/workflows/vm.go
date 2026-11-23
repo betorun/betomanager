@@ -111,8 +111,18 @@ func runCreate(ctx workflow.Context, spec *VMSpec) error {
 				return temporal.NewNonRetryableApplicationError("provider order failed", errTypeProvider, nil)
 			}
 			if st.State == service.OrderDelivered {
-				spec.ProviderID = st.ProviderID
-				break
+				pid := st.ProviderID
+				if pid == "" {
+					// Le détail de la commande ne nomme pas le VPS : rattaché par
+					// l'équipe, ou seul VPS inconnu du compte.
+					if err := workflow.ExecuteActivity(quick(ctx), a.ResolveDelivered, spec.VPSID).Get(ctx, &pid); err != nil {
+						return err
+					}
+				}
+				if pid != "" {
+					spec.ProviderID = pid
+					break
+				}
 			}
 			if workflow.Now(ctx).After(deadline) {
 				return temporal.NewNonRetryableApplicationError("provider delivery timed out", errTypeTimeout, nil)
@@ -557,6 +567,56 @@ func (a *Activities) MarkObserved(ctx context.Context, vpsID, state string) erro
 	}
 	service.Notify(ctx, a.Store, a.Events, v.ID)
 	return nil
+}
+
+// ResolveDelivered : identifiant du VPS livré quand la commande ne le donne
+// pas : celui rattaché par l'équipe (back-office), sinon le seul VPS du compte
+// inconnu de la plateforme ; plusieurs candidats : attendre l'équipe.
+func (a *Activities) ResolveDelivered(ctx context.Context, vpsID string) (string, error) {
+	v, err := a.vps(ctx, vpsID)
+	if err != nil {
+		return "", err
+	}
+	if v.ProviderID != "" {
+		return v.ProviderID, nil
+	}
+	p, err := a.provider()
+	if err != nil {
+		return "", err
+	}
+	vms, err := p.List(ctx)
+	if err != nil {
+		return "", err
+	}
+	known, err := a.Store.ProviderVPS(ctx, p.Name())
+	if err != nil {
+		return "", err
+	}
+	taken := map[string]bool{}
+	for _, k := range known {
+		taken[k.ProviderID] = true
+	}
+	// Un VPS déjà relevé avant la commande n'est pas celui-ci (orphelin plus ancien).
+	machines, err := a.Store.Machines(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range machines {
+		if m.FirstSeenAt != nil && m.FirstSeenAt.Before(v.CreatedAt) {
+			taken[m.ProviderID] = true
+		}
+	}
+	candidate := ""
+	for _, vm := range vms {
+		if taken[vm.ProviderID] {
+			continue
+		}
+		if candidate != "" {
+			return "", nil // plusieurs VPS inconnus : l'équipe tranche
+		}
+		candidate = vm.ProviderID
+	}
+	return candidate, nil
 }
 
 // installScript : port 25 sortant fermé, sauf ouverture par l'équipe.

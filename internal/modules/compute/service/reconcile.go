@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +24,10 @@ type Reconciler struct {
 	Backups BackupProvider
 	// Network nil : blocages anti-spam non relevés.
 	Network NetworkProvider
-	Events  Events
+	// Stock nil : stock non relevé ; Inbox nil : e-mails du fournisseur non relevés.
+	Stock  StockProvider
+	Inbox  Inbox
+	Events Events
 	// StuckAfter : âge au-delà duquel un snapshot en cours est annulé (0 : 6 h).
 	StuckAfter time.Duration
 	Now        func() time.Time
@@ -138,6 +142,8 @@ func (r *Reconciler) pass(ctx context.Context, run *domain.ReconcileRun) error {
 	run.Seen = len(machines)
 	r.refreshBackups(ctx, locals, present, machines)
 	r.refreshSpam(ctx, locals, present)
+	r.refreshStock(ctx)
+	r.collectMails(ctx, locals)
 	for _, v := range locals {
 		if !present[v.ProviderID] && expectedAtProvider(v.State) {
 			run.Missing++
@@ -216,5 +222,92 @@ func (r *Reconciler) refreshSpam(ctx context.Context, locals []domain.VPS, prese
 			_ = r.Store.UpdateVPS(ctx, v.ID, map[string]any{"spam_blocked_at": nil, "updated_at": r.now()})
 			Notify(ctx, r.Store, r.Events, v.ID)
 		}
+	}
+}
+
+// refreshStock : stock de chaque offre rattachée à un plan du fournisseur.
+func (r *Reconciler) refreshStock(ctx context.Context) {
+	if r.Stock == nil {
+		return
+	}
+	offers, err := r.Store.Offers(ctx)
+	if err != nil {
+		return
+	}
+	at := r.now()
+	for _, o := range offers {
+		if o.ProviderPlanCode == "" {
+			continue
+		}
+		rows, err := r.Stock.Stock(ctx, o.ProviderPlanCode)
+		if err != nil {
+			continue // relevé précédent gardé
+		}
+		stock := make([]domain.Stock, 0, len(rows))
+		for _, row := range rows {
+			stock = append(stock, domain.Stock{Offer: o.Code, Location: row.Location, Status: row.Status, Days: row.Days, CheckedAt: at})
+		}
+		_ = r.Store.ReplaceStock(ctx, o.Code, stock)
+	}
+}
+
+// mailWindow : e-mails relevés depuis ce délai (un e-mail relevé est effacé de la boîte).
+const mailWindow = 7 * 24 * time.Hour
+
+var (
+	abuseWords    = []string{"abuse", "abus", "spam", "phishing", "hameçonnage", "malware", "botnet", "ddos", "attaque", "attack", "scan", "plainte", "complaint"}
+	incidentWords = []string{"incident", "panne", "outage", "maintenance", "travaux", "intervention", "dégradation", "degradation", "interruption"}
+)
+
+// ClassifyMail : abus, incident ou autre (mots du sujet puis du texte).
+func ClassifyMail(subject, text string) string {
+	for _, part := range []string{strings.ToLower(subject), strings.ToLower(text)} {
+		for _, w := range abuseWords {
+			if strings.Contains(part, w) {
+				return domain.MailAbuse
+			}
+		}
+		for _, w := range incidentWords {
+			if strings.Contains(part, w) {
+				return domain.MailIncident
+			}
+		}
+	}
+	return domain.MailOther
+}
+
+// collectMails : e-mails du fournisseur rangés pour l'équipe (rattachés au
+// VPS qu'ils citent), puis effacés de la boîte.
+func (r *Reconciler) collectMails(ctx context.Context, locals []domain.VPS) {
+	if r.Inbox == nil {
+		return
+	}
+	mails, err := r.Inbox.Recent(ctx, r.now().Add(-mailWindow))
+	if err != nil {
+		return
+	}
+	for _, m := range mails {
+		body := m.Text
+		if len(body) > 20000 {
+			body = body[:20000]
+		}
+		pm := &domain.ProviderMail{ReceivedAt: m.Date, Sender: m.From, Subject: m.Subject, Body: body,
+			Kind: ClassifyMail(m.Subject, m.Text), CreatedAt: r.now()}
+		if pm.ReceivedAt.IsZero() {
+			pm.ReceivedAt = r.now()
+		}
+		all := m.Subject + "\n" + m.Text
+		for i := range locals {
+			v := &locals[i]
+			if (v.ProviderID != "" && strings.Contains(all, v.ProviderID)) || (v.IPv4 != "" && strings.Contains(all, v.IPv4)) {
+				id := v.ID
+				pm.VPSID = &id
+				break
+			}
+		}
+		if err := r.Store.SaveProviderMail(ctx, pm); err != nil {
+			continue // gardé dans la boîte : repris à la passe suivante
+		}
+		_ = r.Inbox.Delete(ctx, m.ID)
 	}
 }

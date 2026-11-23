@@ -55,6 +55,9 @@ func (a *App) computeService() *computeSvc.Service {
 	if sealer, err := auth.NewSealer(a.Config.IAM.STSKeyEncryptionKey); err == nil {
 		s.Sealer = sealer
 	}
+	if legal := a.legalService(); legal != nil { // pas d'interface non nulle autour d'un nil
+		s.Terms = legal
+	}
 	if billing := a.billingService(); billing != nil {
 		s.Catalogs = computeCatalogs{billing: billing}
 		s.Wallet = billing
@@ -238,6 +241,7 @@ func (a *App) RunCompute(ctx context.Context) error {
 		activities.Backups = provider
 		activities.Rescue = provider
 		activities.Network = provider
+		activities.Stock = provider
 	}
 	if billing := a.billingService(); billing != nil {
 		activities.Wallet = billing
@@ -252,7 +256,9 @@ func (a *App) RunCompute(ctx context.Context) error {
 	}
 	m := a.Config.Compute.IMAP
 	if box, err := imapbox.New(imapbox.Config{Host: m.Host, Port: m.Port, Username: m.Username, Password: m.Password, Mailbox: m.Mailbox}); err == nil {
-		activities.Mailbox = &ovhvps.Mailbox{Box: box}
+		mb := &ovhvps.Mailbox{Box: box}
+		activities.Mailbox = mb
+		activities.Inbox = mb
 	} else {
 		a.Logger.Warnw("compute: no technical mailbox, rescue passwords will be reported missing", "error", err)
 	}
@@ -381,6 +387,18 @@ func addComputeRoutes(app *App) {
 	admin.AddRoute("/reconcile", http.MethodPost, "Lancer une réconciliation des VPS avec le fournisseur", manage, tonic.Handler(r.Reconcile, http.StatusAccepted))
 	admin.AddRoute("/vps/:vpsID/spam/unblock", http.MethodPost, "Lever le blocage anti-spam de l'adresse d'un VPS (après vérification)", manage, tonic.Handler(r.UnblockSpam, http.StatusAccepted))
 	admin.AddRoute("/vps/:vpsID/smtp", http.MethodPut, "Ouvrir ou fermer le port 25 sortant d'un VPS (prochaine installation)", manage, tonic.Handler(r.SetSMTP, http.StatusOK))
+	// Lot 8 : quotas et anti-fraude, procédure abus, e-mails du fournisseur.
+	admin.AddRoute("/limits", http.MethodGet, "Quotas des VPS et limites des comptes récents", view, tonic.Handler(r.Limits, http.StatusOK))
+	admin.AddRoute("/limits", http.MethodPut, "Régler les quotas des VPS et les limites des comptes récents", manage, tonic.Handler(r.SaveLimits, http.StatusOK))
+	admin.AddRoute("/organizations/:id/limits", http.MethodGet, "Quota de VPS d'une organisation", view, tonic.Handler(r.OrgLimits, http.StatusOK))
+	admin.AddRoute("/organizations/:id/limits", http.MethodPut, "Accorder un quota de VPS à une organisation, ou la dispenser des limites des comptes récents",
+		g.Perm(iam.PlatformComputeManage, security.PlatformResource).Staff(security.StaffOrganization("id")), tonic.Handler(r.SetOrgLimits, http.StatusOK))
+	admin.AddRoute("/vps/:vpsID/abuse/suspend", http.MethodPost, "Suspendre un VPS pour abus (arrêt immédiat, motif montré au client)", manage, tonic.Handler(r.SuspendForAbuse, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/abuse/resume", http.MethodPost, "Lever la suspension pour abus d'un VPS", manage, tonic.Handler(r.ResumeFromAbuse, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/terminate", http.MethodPost, "Résilier un VPS (équipe : récidive grave)", manage, tonic.Handler(r.AdminTerminate, http.StatusAccepted))
+	admin.AddRoute("/vps/:vpsID/attach", http.MethodPost, "Rattacher un VPS livré à son identifiant chez le fournisseur", manage, tonic.Handler(r.Attach, http.StatusOK))
+	admin.AddRoute("/provider-mails", http.MethodGet, "E-mails du fournisseur reçus par la boîte technique (abus, incidents)", view, tonic.Handler(r.ProviderMails, http.StatusOK))
+	admin.AddRoute("/provider-mails/:mailID/handled", http.MethodPost, "Marquer un e-mail du fournisseur comme traité", manage, tonic.Handler(r.HandleProviderMail, http.StatusNoContent))
 	admin.AddRoute("/mailbox-check", http.MethodPost, "Diagnostic : la boîte e-mail technique répond (mode compute)", manage, tonic.Handler(r.MailboxCheck, http.StatusAccepted))
 	admin.AddRoute("/ping", http.MethodPost, "Diagnostic : une demande traverse outbox, relais, Temporal et mode compute", manage, tonic.Handler(r.Ping, http.StatusAccepted))
 	admin.AddRoute("/requests/:requestID", http.MethodGet, "État d'une demande", view, tonic.Handler(r.Request, http.StatusOK))

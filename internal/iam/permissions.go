@@ -143,6 +143,12 @@ const (
 	VPSNetwork   Permission = "compute.vps.network"
 	VPSDelete    Permission = "compute.vps.delete"
 
+	// support : tickets de l'organisation (docs/modules/support.md) ; create
+	// couvre aussi répondre, joindre un fichier, résoudre et rouvrir.
+	SupportTicketsList   Permission = "support.tickets.list"
+	SupportTicketsGet    Permission = "support.tickets.get"
+	SupportTicketsCreate Permission = "support.tickets.create"
+
 	// billing / logging
 	BillingAccountsGet    Permission = "billing.accounts.get"
 	BillingAccountsUpdate Permission = "billing.accounts.update"
@@ -177,6 +183,14 @@ const (
 	// PlatformBillingCatalogs*).
 	PlatformComputeGet    Permission = "platform.compute.get"
 	PlatformComputeManage Permission = "platform.compute.manage"
+	// PlatformLegalManage : conditions de vente et politique d'usage :
+	// brouillons, publication, statistiques d'acceptation.
+	PlatformLegalManage Permission = "platform.legal.manage"
+	// PlatformStatusManage : incidents et maintenances de la page de statut.
+	PlatformStatusManage Permission = "platform.status.manage"
+	// PlatformSupportManage : tickets de tous les clients, réponses de
+	// l'équipe, réponses types.
+	PlatformSupportManage Permission = "platform.support.manage"
 )
 
 // PermissionInfo : métadonnées d'une permission (doc, UI, rôles personnalisés).
@@ -298,6 +312,10 @@ var catalog = map[Permission]PermissionInfo{
 	VPSNetwork:   {Title: "Régler le DNS inverse d'un VPS", CustomRoles: true},
 	VPSDelete:    {Title: "Résilier un VPS", CustomRoles: true, Sensitive: true},
 
+	SupportTicketsList:   {Title: "Lister les tickets de support", CustomRoles: true},
+	SupportTicketsGet:    {Title: "Voir un ticket de support", CustomRoles: true},
+	SupportTicketsCreate: {Title: "Ouvrir un ticket de support et y répondre", CustomRoles: true},
+
 	PlatformClustersList:           {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
 	PlatformClusterKeysList:        {Title: "Lister les clés de cluster", PlatformOnly: true},
 	PlatformClusterKeysCreate:      {Title: "Créer une clé de cluster", PlatformOnly: true, Sensitive: true},
@@ -312,6 +330,9 @@ var catalog = map[Permission]PermissionInfo{
 	PlatformMailSuppressionsManage: {Title: "Voir et relâcher les adresses e-mail mises de côté", PlatformOnly: true},
 	PlatformComputeGet:             {Title: "Voir les VPS de tous les clients et la réconciliation", PlatformOnly: true},
 	PlatformComputeManage:          {Title: "Lancer une réconciliation ou un diagnostic des VPS", PlatformOnly: true},
+	PlatformLegalManage:            {Title: "Rédiger et publier les conditions de vente et la politique d'usage", PlatformOnly: true},
+	PlatformStatusManage:           {Title: "Annoncer les incidents et les maintenances sur la page de statut", PlatformOnly: true},
+	PlatformSupportManage:          {Title: "Traiter les tickets de support de tous les clients", PlatformOnly: true},
 }
 
 // Known : la permission figure au catalogue.

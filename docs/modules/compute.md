@@ -14,7 +14,9 @@ automatiques (restauration complète ou montage), option snapshot payante,
 annulation des snapshots bloqués ; **lot 6** — mode secours, mot de passe
 intercepté dans la boîte technique, chiffré et affiché une seule fois ;
 **lot 7** — DNS inverse, blocage anti-spam (déblocage par l'équipe), port 25
-sortant fermé par défaut, résiliation. La console du serveur (terminal)
+sortant fermé par défaut, résiliation ; **lot 8** — stock du fournisseur,
+quotas et anti-fraude, procédure abus, e-mails du fournisseur pour
+l'équipe, rattachement d'un VPS livré. La console du serveur (terminal)
 viendra plus tard derrière le domaine de la plateforme : l'adresse du
 fournisseur n'est jamais donnée au client.
 
@@ -218,6 +220,36 @@ POST …/vps/:id/rescue/exit → démarrage sur le disque, secret effacé
   remboursement. La purge d'une organisation après une longue suspension
   résilie aussi ses VPS.
 
+## Garde-fous avant le premier client (lot 8)
+
+**Stock** : `GET /vps/order/rule/datacenter` (plan de l'offre) relevé à chaque
+réconciliation dans `compute_stock` (statut Linux de chaque datacenter, le
+meilleur par emplacement de la plateforme). Les offres montrent le stock par
+emplacement (`stock`) ; une commande en rupture est refusée avant tout débit
+(`OUT_OF_STOCK`) ; la précommande (délai annoncé) reste possible. Une rupture
+survenue entre le relevé et la commande est remboursée (lot 3).
+
+**Quotas et comptes récents** (réglés dans le back-office, `compute_limits`) :
+VPS au plus par organisation (5) ; un compte de moins de 30 jours ou sans
+recharge payée : 1 VPS, VPS-1 seulement. L'équipe accorde un plafond propre
+à une organisation ou la dispense des limites des comptes récents
+(`compute_org_limits`). Refus : `VPS_QUOTA_REACHED`, `NEW_ACCOUNT_LIMIT`.
+
+**Procédure abus** : l'équipe suspend un VPS (arrêt immédiat, motif montré au
+client, plus facturé pendant la suspension), le rétablit, ou le résilie en
+cas de récidive grave. Le client ne peut pas relancer un VPS suspendu pour abus.
+
+**E-mails du fournisseur** : à chaque réconciliation, les e-mails de la boîte
+technique (hors mode secours) sont rangés pour l'équipe
+(`compute_provider_mails`) — abus, incident ou autre, rattachés au VPS qu'ils
+citent (identifiant ou adresse) — puis effacés de la boîte. Page du back-office :
+liste, « traité ».
+
+**VPS livré sans identifiant** : si le détail de la commande ne nomme pas le
+VPS, il est rattaché au seul VPS du compte inconnu de la plateforme apparu
+après la commande (`first_seen_at` du relevé) ; plusieurs candidats : l'équipe
+le rattache à un orphelin depuis le back-office ; la création reprend seule.
+
 ## Vérification des appels au fournisseur
 
 Chaque appel de `repository/ovhvps` a été confronté au schéma officiel de
@@ -331,6 +363,11 @@ prix. Emplacements autorisés : `gra`, `rbx`, `sbg` ; images : `ubuntu-24.04`,
 | POST | `/admin/compute/vps/:vpsID/spam/unblock` | `platform.compute.manage` |
 | PUT | `/admin/compute/vps/:vpsID/smtp` | `platform.compute.manage` |
 | POST | `/admin/compute/mailbox-check` | `platform.compute.manage` |
+| GET, PUT | `/admin/compute/limits` | `platform.compute.get` / `.manage` |
+| GET, PUT | `/admin/compute/organizations/:id/limits` | `platform.compute.get` / `.manage` |
+| POST | `/admin/compute/vps/:vpsID/abuse/suspend` · `/abuse/resume` · `/terminate` · `/attach` | `platform.compute.manage` |
+| GET | `/admin/compute/provider-mails` | `platform.compute.get` |
+| POST | `/admin/compute/provider-mails/:mailID/handled` | `platform.compute.manage` |
 | POST | `/organizations/:id/compute/vps/:vpsID/rescue` | `compute.vps.rescue` |
 | POST | `/organizations/:id/compute/vps/:vpsID/rescue/exit` | `compute.vps.rescue` |
 | POST | `/organizations/:id/compute/vps/:vpsID/rescue/password` | `compute.vps.rescue` |
@@ -387,8 +424,8 @@ Local : `make dev-compute` (service `kubemanager-compute`).
 ```
 go test ./internal/modules/compute/...
 bash scripts/iam_e2e_db.sh && IAM_E2E=1 go test ./internal/modules/compute/... -count=1; docker rm -f iam-e2e-pg
-# lecture réelle du compte (aucune commande) :
-set -a; . ./.env; set +a; OVH_LIVE=1 go test ./internal/modules/compute/repository/ovhvps -run TestLive -v
+# lecture réelle du compte (aucune commande) : liste des VPS, stock d'un plan
+set -a; . ./.env; set +a; OVH_LIVE=1 OVH_PLAN=<plan de VPS-1> go test ./internal/modules/compute/repository/ovhvps -run TestLive -v
 ```
 
 Back-office : page « VPS » (`/admin/vps` dans kweb).
