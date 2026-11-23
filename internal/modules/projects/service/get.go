@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	metricsv1 "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -28,7 +29,7 @@ func (s *ProjectService) GetProjectStatus(ctx context.Context, projectID string)
 
 	case utils.ProjectStatusReady:
 		nsName := project.Namespace
-		ns, err := s.K8sClient.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+		ns, err := s.namespace(ctx, project.ID, nsName)
 
 		if err != nil {
 			res.Status = utils.ProjectStatusError
@@ -58,6 +59,15 @@ func (s *ProjectService) GetProjectStatus(ctx context.Context, projectID string)
 	return res, nil
 }
 
+// namespace : namespace du projet sur son cluster.
+func (s *ProjectService) namespace(ctx context.Context, project uuid.UUID, name string) (*corev1.Namespace, error) {
+	kube, err := s.Kube.ForProject(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	return kube.Client.CoreV1().Namespaces().Get(ctx, name, metav1.GetOptions{})
+}
+
 type ProjectOverview struct {
 	ReservedStorage int64 // Ce qui est en DB (ex: 10Gi)
 	CurrentUsage    int64 // Ce qui vient de K8s Metrics (ex: 2Gi)
@@ -71,12 +81,12 @@ func (s *ProjectService) GetMetrics(ctx context.Context, projectID string) (*dom
 	}
 	nsName := project.Namespace
 
-	mClient, err := metricsv1.NewForConfig(s.K8sConfig)
+	kube, err := s.Kube.ForProject(ctx, project.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create metrics client: %w", err)
+		return nil, fmt.Errorf("project cluster: %w", err)
 	}
 
-	podMetrics, err := mClient.MetricsV1beta1().PodMetricses(nsName).List(ctx, metav1.ListOptions{})
+	podMetrics, err := kube.MetricsClient.MetricsV1beta1().PodMetricses(nsName).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("metrics server error: %w", err)
 	}

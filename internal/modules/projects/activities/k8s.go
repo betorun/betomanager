@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	metricsv1 "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	idempotency "github.com/thekrauss/kubemanager/internal/infrastructure/idempotence"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	domain "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -21,12 +21,22 @@ import (
 
 // ProjectK8sActivities : activities Temporal manipulant des ressources Kubernetes.
 // Le champ Idempotency (optionnel) déduplique les retries via ExecuteActivity.
+// Kube : clients du cluster de chaque projet (les signatures des activités ne
+// changent pas : workflows en cours ; le namespace suffit à le retrouver).
 type ProjectK8sActivities struct {
-	K8sClient     *kubernetes.Clientset
-	MetricsClient *metricsv1.Clientset
-	Logger        *zap.SugaredLogger
-	Rbac          authSvc.IRBACService
-	Idempotency   idempotency.AtomicManager
+	Kube        k8sprovider.Resolver
+	Logger      *zap.SugaredLogger
+	Rbac        authSvc.IRBACService
+	Idempotency idempotency.AtomicManager
+}
+
+// forProject : cluster du projet (namespace en repli si l'identifiant est
+// mal formé).
+func (a *ProjectK8sActivities) forProject(ctx context.Context, projectID, nsName string) (*k8sprovider.ProviderK8s, error) {
+	if id, err := uuid.Parse(projectID); err == nil {
+		return a.Kube.ForProject(ctx, id)
+	}
+	return a.Kube.ForNamespace(ctx, nsName)
 }
 
 // CreateNamespace est idempotente : si le namespace existe déjà (AlreadyExists),
@@ -39,6 +49,10 @@ func (a *ProjectK8sActivities) CreateNamespace(ctx context.Context, projectID, p
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, payload,
 		idempotency.ActivityOptions{ProcessingTTL: k8sProcessingTTL},
 		func() (struct{}, error) {
+			kube, err := a.forProject(ctx, projectID, nsName)
+			if err != nil {
+				return struct{}{}, fmt.Errorf("project cluster: %w", err)
+			}
 			ns := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: nsName,
@@ -53,7 +67,7 @@ func (a *ProjectK8sActivities) CreateNamespace(ctx context.Context, projectID, p
 					},
 				},
 			}
-			_, err := a.K8sClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+			_, err = kube.Client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 			if err != nil && !kerrors.IsAlreadyExists(err) {
 				return struct{}{}, fmt.Errorf("k8s create namespace: %w", err)
 			}
@@ -70,7 +84,11 @@ func (a *ProjectK8sActivities) DeleteNamespace(ctx context.Context, nsName strin
 		idempotency.ActivityOptions{ProcessingTTL: k8sProcessingTTL},
 		func() (struct{}, error) {
 			a.Logger.Infow("deleting Kubernetes namespace", "namespace", nsName)
-			err := a.K8sClient.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
+			kube, err := a.Kube.ForNamespace(ctx, nsName)
+			if err != nil {
+				return struct{}{}, fmt.Errorf("project cluster: %w", err)
+			}
+			err = kube.Client.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
 			if err != nil && !kerrors.IsNotFound(err) {
 				return struct{}{}, fmt.Errorf("failed to delete namespace %s: %w", nsName, err)
 			}
@@ -86,7 +104,11 @@ func (a *ProjectK8sActivities) ReconcileProjectResources(ctx context.Context, ns
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, payload,
 		idempotency.ActivityOptions{ProcessingTTL: k8sProcessingTTL},
 		func() (struct{}, error) {
-			if _, err := a.K8sClient.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{}); err != nil {
+			kube, err := a.Kube.ForNamespace(ctx, nsName)
+			if err != nil {
+				return struct{}{}, fmt.Errorf("project cluster: %w", err)
+			}
+			if _, err := kube.Client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{}); err != nil {
 				return struct{}{}, fmt.Errorf("namespace %s missing, reconciliation failed: %w", nsName, err)
 			}
 
@@ -117,9 +139,9 @@ func (a *ProjectK8sActivities) ReconcileProjectResources(ctx context.Context, ns
 				},
 			}
 
-			_, err = a.K8sClient.CoreV1().ResourceQuotas(nsName).Get(ctx, quotaName, metav1.GetOptions{})
+			_, err = kube.Client.CoreV1().ResourceQuotas(nsName).Get(ctx, quotaName, metav1.GetOptions{})
 			if kerrors.IsNotFound(err) {
-				if _, cErr := a.K8sClient.CoreV1().ResourceQuotas(nsName).Create(ctx, newQuotas, metav1.CreateOptions{}); cErr != nil {
+				if _, cErr := kube.Client.CoreV1().ResourceQuotas(nsName).Create(ctx, newQuotas, metav1.CreateOptions{}); cErr != nil {
 					return struct{}{}, fmt.Errorf("create quota: %w", cErr)
 				}
 				return struct{}{}, nil
@@ -127,7 +149,7 @@ func (a *ProjectK8sActivities) ReconcileProjectResources(ctx context.Context, ns
 			if err != nil {
 				return struct{}{}, fmt.Errorf("get quota: %w", err)
 			}
-			if _, uErr := a.K8sClient.CoreV1().ResourceQuotas(nsName).Update(ctx, newQuotas, metav1.UpdateOptions{}); uErr != nil {
+			if _, uErr := kube.Client.CoreV1().ResourceQuotas(nsName).Update(ctx, newQuotas, metav1.UpdateOptions{}); uErr != nil {
 				return struct{}{}, fmt.Errorf("update quota: %w", uErr)
 			}
 			return struct{}{}, nil
@@ -146,8 +168,11 @@ func (a *ProjectK8sActivities) AssignDefaultOwner(ctx context.Context, projectID
 }
 
 func (a *ProjectK8sActivities) GetNamespaceMetrics(ctx context.Context, nsName string) (*domain.NamespaceMetrics, error) {
-
-	podMetricsList, err := a.MetricsClient.MetricsV1beta1().PodMetricses(nsName).List(ctx, metav1.ListOptions{})
+	kube, err := a.Kube.ForNamespace(ctx, nsName)
+	if err != nil {
+		return nil, fmt.Errorf("project cluster: %w", err)
+	}
+	podMetricsList, err := kube.MetricsClient.MetricsV1beta1().PodMetricses(nsName).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metrics for ns %s: %w", nsName, err)
 	}

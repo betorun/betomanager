@@ -11,8 +11,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage/domain"
 )
 
@@ -35,7 +37,7 @@ func TestDisks_Classification(t *testing.T) {
 		pvc("other", map[string]string{labelInstance: "api"}, "1Gi", true),
 		pvc("foreign", nil, "1Gi", true),
 	)
-	m := &KubeMeasurer{Kube: kube}
+	m := &KubeMeasurer{Kube: k8sprovider.Fixed(kube)}
 	disks, err := m.Disks(context.Background(), "ns")
 	require.NoError(t, err)
 	got := map[string]domain.Disk{}
@@ -53,16 +55,15 @@ func TestOwner_FromPodUsingClaim(t *testing.T) {
 		Spec: corev1.PodSpec{SecurityContext: &corev1.PodSecurityContext{RunAsUser: &uid, FSGroup: &grp},
 			Volumes: []corev1.Volume{{Name: "d", VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: "cache-pvc"}}}}}}
-	m := &KubeMeasurer{Kube: fake.NewSimpleClientset(pod)}
-	u, g := m.owner(context.Background(), domain.Disk{Namespace: "ns", PVC: "cache-pvc", Kind: domain.KindWorkload})
+	kube := fake.NewSimpleClientset(pod)
+	u, g := owner(context.Background(), kube, domain.Disk{Namespace: "ns", PVC: "cache-pvc", Kind: domain.KindWorkload})
 	assert.Equal(t, [2]int64{999, 999}, [2]int64{u, g})
-	u, g = m.owner(context.Background(), domain.Disk{Namespace: "ns", PVC: "db-x-1", Kind: domain.KindDatabase})
+	u, g = owner(context.Background(), kube, domain.Disk{Namespace: "ns", PVC: "db-x-1", Kind: domain.KindDatabase})
 	assert.Equal(t, [2]int64{26, 26}, [2]int64{u, g}, "aucun pod : utilisateur Postgres")
 
 	root := int64(0)
 	pod.Spec.SecurityContext.RunAsUser = &root
-	m = &KubeMeasurer{Kube: fake.NewSimpleClientset(pod)}
-	u, _ = m.owner(context.Background(), domain.Disk{Namespace: "ns", PVC: "cache-pvc", Kind: domain.KindWorkload})
+	u, _ = owner(context.Background(), fake.NewSimpleClientset(pod), domain.Disk{Namespace: "ns", PVC: "cache-pvc", Kind: domain.KindWorkload})
 	assert.Equal(t, nobodyUID, u, "jamais root")
 }
 
@@ -88,4 +89,23 @@ func TestParseKiB(t *testing.T) {
 	assert.Equal(t, int64(2<<20), n)
 	_, err = parseKiB("du: permission denied")
 	assert.Error(t, err)
+}
+
+// Lot 2b : les disques d'un namespace sont lus sur le cluster de son projet.
+func TestDisks_ReadsProjectCluster(t *testing.T) {
+	clusters := map[string]*fake.Clientset{
+		"km-a": fake.NewSimpleClientset(),
+		"km-b": fake.NewSimpleClientset(func() *corev1.PersistentVolumeClaim {
+			p := pvc("api-pvc", map[string]string{labelInstance: "api"}, "1Gi", true)
+			p.Namespace = "km-b"
+			return p
+		}()),
+	}
+	m := &KubeMeasurer{Kube: func(_ context.Context, ns string) (kubernetes.Interface, error) { return clusters[ns], nil }}
+	a, err := m.Disks(context.Background(), "km-a")
+	require.NoError(t, err)
+	assert.Empty(t, a)
+	b, err := m.Disks(context.Background(), "km-b")
+	require.NoError(t, err)
+	assert.Len(t, b, 1)
 }

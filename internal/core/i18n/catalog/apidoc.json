@@ -2694,5 +2694,29 @@
  {
   "fr": "Support client",
   "en": "Customer support"
+ },
+ {
+  "fr": "Région du projet (voir GET /regions) ; vide : choisie par la plateforme",
+  "en": "Project region (see GET /regions); empty: chosen by the platform"
+ },
+ {
+  "fr": "Régions où créer un projet (disponibles maintenant ou non) ; la région choisie se passe à la création du projet",
+  "en": "Regions where a project can be created (available now or not); pass the chosen region when creating the project"
+ },
+ {
+  "fr": "Régions",
+  "en": "Regions"
+ },
+ {
+  "fr": "Code de la région (ex. eu-west-gra)",
+  "en": "Region code (e.g. eu-west-gra)"
+ },
+ {
+  "fr": "Un nouveau projet peut y être créé maintenant",
+  "en": "A new project can be created there now"
+ },
+ {
+  "fr": "Région proposée par défaut",
+  "en": "Region offered by default"
  }
 ]

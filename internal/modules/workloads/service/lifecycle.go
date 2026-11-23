@@ -20,9 +20,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	metricsv1 "k8s.io/metrics/pkg/client/clientset/versioned"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"github.com/thekrauss/kubemanager/internal/infrastructure/helm"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
@@ -156,13 +158,17 @@ func (s *WorkloadService) Stop(ctx context.Context, id uuid.UUID) error {
 	if err := ensureBuilt(w); err != nil {
 		return err
 	}
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		return err
+	}
 	if isCron(w) {
-		if err := suspendCron(ctx, s.K8sClient, w, true); err != nil {
+		if err := suspendCron(ctx, kube.Client, w, true); err != nil {
 			return fmt.Errorf("suspend cronjob: %w", err)
 		}
 		return s.Repo.UpdateStatus(ctx, id, utils.WorkloadStopped, utils.PhaseCronSuspended)
 	}
-	if err := s.scaleTo(ctx, w, 0); err != nil {
+	if err := scaleTo(ctx, kube.Client, w, 0); err != nil {
 		return fmt.Errorf("scale to 0: %w", err)
 	}
 	return s.Repo.UpdateStatus(ctx, id, utils.WorkloadStopped, utils.PhaseScaledToZero)
@@ -183,8 +189,12 @@ func (s *WorkloadService) Start(ctx context.Context, id uuid.UUID) error {
 	if err := ensureBuilt(w); err != nil {
 		return err
 	}
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		return err
+	}
 	if isCron(w) {
-		if err := suspendCron(ctx, s.K8sClient, w, false); err != nil {
+		if err := suspendCron(ctx, kube.Client, w, false); err != nil {
 			return fmt.Errorf("resume cronjob: %w", err)
 		}
 		return s.Repo.UpdateStatus(ctx, id, utils.WorkloadRunning, utils.PhaseCronResumed)
@@ -193,7 +203,7 @@ func (s *WorkloadService) Start(ctx context.Context, id uuid.UUID) error {
 	if target <= 0 {
 		target = 1
 	}
-	if err := s.scaleTo(ctx, w, target); err != nil {
+	if err := scaleTo(ctx, kube.Client, w, target); err != nil {
 		return fmt.Errorf("scale to %d: %w", target, err)
 	}
 	return s.Repo.UpdateStatus(ctx, id, utils.WorkloadRunning, utils.PhaseStarted)
@@ -212,10 +222,14 @@ func (s *WorkloadService) Restart(ctx context.Context, id uuid.UUID) error {
 	if err := ensureBuilt(w); err != nil {
 		return err
 	}
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		return err
+	}
 	if isCron(w) {
 		// Cron : « redémarrer » = exécuter tout de suite. Le statut ne change
 		// pas (un cron suspendu reste suspendu).
-		if _, err := runCronNow(ctx, s.K8sClient, w, time.Now()); err != nil {
+		if _, err := runCronNow(ctx, kube.Client, w, time.Now()); err != nil {
 			return fmt.Errorf("run cronjob now: %w", err)
 		}
 		return nil
@@ -224,7 +238,7 @@ func (s *WorkloadService) Restart(ctx context.Context, id uuid.UUID) error {
 		`{"spec":{"template":{"metadata":{"annotations":{%q:%q}}}}}`,
 		utils.AnnotationRestartedAt, time.Now().UTC().Format(time.RFC3339),
 	)
-	_, err = s.K8sClient.AppsV1().Deployments(w.Namespace).Patch(
+	_, err = kube.Client.AppsV1().Deployments(w.Namespace).Patch(
 		ctx, w.Name,
 		patchTypeMergePatch, []byte(patch),
 		metav1.PatchOptions{},
@@ -254,7 +268,11 @@ func (s *WorkloadService) Rollback(ctx context.Context, id uuid.UUID, toRevision
 	if err := ensureBuilt(w); err != nil {
 		return err
 	}
-	cfg, err := s.newHelmActionConfig(w.Namespace)
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		return err
+	}
+	cfg, err := s.newHelmActionConfig(kube.Config, w.Namespace)
 	if err != nil {
 		return fmt.Errorf("helm config: %w", err)
 	}
@@ -300,9 +318,16 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 	}
 
 	// Best-effort : si le deployment n'existe pas encore (en cours de déploiement)
-	// on retourne juste l'état DB sans la partie K8s.
+	// ou si le cluster du projet est injoignable, on retourne juste l'état DB
+	// sans la partie K8s.
+	cluster, err := s.cluster(ctx, w)
+	if err != nil {
+		s.Logger.Warnw("project cluster unavailable", "workload", id, "error", err)
+		return status, nil
+	}
+	kube := cluster.Client
 	if isCron(w) {
-		cron, _, err := cronStatus(ctx, s.K8sClient, w)
+		cron, _, err := cronStatus(ctx, kube, w)
 		if err != nil {
 			s.Logger.Warnw("cronjob lookup failed", "workload", id, "error", err)
 		}
@@ -310,7 +335,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 		if cron != nil {
 			status.ReadyReplicas = int32(cron.Running)
 		}
-	} else if dep, err := s.K8sClient.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{}); err == nil {
+	} else if dep, err := kube.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{}); err == nil {
 		status.ReadyReplicas = dep.Status.ReadyReplicas
 		status.AvailableReplicas = dep.Status.AvailableReplicas
 		s.recoverOnRead(ctx, w, dep, status)
@@ -319,7 +344,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 	}
 
 	// Liste des pods (labelSelector standard Helm).
-	pods, err := s.K8sClient.CoreV1().Pods(w.Namespace).List(ctx, metav1.ListOptions{
+	pods, err := kube.CoreV1().Pods(w.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: utils.LabelApp + "=" + w.Name,
 	})
 	if err == nil {
@@ -339,7 +364,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 			}
 			status.Pods = append(status.Pods, ps)
 			if status.PullFailure == nil {
-				status.PullFailure = s.pullFailure(ctx, &p)
+				status.PullFailure = pullFailure(ctx, kube, &p)
 			}
 		}
 	}
@@ -350,7 +375,7 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 // pullFailure : cause d'un conteneur bloqué sur son image (ADR 0011). Le
 // message d'ImagePullBackOff est vague : le dernier événement « Failed » du
 // pod porte celui du registre.
-func (s *WorkloadService) pullFailure(ctx context.Context, p *corev1.Pod) *domain.PullFailure {
+func pullFailure(ctx context.Context, kube kubernetes.Interface, p *corev1.Pod) *domain.PullFailure {
 	statuses := append(append([]corev1.ContainerStatus{}, p.Status.InitContainerStatuses...), p.Status.ContainerStatuses...)
 	for _, c := range statuses {
 		w := c.State.Waiting
@@ -365,7 +390,7 @@ func (s *WorkloadService) pullFailure(ctx context.Context, p *corev1.Pod) *domai
 		}
 		f := domain.ClassifyPull(image, w.Reason, w.Message)
 		if f.Cause == domain.PullUnknown {
-			if msg := s.lastPullEvent(ctx, p); msg != "" {
+			if msg := lastPullEvent(ctx, kube, p); msg != "" {
 				f = domain.ClassifyPull(image, domain.ReasonErrImagePull, msg)
 			}
 		}
@@ -375,8 +400,8 @@ func (s *WorkloadService) pullFailure(ctx context.Context, p *corev1.Pod) *domai
 }
 
 // lastPullEvent : message du dernier échec de récupération d'image du pod.
-func (s *WorkloadService) lastPullEvent(ctx context.Context, p *corev1.Pod) string {
-	events, err := s.K8sClient.CoreV1().Events(p.Namespace).List(ctx, metav1.ListOptions{
+func lastPullEvent(ctx context.Context, kube kubernetes.Interface, p *corev1.Pod) string {
+	events, err := kube.CoreV1().Events(p.Namespace).List(ctx, metav1.ListOptions{
 		FieldSelector: "involvedObject.name=" + p.Name + ",reason=Failed",
 	})
 	if err != nil {
@@ -416,7 +441,11 @@ func (s *WorkloadService) Logs(ctx context.Context, id uuid.UUID, opts LogOption
 		return nil, err
 	}
 
-	pods, err := s.K8sClient.CoreV1().Pods(w.Namespace).List(ctx, metav1.ListOptions{
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	pods, err := kube.Client.CoreV1().Pods(w.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: utils.LabelApp + "=" + w.Name,
 	})
 	if err != nil {
@@ -440,7 +469,7 @@ func (s *WorkloadService) Logs(ctx context.Context, id uuid.UUID, opts LogOption
 		podOpts.SinceSeconds = &opts.SinceSeconds
 	}
 
-	req := s.K8sClient.CoreV1().Pods(w.Namespace).GetLogs(target.Name, podOpts)
+	req := kube.Client.CoreV1().Pods(w.Namespace).GetLogs(target.Name, podOpts)
 	return req.Stream(ctx)
 }
 
@@ -455,7 +484,11 @@ func (s *WorkloadService) Events(ctx context.Context, id uuid.UUID) ([]domain.Wo
 	// K8s Events ne supportent pas labelSelector → on filtre par fieldSelector
 	// sur le sub-resource "involvedObject.namespace" puis post-filter par préfixe
 	// du nom (ressources créées par Helm ont le release name en préfixe).
-	list, err := s.K8sClient.CoreV1().Events(w.Namespace).List(ctx, metav1.ListOptions{})
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	list, err := kube.Client.CoreV1().Events(w.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -505,14 +538,14 @@ func (s *WorkloadService) Metrics(ctx context.Context, id uuid.UUID) (*domain.Wo
 		Replicas:       w.Replicas,
 	}
 
-	mClient, err := metricsv1.NewForConfig(s.K8sConfig)
-	if err != nil {
+	kube, err := s.cluster(ctx, w)
+	if err != nil || kube.MetricsClient == nil {
 		s.Logger.Warnw("metrics client unavailable, returning reserved only", "error", err)
 		return out, nil
 	}
 
 	selector := utils.LabelKmWorkloadID + "=" + id.String()
-	podMetrics, err := mClient.MetricsV1beta1().PodMetricses(w.Namespace).List(ctx, metav1.ListOptions{
+	podMetrics, err := kube.MetricsClient.MetricsV1beta1().PodMetricses(w.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: selector,
 	})
 	if err != nil {
@@ -535,8 +568,17 @@ func (s *WorkloadService) Metrics(ctx context.Context, id uuid.UUID) (*domain.Wo
 
 //  Helpers privés
 
-func (s *WorkloadService) scaleTo(ctx context.Context, w *domain.Workload, replicas int32) error {
-	scale, err := s.K8sClient.AppsV1().Deployments(w.Namespace).GetScale(ctx, w.Name, metav1.GetOptions{})
+// cluster : clients du cluster du projet du conteneur.
+func (s *WorkloadService) cluster(ctx context.Context, w *domain.Workload) (*k8sprovider.ProviderK8s, error) {
+	kube, err := s.Kube.ForProject(ctx, w.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project cluster: %w", err)
+	}
+	return kube, nil
+}
+
+func scaleTo(ctx context.Context, kube kubernetes.Interface, w *domain.Workload, replicas int32) error {
+	scale, err := kube.AppsV1().Deployments(w.Namespace).GetScale(ctx, w.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -544,12 +586,12 @@ func (s *WorkloadService) scaleTo(ctx context.Context, w *domain.Workload, repli
 		return nil
 	}
 	scale.Spec.Replicas = replicas
-	_, err = s.K8sClient.AppsV1().Deployments(w.Namespace).UpdateScale(ctx, w.Name, scale, metav1.UpdateOptions{})
+	_, err = kube.AppsV1().Deployments(w.Namespace).UpdateScale(ctx, w.Name, scale, metav1.UpdateOptions{})
 	return err
 }
 
-func (s *WorkloadService) newHelmActionConfig(namespace string) (*action.Configuration, error) {
-	return helm.NewActionConfig(s.K8sConfig, namespace, func(format string, v ...interface{}) {
+func (s *WorkloadService) newHelmActionConfig(cfg *rest.Config, namespace string) (*action.Configuration, error) {
+	return helm.NewActionConfig(cfg, namespace, func(format string, v ...interface{}) {
 		s.Logger.Debugf(format, v...)
 	})
 }

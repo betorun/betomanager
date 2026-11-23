@@ -17,6 +17,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
+
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 )
 
 const (
@@ -44,10 +46,20 @@ echo "copied $a entries, $sa bytes"
 
 // KubeClaims : Claims sur un vrai cluster.
 type KubeClaims struct {
-	Kube    kubernetes.Interface
+	// Kube : client du cluster du namespace de chaque projet.
+	Kube    k8sprovider.NamespaceClient
 	Image   string        // busybox figé
 	Timeout time.Duration // par copie (démarrage compris)
 	Poll    time.Duration
+}
+
+// client : client du cluster du namespace.
+func (k *KubeClaims) client(ctx context.Context, ns string) (kubernetes.Interface, error) {
+	kube, err := k.Kube(ctx, ns)
+	if err != nil {
+		return nil, fmt.Errorf("project cluster: %w", err)
+	}
+	return kube, nil
 }
 
 func (k *KubeClaims) poll() time.Duration {
@@ -94,8 +106,12 @@ func usesClaim(p corev1.Pod, claim string) bool {
 }
 
 func (k *KubeClaims) WaitDetached(ctx context.Context, ns, claim string) error {
+	kube, err := k.client(ctx, ns)
+	if err != nil {
+		return err
+	}
 	return k.wait(ctx, 5*time.Minute, "the container did not stop", func(ctx context.Context) (bool, error) {
-		pods, err := k.Kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+		pods, err := kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -109,7 +125,11 @@ func (k *KubeClaims) WaitDetached(ctx context.Context, ns, claim string) error {
 }
 
 func (k *KubeClaims) Size(ctx context.Context, ns, claim string) (string, error) {
-	pvc, err := k.Kube.CoreV1().PersistentVolumeClaims(ns).Get(ctx, claim, metav1.GetOptions{})
+	kube, err := k.client(ctx, ns)
+	if err != nil {
+		return "", err
+	}
+	pvc, err := kube.CoreV1().PersistentVolumeClaims(ns).Get(ctx, claim, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return "", nil
 	}
@@ -138,7 +158,11 @@ func claimSpec(size string, class *string) corev1.PersistentVolumeClaimSpec {
 // CreateTemp : le disque temporaire garde, en annotations, les étiquettes et
 // annotations du disque d'origine (Helm le reconnaîtra après recréation).
 func (k *KubeClaims) CreateTemp(ctx context.Context, ns, temp, from, size string) error {
-	pvcs := k.Kube.CoreV1().PersistentVolumeClaims(ns)
+	kube, err := k.client(ctx, ns)
+	if err != nil {
+		return err
+	}
+	pvcs := kube.CoreV1().PersistentVolumeClaims(ns)
 	orig, err := pvcs.Get(ctx, from, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("container disk: %w", err)
@@ -168,7 +192,11 @@ func (k *KubeClaims) CreateTemp(ctx context.Context, ns, temp, from, size string
 // Recreate : supprime `claim` puis le recrée à `size` avec ce que `temp` a
 // gardé. Refuse si le disque temporaire n'est pas là (il porte les données).
 func (k *KubeClaims) Recreate(ctx context.Context, ns, claim, temp, size string) error {
-	pvcs := k.Kube.CoreV1().PersistentVolumeClaims(ns)
+	kube, err := k.client(ctx, ns)
+	if err != nil {
+		return err
+	}
+	pvcs := kube.CoreV1().PersistentVolumeClaims(ns)
 	tmp, err := pvcs.Get(ctx, temp, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("temporary disk missing, the container disk is kept: %w", err)
@@ -200,7 +228,11 @@ func (k *KubeClaims) Recreate(ctx context.Context, ns, claim, temp, size string)
 }
 
 func (k *KubeClaims) Delete(ctx context.Context, ns, claim string) error {
-	err := k.Kube.CoreV1().PersistentVolumeClaims(ns).Delete(ctx, claim, metav1.DeleteOptions{})
+	kube, err := k.client(ctx, ns)
+	if err != nil {
+		return err
+	}
+	err = kube.CoreV1().PersistentVolumeClaims(ns).Delete(ctx, claim, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -259,8 +291,12 @@ func (k *KubeClaims) copyJob(ns, from, to string, uid, gid int64) *batchv1.Job {
 var ErrCopyFailed = errors.New("the disk copy failed")
 
 func (k *KubeClaims) Copy(ctx context.Context, ns, from, to string, uid, gid int64) error {
+	kube, err := k.client(ctx, ns)
+	if err != nil {
+		return err
+	}
 	job := k.copyJob(ns, from, to, uid, gid)
-	jobs := k.Kube.BatchV1().Jobs(ns)
+	jobs := kube.BatchV1().Jobs(ns)
 	if _, err := jobs.Create(ctx, job, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("copy task: %w", err)
 	}
@@ -269,7 +305,7 @@ func (k *KubeClaims) Copy(ctx context.Context, ns, from, to string, uid, gid int
 		_ = jobs.Delete(context.WithoutCancel(ctx), job.Name, metav1.DeleteOptions{PropagationPolicy: &bg})
 	}()
 	var failed string
-	err := k.wait(ctx, k.timeout()+time.Minute, "the disk copy did not finish in time", func(ctx context.Context) (bool, error) {
+	err = k.wait(ctx, k.timeout()+time.Minute, "the disk copy did not finish in time", func(ctx context.Context) (bool, error) {
 		got, err := jobs.Get(ctx, job.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil // passager : on réessaie jusqu'à l'échéance
@@ -292,19 +328,19 @@ func (k *KubeClaims) Copy(ctx context.Context, ns, from, to string, uid, gid int
 		return err
 	}
 	if failed != "" {
-		return fmt.Errorf("%w: %s", ErrCopyFailed, k.lastLog(ctx, ns, job.Name, failed))
+		return fmt.Errorf("%w: %s", ErrCopyFailed, lastLog(ctx, kube, ns, job.Name, failed))
 	}
 	return nil
 }
 
 // lastLog : dernière ligne du journal de la copie.
-func (k *KubeClaims) lastLog(ctx context.Context, ns, job, fallback string) string {
-	pods, err := k.Kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + job})
+func lastLog(ctx context.Context, kube kubernetes.Interface, ns, job, fallback string) string {
+	pods, err := kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + job})
 	if err != nil || len(pods.Items) == 0 {
 		return fallback
 	}
 	tail := int64(5)
-	stream, err := k.Kube.CoreV1().Pods(ns).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{TailLines: &tail}).Stream(ctx)
+	stream, err := kube.CoreV1().Pods(ns).GetLogs(pods.Items[0].Name, &corev1.PodLogOptions{TailLines: &tail}).Stream(ctx)
 	if err != nil {
 		return fallback
 	}

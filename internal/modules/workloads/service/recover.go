@@ -11,8 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/realtime"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
@@ -47,8 +47,9 @@ type IncidentAlerter interface {
 // pannes, jamais le retour à la normale ; sans cette passe, le statut
 // d'incident restait affiché pour toujours.
 type Recoverer struct {
-	Store     repository.IncidentStore
-	K8s       kubernetes.Interface
+	Store repository.IncidentStore
+	// K8s : client du cluster du projet de chaque conteneur.
+	K8s       k8sprovider.ProjectClient
 	Publisher realtime.Publisher
 	Logger    *zap.SugaredLogger
 	// Alerts : alertes email des crons en échec (facultatif).
@@ -127,7 +128,12 @@ func (r *Recoverer) SweepCrons(ctx context.Context) (int, error) {
 		if ctx.Err() != nil {
 			return failed, ctx.Err()
 		}
-		outcome, reason, err := latestRun(ctx, r.K8s, &w)
+		kube, err := r.K8s(ctx, w.ProjectID)
+		if err != nil {
+			r.Logger.Debugw("project cluster unavailable", "workload", w.ID, "error", err)
+			continue
+		}
+		outcome, reason, err := latestRun(ctx, kube, &w)
 		if err != nil {
 			r.Logger.Debugw("cron run lookup failed", "workload", w.ID, "error", err)
 			continue
@@ -157,15 +163,19 @@ func (r *Recoverer) SweepCrons(ctx context.Context) (int, error) {
 // healthy : déploiement à jour, toutes ses répliques prêtes, et chaque pod
 // actif prêt depuis au moins StableFor sans redémarrage.
 func (r *Recoverer) healthy(ctx context.Context, w *domain.Workload) (bool, error) {
+	kube, err := r.K8s(ctx, w.ProjectID)
+	if err != nil {
+		return false, err
+	}
 	if isCron(w) {
 		if w.CurrentPhase == utils.PhaseHelmError {
 			return false, nil // le CronJob n'a peut-être jamais été posé : un redéploiement tranche
 		}
 		// Cron : guéri quand sa dernière exécution (planifiée ou manuelle) a réussi.
-		outcome, _, err := latestRun(ctx, r.K8s, w)
+		outcome, _, err := latestRun(ctx, kube, w)
 		return outcome == RunSucceeded, err
 	}
-	dep, err := r.K8s.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{})
+	dep, err := kube.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{})
 	if kerrors.IsNotFound(err) {
 		return false, nil
 	}
@@ -184,7 +194,7 @@ func (r *Recoverer) healthy(ctx context.Context, w *domain.Workload) (bool, erro
 		dep.Status.UnavailableReplicas > 0 {
 		return false, nil
 	}
-	pods, err := r.K8s.CoreV1().Pods(w.Namespace).List(ctx, metav1.ListOptions{LabelSelector: utils.LabelApp + "=" + w.Name})
+	pods, err := kube.CoreV1().Pods(w.Namespace).List(ctx, metav1.ListOptions{LabelSelector: utils.LabelApp + "=" + w.Name})
 	if err != nil {
 		return false, err
 	}

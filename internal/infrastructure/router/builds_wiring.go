@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/modules/builds/images"
 
 	"github.com/thekrauss/kubemanager/internal/modules/builds"
@@ -63,7 +64,7 @@ func (a *App) pullSecrets() *pull.Secrets {
 	if a.K8sProvider == nil || a.K8sProvider.Client == nil {
 		return nil
 	}
-	s := &pull.Secrets{K8s: a.K8sProvider.Client}
+	s := &pull.Secrets{K8s: k8sprovider.ByProject(a.kube())}
 	if a.Registries != nil {
 		s.External = a.Registries
 	}

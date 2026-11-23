@@ -47,19 +47,25 @@ func (a *App) initDomainLayers() error {
 		a.Config,
 		a.Logger,
 		a.Repos.Project,
-		a.K8sProvider.Client,
-		a.K8sProvider.Config, // fix #2 : GetMetrics a besoin du rest.Config
-		a.Repos.Workload,     // fix #2 : GetTotalUsageByProject pour calcul usage réservé
+		a.kube(),         // cluster de chaque projet (statut, métriques)
+		a.Repos.Workload, // fix #2 : GetTotalUsageByProject pour calcul usage réservé
 	)
+	// Cluster d'un nouveau projet : région demandée puis capacité (registre).
+	if ps, ok := projectService.(*projectSvc.ProjectService); ok {
+		ps.Placer = a.clusterRegistry()
+	}
 	workloadService := workloadsSvc.NewWorkloadService(
 		a.TemporalDistributor,
 		a.Repos.Workload,
 		a.Repos.Project,
-		a.K8sProvider.Client,
-		a.K8sProvider.Config,
+		a.kube(),
 		a.Logger,
 	)
 	workloadService.Variables = a.Variables
+	// Ingress, point d'entrée et disques du cluster de chaque projet (lot 2c).
+	if pool := a.clusterSettings(); pool != nil {
+		workloadService.Clusters = pool
+	}
 	workloadService.Domains = workloadsRepo.NewDomainStore(a.DB)
 	workloadService.Incidents = workloadsRepo.NewIncidentStore(a.DB)
 	workloadService.DomainCfg = &workloadsSvc.DomainSettings{
@@ -117,6 +123,8 @@ func (a *App) initDomainLayers() error {
 	if n := a.alertNotifier(); n != nil {
 		clusterOpts = append(clusterOpts, clustersSvc.WithAlerts(n))
 	}
+	// Événements d'un watcher : seulement pour les projets de son cluster.
+	clusterOpts = append(clusterOpts, clustersSvc.WithPlacement(&clustersRepo.RegistryStore{DB: a.DB}, a.clusterRegistry().DefaultID))
 	clustersService := clustersSvc.NewService(a.Repos.Workload, clusterRepo, a.Publisher, a.Logger, clusterOpts...)
 	clustersController := clusters.NewController(clustersService)
 	clustersController.Registry = a.clusterRegistry()

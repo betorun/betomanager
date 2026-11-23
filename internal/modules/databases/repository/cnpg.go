@@ -39,12 +39,34 @@ const operatorNamespace = "cnpg-system"
 
 // CNPG : Clusters sur un vrai cluster (client dynamique pour la CRD, client
 // typé pour la politique réseau).
+//
+// Clients (lot 2b) : clients du cluster du namespace de chaque projet ; nil :
+// Dynamic et Kube (un seul cluster, tests). Chaque méthode exportée se lie
+// d'abord au cluster de son namespace (on).
 type CNPG struct {
+	Clients      func(ctx context.Context, ns string) (dynamic.Interface, kubernetes.Interface, error)
 	Dynamic      dynamic.Interface
 	Kube         kubernetes.Interface
 	StorageClass string // vide : classe par défaut du cluster
+	// StorageFor : classe des disques réglée sur le cluster du namespace (lot
+	// 2c) ; vide : StorageClass. Lue à la création seulement (immuable ensuite).
+	StorageFor func(ctx context.Context, ns string) (string, error)
 	// Backup : nil = bases sans sauvegarde (aucun stockage configuré).
 	Backup *service.BackupTarget
+}
+
+// on : CNPG lié aux clients du cluster du namespace.
+func (c *CNPG) on(ctx context.Context, ns string) (*CNPG, error) {
+	if c.Clients == nil {
+		return c, nil
+	}
+	dyn, kube, err := c.Clients(ctx, ns)
+	if err != nil {
+		return nil, fmt.Errorf("project cluster: %w", err)
+	}
+	bound := *c
+	bound.Clients, bound.Dynamic, bound.Kube = nil, dyn, kube
+	return &bound, nil
 }
 
 // Conteneur annexe du plugin dans le pod de la base : demandes et limites
@@ -201,6 +223,22 @@ func (c *CNPG) Create(ctx context.Context, ns string, spec service.ClusterSpec) 
 	if spec.Restore != nil && c.Backup == nil {
 		return domain.ErrBackupsDisabled
 	}
+	storageFor := c.StorageFor
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return err
+	}
+	if storageFor != nil {
+		sc, err := storageFor(ctx, ns)
+		if err != nil {
+			return fmt.Errorf("project cluster settings: %w", err)
+		}
+		if sc != "" {
+			bound := *c
+			bound.StorageClass = sc
+			c = &bound
+		}
+	}
 	if _, err := c.Kube.NetworkingV1().NetworkPolicies(ns).Create(ctx, networkPolicy(ns, spec), metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("network policy: %w", err)
 	}
@@ -221,7 +259,7 @@ func (c *CNPG) Create(ctx context.Context, ns string, spec service.ClusterSpec) 
 			return fmt.Errorf("object store: %w", err)
 		}
 	}
-	_, err := c.Dynamic.Resource(ClusterGVR).Namespace(ns).Create(ctx, c.clusterObject(ns, spec), metav1.CreateOptions{})
+	_, err = c.Dynamic.Resource(ClusterGVR).Namespace(ns).Create(ctx, c.clusterObject(ns, spec), metav1.CreateOptions{})
 	if apierrors.IsNotFound(err) {
 		// CRD absente : l'opérateur n'est pas installé sur ce cluster.
 		return domain.ErrOperatorMissing
@@ -238,6 +276,10 @@ func (c *CNPG) Create(ctx context.Context, ns string, spec service.ClusterSpec) 
 }
 
 func (c *CNPG) State(ctx context.Context, ns, name string) (service.ClusterState, error) {
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return service.ClusterState{}, err
+	}
 	obj, err := c.Dynamic.Resource(ClusterGVR).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return service.ClusterState{}, nil
@@ -293,6 +335,10 @@ func (c *CNPG) lastBackup(ctx context.Context, ns, cluster string) *service.Back
 const hibernationAnnotation = "cnpg.io/hibernation"
 
 func (c *CNPG) Hibernate(ctx context.Context, ns, name string, on bool) error {
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return err
+	}
 	value := "off"
 	if on {
 		value = "on"
@@ -313,7 +359,11 @@ var errClusterMissing = errors.New("database cluster not found")
 // Delete : le Cluster (ses disques suivent : CloudNativePG en est
 // propriétaire) et sa politique réseau. Absent : rien à faire.
 func (c *CNPG) Delete(ctx context.Context, ns, name string) error {
-	err := c.Dynamic.Resource(ClusterGVR).Namespace(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return err
+	}
+	err = c.Dynamic.Resource(ClusterGVR).Namespace(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("cluster: %w", err)
 	}
@@ -340,6 +390,10 @@ func (c *CNPG) Delete(ctx context.Context, ns, name string) error {
 }
 
 func (c *CNPG) AppURI(ctx context.Context, ns, name string) (string, error) {
+	c, err := c.on(ctx, ns)
+	if err != nil {
+		return "", err
+	}
 	sec, err := c.Kube.CoreV1().Secrets(ns).Get(ctx, name+"-app", metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return "", domain.ErrAppSecretMissing

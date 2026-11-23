@@ -14,6 +14,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 )
 
 // TestKubeClaims_E2E : déroule disque temporaire, copie, recréation et
@@ -38,7 +40,7 @@ func TestKubeClaims_E2E(t *testing.T) {
 	defer func() {
 		_ = kube.CoreV1().Namespaces().Delete(context.Background(), ns, metav1.DeleteOptions{})
 	}()
-	k := &KubeClaims{Kube: kube, Image: "busybox:1.37.0", Timeout: 5 * time.Minute, Poll: time.Second}
+	k := &KubeClaims{Kube: k8sprovider.Fixed(kube), Image: "busybox:1.37.0", Timeout: 5 * time.Minute, Poll: time.Second}
 	class := "local-path"
 	orig := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "rz-pvc", Namespace: ns,
@@ -104,13 +106,17 @@ func run(t *testing.T, ctx context.Context, k *KubeClaims, ns, claim, script str
 	c.VolumeMounts = []corev1.VolumeMount{{Name: "to", MountPath: "/d"}}
 	job.Spec.Template.Spec.Volumes = job.Spec.Template.Spec.Volumes[1:]
 	c.Resources.Limits[corev1.ResourceMemory] = resource.MustParse("64Mi")
-	jobs := k.Kube.BatchV1().Jobs(ns)
+	kube, err := k.client(ctx, ns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := kube.BatchV1().Jobs(ns)
 	if _, err := jobs.Create(ctx, job, metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	bg := metav1.DeletePropagationForeground
 	defer func() { _ = jobs.Delete(context.Background(), job.Name, metav1.DeleteOptions{PropagationPolicy: &bg}) }()
-	err := k.wait(ctx, 5*time.Minute, "job", func(ctx context.Context) (bool, error) {
+	err = k.wait(ctx, 5*time.Minute, "job", func(ctx context.Context) (bool, error) {
 		got, err := jobs.Get(ctx, job.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
@@ -120,7 +126,7 @@ func run(t *testing.T, ctx context.Context, k *KubeClaims, ns, claim, script str
 				return true, nil
 			}
 			if cond.Status == corev1.ConditionTrue && cond.Type == batchv1.JobFailed {
-				t.Fatalf("job %s failed: %s", job.Name, k.lastLog(ctx, ns, job.Name, cond.Message))
+				t.Fatalf("job %s failed: %s", job.Name, lastLog(ctx, kube, ns, job.Name, cond.Message))
 			}
 		}
 		return false, nil
@@ -131,7 +137,7 @@ func run(t *testing.T, ctx context.Context, k *KubeClaims, ns, claim, script str
 	// Le disque doit être libre pour l'étape suivante.
 	_ = k.wait(ctx, 2*time.Minute, "job pod", func(ctx context.Context) (bool, error) {
 		_ = jobs.Delete(ctx, job.Name, metav1.DeleteOptions{PropagationPolicy: &bg})
-		pods, err := k.Kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + job.Name})
+		pods, err := kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{LabelSelector: "job-name=" + job.Name})
 		return err == nil && len(pods.Items) == 0, nil
 	})
 }

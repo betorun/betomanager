@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	addonsSvc "github.com/thekrauss/kubemanager/internal/modules/addons/service"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 )
@@ -39,7 +40,8 @@ const (
 
 // KubeBackups : BackupRunner sur un vrai cluster.
 type KubeBackups struct {
-	Kube kubernetes.Interface
+	// Kube : client du cluster du namespace de chaque projet.
+	Kube k8sprovider.NamespaceClient
 	Poll time.Duration
 }
 
@@ -152,9 +154,9 @@ func backupPolicy(ns string, egressAllow []string) *networkingv1.NetworkPolicy {
 	}
 }
 
-func (k *KubeBackups) ensurePolicy(ctx context.Context, ns string, egressAllow []string) error {
+func ensurePolicy(ctx context.Context, kube kubernetes.Interface, ns string, egressAllow []string) error {
 	pol := backupPolicy(ns, egressAllow)
-	pols := k.Kube.NetworkingV1().NetworkPolicies(ns)
+	pols := kube.NetworkingV1().NetworkPolicies(ns)
 	if _, err := pols.Create(ctx, pol, metav1.CreateOptions{}); apierrors.IsAlreadyExists(err) {
 		if _, err := pols.Update(ctx, pol, metav1.UpdateOptions{}); err != nil {
 			return fmt.Errorf("backup network policy: %w", err)
@@ -176,11 +178,15 @@ func (k *KubeBackups) Restore(ctx context.Context, t addonsSvc.BackupTask) error
 var ErrBackupTimeout = errors.New("the backup task did not finish in time")
 
 func (k *KubeBackups) run(ctx context.Context, t addonsSvc.BackupTask, restore bool) error {
-	if err := k.ensurePolicy(ctx, t.Namespace, t.EgressAllow); err != nil {
+	kube, err := k.Kube(ctx, t.Namespace)
+	if err != nil {
+		return fmt.Errorf("project cluster: %w", err)
+	}
+	if err := ensurePolicy(ctx, kube, t.Namespace, t.EgressAllow); err != nil {
 		return err
 	}
 	job := backupJob(t, t.ProjectID, restore)
-	jobs := k.Kube.BatchV1().Jobs(t.Namespace)
+	jobs := kube.BatchV1().Jobs(t.Namespace)
 	if _, err := jobs.Create(ctx, job, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("backup task: %w", err)
 	}
@@ -208,7 +214,7 @@ func (k *KubeBackups) run(ctx context.Context, t addonsSvc.BackupTask, restore b
 				case batchv1.JobComplete:
 					return nil
 				case batchv1.JobFailed:
-					return fmt.Errorf("the backup task failed: %s", k.failedLog(ctx, t, c.Message))
+					return fmt.Errorf("the backup task failed: %s", failedLog(ctx, kube, t, c.Message))
 				}
 			}
 		}
@@ -221,8 +227,8 @@ func (k *KubeBackups) run(ctx context.Context, t addonsSvc.BackupTask, restore b
 }
 
 // failedLog : fin du journal du premier conteneur en échec.
-func (k *KubeBackups) failedLog(ctx context.Context, t addonsSvc.BackupTask, fallback string) string {
-	pods, err := k.Kube.CoreV1().Pods(t.Namespace).List(ctx, metav1.ListOptions{LabelSelector: backupTaskLabel + "=" + t.TaskID})
+func failedLog(ctx context.Context, kube kubernetes.Interface, t addonsSvc.BackupTask, fallback string) string {
+	pods, err := kube.CoreV1().Pods(t.Namespace).List(ctx, metav1.ListOptions{LabelSelector: backupTaskLabel + "=" + t.TaskID})
 	if err != nil || len(pods.Items) == 0 {
 		return fallback
 	}
@@ -235,7 +241,7 @@ func (k *KubeBackups) failedLog(ctx context.Context, t addonsSvc.BackupTask, fal
 		}
 	}
 	tail := backupLogTail
-	stream, err := k.Kube.CoreV1().Pods(t.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: container, TailLines: &tail}).Stream(ctx)
+	stream, err := kube.CoreV1().Pods(t.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: container, TailLines: &tail}).Stream(ctx)
 	if err != nil {
 		return fallback
 	}

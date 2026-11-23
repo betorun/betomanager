@@ -8,6 +8,7 @@ import (
 	"github.com/loopfz/gadgeto/tonic"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	addonsRepo "github.com/thekrauss/kubemanager/internal/modules/addons/repository"
@@ -49,7 +50,7 @@ func (a *App) addonBackups() *addonsSvc.BackupConfig {
 	}
 	return &addonsSvc.BackupConfig{
 		Store: &addonsRepo.GormRepository{DB: a.DB}, Objects: a.ObjectStore,
-		Signer: registry.Credentials{Secret: []byte(c.Secret)}, Runner: &addonsRepo.KubeBackups{Kube: a.K8sProvider.Client},
+		Signer: registry.Credentials{Secret: []byte(c.Secret)}, Runner: &addonsRepo.KubeBackups{Kube: k8sprovider.ByNamespace(a.kube())},
 		PublicAPIURL: c.PublicAPIURL, FetchImage: fetch, EgressAllow: c.EgressAllowCIDRs,
 	}
 }

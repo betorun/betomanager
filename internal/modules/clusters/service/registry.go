@@ -26,6 +26,7 @@ type RegistryStore interface {
 	Delete(ctx context.Context, clusterID string) error
 	Healths(ctx context.Context) (map[string]*domain.Health, error)
 	SaveHealth(ctx context.Context, h *domain.Health) error
+	ProjectCounts(ctx context.Context, defaultID string) (map[string]int, error)
 }
 
 // Sealer : chiffrement des kubeconfig (clé maître, auth.Sealer).
@@ -108,6 +109,11 @@ type UpdateInput struct {
 	Region       *string `json:"region,omitempty" description:"Région"`
 	State        *string `json:"state,omitempty" description:"active (reçoit des projets), closed (n'en reçoit plus) ou disabled (hors service, plus sondé)"`
 	Notes        *string `json:"notes,omitempty" description:"Notes de l'équipe"`
+	// Réglages du cluster (vides : ceux de la configuration du déploiement).
+	IngressClass     *string `json:"ingress_class,omitempty" description:"Classe d'ingress des domaines des projets (ex. traefik)"`
+	IngressNamespace *string `json:"ingress_namespace,omitempty" description:"Namespace du contrôleur d'ingress (ex. kube-system)"`
+	IngressTarget    *string `json:"ingress_target,omitempty" description:"Nom DNS ou adresse IPv4 vers laquelle pointent les domaines personnalisés"`
+	StorageClass     *string `json:"storage_class,omitempty" description:"Classe des disques des projets (vide : celle par défaut du cluster)"`
 }
 
 // EnsureDefault : le cluster de la configuration figure au registre.
@@ -128,11 +134,27 @@ func (r *Registry) List(ctx context.Context) ([]domain.ClusterView, error) {
 	if err != nil {
 		return nil, err
 	}
+	counts, err := r.Store.ProjectCounts(ctx, r.defaultID(cs))
+	if err != nil {
+		return nil, err
+	}
 	out := make([]domain.ClusterView, 0, len(cs))
 	for i := range cs {
-		out = append(out, r.view(&cs[i], hs[cs[i].ClusterID]))
+		v := r.view(&cs[i], hs[cs[i].ClusterID])
+		v.Projects = counts[cs[i].ClusterID]
+		out = append(out, v)
 	}
 	return out, nil
+}
+
+// defaultID : cluster par défaut du registre ("" s'il n'y en a pas).
+func (r *Registry) defaultID(cs []domain.Cluster) string {
+	for _, c := range cs {
+		if c.IsDefault {
+			return c.ClusterID
+		}
+	}
+	return ""
 }
 
 // Get : un cluster et son relevé.
@@ -146,6 +168,13 @@ func (r *Registry) Get(ctx context.Context, clusterID string) (*domain.ClusterVi
 		return nil, err
 	}
 	v := r.view(c, hs[clusterID])
+	def := ""
+	if c.IsDefault {
+		def = c.ClusterID
+	}
+	if counts, err := r.Store.ProjectCounts(ctx, def); err == nil {
+		v.Projects = counts[clusterID]
+	}
 	return &v, nil
 }
 
@@ -193,6 +222,15 @@ func (r *Registry) Update(ctx context.Context, clusterID string, in UpdateInput)
 	set(&c.Region, in.Region, "region")
 	set(&c.State, in.State, "state")
 	set(&c.Notes, in.Notes, "notes")
+	set(&c.IngressClass, in.IngressClass, "ingress_class")
+	set(&c.IngressNamespace, in.IngressNamespace, "ingress_namespace")
+	set(&c.IngressTarget, in.IngressTarget, "ingress_target")
+	set(&c.StorageClass, in.StorageClass, "storage_class")
+	for _, v := range []string{c.IngressClass, c.IngressNamespace, c.IngressTarget, c.StorageClass} {
+		if !domain.ValidSetting(v) {
+			return nil, domain.ErrInvalidSetting
+		}
+	}
 	if c.Name == "" {
 		c.Name, fields["name"] = c.ClusterID, c.ClusterID
 	}
@@ -274,6 +312,13 @@ func (r *Registry) Delete(ctx context.Context, clusterID string) error {
 	}
 	if c.IsDefault {
 		return domain.ErrDefaultCluster
+	}
+	counts, err := r.Store.ProjectCounts(ctx, "")
+	if err != nil {
+		return err
+	}
+	if counts[clusterID] > 0 {
+		return domain.ErrClusterHasProjects
 	}
 	if err := r.Store.Delete(ctx, clusterID); err != nil {
 		return err
@@ -450,3 +495,50 @@ func (r *Registry) remember(clusterID string, setAt time.Time, reader Reader) {
 }
 
 func aad(clusterID string) string { return "cluster:" + clusterID + ":kubeconfig" }
+
+// candidates : registre vu par le placement.
+func (r *Registry) candidates(ctx context.Context) ([]domain.Candidate, error) {
+	cs, err := r.Store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hs, err := r.Store.Healths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	counts, err := r.Store.ProjectCounts(ctx, r.defaultID(cs))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Candidate, 0, len(cs))
+	for i := range cs {
+		c := &cs[i]
+		out = append(out, domain.Candidate{ClusterID: c.ClusterID, Region: c.Region, State: c.State, IsDefault: c.IsDefault,
+			Reachable: len(c.KubeconfigCiphertext) > 0 || (c.ClusterID == r.DefaultID && r.Default != nil),
+			Health:    hs[c.ClusterID], Projects: counts[c.ClusterID]})
+	}
+	return out, nil
+}
+
+// Place : cluster d'un nouveau projet (région vide : au choix de la
+// plateforme) ; "" : aucun cluster au registre (cluster de la configuration).
+func (r *Registry) Place(ctx context.Context, region string) (string, error) {
+	region = strings.TrimSpace(region)
+	if region != "" && !domain.ValidRegionCode(region) {
+		return "", domain.ErrInvalidRegionCode
+	}
+	cs, err := r.candidates(ctx)
+	if err != nil {
+		return "", err
+	}
+	return domain.Place(cs, region)
+}
+
+// Regions : régions proposées à la création d'un projet.
+func (r *Registry) Regions(ctx context.Context) ([]domain.Region, error) {
+	cs, err := r.candidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return domain.Regions(cs), nil
+}

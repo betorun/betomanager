@@ -86,3 +86,28 @@ func TestE2E_Registry(t *testing.T) {
 	require.NoError(t, db.Exec(`UPDATE clusters SET is_default = false WHERE cluster_id = ?`, other).Error)
 	require.NoError(t, store.Delete(ctx, other))
 }
+
+// Projets comptés par cluster (sans cluster : sous le défaut) ; la base
+// refuse de retirer un cluster qui porte un projet.
+func TestE2E_ProjectCounts(t *testing.T) {
+	db := e2eDB(t)
+	ctx := context.Background()
+	store := &repository.RegistryStore{DB: db}
+	suffix := uuid.NewString()[:8]
+	host := "host-" + suffix
+	require.NoError(t, store.Declare(ctx, &domain.Cluster{ClusterID: host, Provider: domain.ProviderOVH, Distribution: domain.DistributionK3s, State: domain.StateActive}))
+	org := uuid.New()
+	require.NoError(t, db.Exec(`INSERT INTO organizations (id, display_name) VALUES (?, 'e2e placement')`, org).Error)
+	p1, p2 := uuid.New(), uuid.New()
+	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, namespace, organization_id, cluster_id) VALUES (?, ?, ?, ?, ?)`,
+		p1, "pl-"+suffix, "km-a"+suffix, org, host).Error)
+	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, namespace, organization_id) VALUES (?, ?, ?, ?)`,
+		p2, "pl2-"+suffix, "km-b"+suffix, org).Error)
+	counts, err := store.ProjectCounts(ctx, "le-defaut-"+suffix)
+	require.NoError(t, err)
+	assert.Equal(t, 1, counts[host])
+	assert.GreaterOrEqual(t, counts["le-defaut-"+suffix], 1, "projet sans cluster : compté sous le défaut")
+	assert.Error(t, store.Delete(ctx, host), "clé étrangère : le cluster porte un projet")
+	require.NoError(t, db.Exec(`DELETE FROM projects WHERE id IN (?, ?)`, p1, p2).Error)
+	require.NoError(t, store.Delete(ctx, host))
+}

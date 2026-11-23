@@ -155,6 +155,29 @@ func TestE2E_WorkloadIdentity(t *testing.T) {
 	code, _ = exchange(podToken(t, key2, "k2", svc.Issuer, sub))
 	assert.Equal(t, http.StatusOK, code)
 
+	// ── Multi-cluster (lot 2c) : un second cluster publie le même émetteur
+	// (k3s). Le projet est placé sur le premier : un pod du second, même
+	// namespace et même nom, n'obtient rien. ──
+	second := "k3s-wl2-" + uuid.NewString()[:6]
+	for _, id := range []string{cluster, second} {
+		require.NoError(t, d.Exec(`INSERT INTO clusters (cluster_id) VALUES (?) ON CONFLICT DO NOTHING`, id).Error)
+	}
+	keyB, _ := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, agents.ReportServiceAccountKeys(ctx, second, k8sIssuer, k8sJWKS(t, keyB, "k2")))
+	require.NoError(t, d.Exec(`UPDATE projects SET cluster_id = ? WHERE id = ?`, cluster, projectID).Error)
+	t.Cleanup(func() { d.Exec(`UPDATE projects SET cluster_id = NULL WHERE id = ?`, projectID) })
+	code, _ = exchange(podToken(t, key2, "k2", svc.Issuer, sub))
+	assert.Equal(t, http.StatusOK, code, "même émetteur, même kid : la clé du bon cluster est trouvée")
+	code, body = exchange(podToken(t, keyB, "k2", svc.Issuer, sub))
+	assert.Equal(t, http.StatusBadRequest, code, "pod de l'autre cluster : le workload n'y est pas placé")
+	assert.Equal(t, "invalid_grant", body["error"])
+	require.NoError(t, d.Exec(`UPDATE projects SET cluster_id = ? WHERE id = ?`, second, projectID).Error)
+	code, _ = exchange(podToken(t, keyB, "k2", svc.Issuer, sub))
+	assert.Equal(t, http.StatusOK, code, "projet sur le second cluster : ses pods passent")
+	code, _ = exchange(podToken(t, key2, "k2", svc.Issuer, sub))
+	assert.Equal(t, http.StatusBadRequest, code, "et ceux du premier ne passent plus")
+	require.NoError(t, d.Exec(`UPDATE projects SET cluster_id = NULL WHERE id = ?`, projectID).Error)
+
 	// Le workload ne tourne plus comme le compte : ses jetons tombent.
 	require.NoError(t, d.Exec(`UPDATE workloads SET service_account_id = NULL WHERE id = ?`, workloadID).Error)
 	svc.ForgetStatus()

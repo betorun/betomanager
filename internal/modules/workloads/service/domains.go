@@ -108,7 +108,7 @@ func (s *WorkloadService) records(ctx context.Context, d *domain.WorkloadDomain)
 	rel := func(name string) string { return domain.RelativeHost(name, zone) }
 	challenge := domain.ChallengePrefix + d.Hostname
 	out := []domain.DNSRecord{{Type: domain.RecordTXT, Name: challenge, Host: rel(challenge), Value: d.Token}}
-	target := s.DomainCfg.Target
+	target := s.domainTarget(ctx, d.WorkloadID)
 	targetIsIP := net.ParseIP(target) != nil
 	switch {
 	case targetIsIP:
@@ -263,7 +263,7 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 	lookup, cancel := context.WithTimeout(ctx, domainLookupTimeout)
 	defer cancel()
 	txt, lookupErr := s.challengeTXT(lookup, d.Hostname)
-	pointing := s.pointsToPlatform(lookup, d.Hostname)
+	pointing := s.pointsToPlatform(lookup, d.Hostname, s.domainTarget(ctx, workload))
 	check := s.domainCheck(d, txt, lookupErr)
 
 	if !slices.Contains(txt, d.Token) {
@@ -433,7 +433,7 @@ func (s *WorkloadService) redeploy(ctx context.Context, w *domain.Workload) erro
 	if err != nil {
 		return err
 	}
-	in, err := s.inputFor(ctx, w, spec)
+	in, _, err := s.inputFor(ctx, w, spec)
 	if err != nil {
 		return err
 	}
@@ -441,12 +441,16 @@ func (s *WorkloadService) redeploy(ctx context.Context, w *domain.Workload) erro
 }
 
 // inputFor : entrée du workflow, avec les domaines vérifiés.
-func (s *WorkloadService) inputFor(ctx context.Context, w *domain.Workload, spec domain.CreateWorkloadRequest) (workflows.DeployWorkloadInput, error) {
-	in := s.deployInput(w, spec)
+func (s *WorkloadService) inputFor(ctx context.Context, w *domain.Workload, spec domain.CreateWorkloadRequest) (workflows.DeployWorkloadInput, profile, error) {
+	prof, err := s.profileFor(ctx, w.ProjectID)
+	if err != nil {
+		return workflows.DeployWorkloadInput{}, prof, err
+	}
+	in := s.deployInput(w, spec, prof)
 	if s.Domains != nil {
 		routes, err := s.Domains.VerifiedRoutes(ctx, w.ID)
 		if err != nil {
-			return in, err
+			return in, prof, err
 		}
 		in.CustomRoutes = make([]activities.DomainRoute, 0, len(routes))
 		for _, r := range routes {
@@ -457,11 +461,11 @@ func (s *WorkloadService) inputFor(ctx context.Context, w *domain.Workload, spec
 	if s.ExternalRegistries != nil && !in.PlatformImage && w.Image != "" {
 		has, err := s.ExternalRegistries.Has(ctx, w.ProjectID, registriesDomain.ImageHost(w.Image))
 		if err != nil {
-			return in, err
+			return in, prof, err
 		}
 		in.ExternalPull = has
 	}
-	return in, nil
+	return in, prof, nil
 }
 
 func (s *WorkloadService) challengeTXT(ctx context.Context, host string) ([]string, error) {
@@ -481,14 +485,14 @@ func (s *WorkloadService) challengeTXT(ctx context.Context, host string) ([]stri
 }
 
 // pointsToPlatform : toutes les adresses du domaine sont celles de la cible.
-func (s *WorkloadService) pointsToPlatform(ctx context.Context, host string) bool {
+func (s *WorkloadService) pointsToPlatform(ctx context.Context, host, target string) bool {
 	hostIPs, err := s.DomainCfg.Resolver.LookupHost(ctx, host)
 	if err != nil || len(hostIPs) == 0 {
 		return false
 	}
-	targets := []string{s.DomainCfg.Target}
-	if net.ParseIP(s.DomainCfg.Target) == nil {
-		if targets, err = s.DomainCfg.Resolver.LookupHost(ctx, s.DomainCfg.Target); err != nil {
+	targets := []string{target}
+	if net.ParseIP(target) == nil {
+		if targets, err = s.DomainCfg.Resolver.LookupHost(ctx, target); err != nil {
 			return false
 		}
 	}

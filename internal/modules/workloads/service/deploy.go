@@ -23,10 +23,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
-	"github.com/thekrauss/kubemanager/internal/core/configs"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	projectRepo "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -71,9 +69,9 @@ type WorkloadService struct {
 	Distributor temporal.TaskDistributor
 	Repo        repository.WorkloadRepository
 	ProjectRepo projectRepo.ProjectRepository
-	K8sClient   *kubernetes.Clientset
-	K8sConfig   *rest.Config
-	Logger      *zap.SugaredLogger
+	// Kube : clients du cluster du projet de chaque conteneur.
+	Kube   k8sprovider.Resolver
+	Logger *zap.SugaredLogger
 	// Billing : garde de la facturation (nil : rien n'est bloqué). Refuse de
 	// démarrer ou de déployer pendant une suspension faute de solde, ou dans
 	// un projet arrêté par son budget.
@@ -88,6 +86,9 @@ type WorkloadService struct {
 	// Domains, DomainCfg : domaines personnalisés (nil : indisponibles).
 	Domains   repository.DomainStore
 	DomainCfg *DomainSettings
+	// Clusters : réglages du cluster de chaque projet (ingress, point
+	// d'entrée, stockage) ; nil : ceux de la configuration.
+	Clusters k8sprovider.SettingsResolver
 }
 
 // RegistrySettings : registre d'images de la plateforme.
@@ -111,16 +112,14 @@ func NewWorkloadService(
 	dist temporal.TaskDistributor,
 	repo repository.WorkloadRepository,
 	pRepo projectRepo.ProjectRepository,
-	k8s *kubernetes.Clientset,
-	k8sCfg *rest.Config,
+	kube k8sprovider.Resolver,
 	log *zap.SugaredLogger,
 ) *WorkloadService {
 	return &WorkloadService{
 		Distributor: dist,
 		Repo:        repo,
 		ProjectRepo: pRepo,
-		K8sClient:   k8s,
-		K8sConfig:   k8sCfg,
+		Kube:        kube,
 		Logger:      log.With("service", "WorkloadService"),
 	}
 }
@@ -155,10 +154,12 @@ func (s *WorkloadService) Deploy(ctx context.Context, in *WorkloadServiceRequest
 	if err != nil {
 		return nil, err
 	}
-	wfInput := s.deployInput(workload, spec)
-	_, err = s.Distributor.ExecuteWorkflow(ctx,
-		temporal.ExecuteOptions{WorkflowID: workflows.WorkflowIDDeployPrefix + workload.ID.String()},
-		workflows.DeployWorkloadWorkflowName, wfInput)
+	prof, err := s.profileFor(ctx, workload.ProjectID)
+	if err == nil {
+		_, err = s.Distributor.ExecuteWorkflow(ctx,
+			temporal.ExecuteOptions{WorkflowID: workflows.WorkflowIDDeployPrefix + workload.ID.String()},
+			workflows.DeployWorkloadWorkflowName, s.deployInput(workload, spec, prof))
+	}
 	if err != nil {
 		// Rien n'est installé : la ligne STARTING garderait le nom et le quota.
 		s.compensate(ctx, "workload creation not undone", workload.ID, func(ctx context.Context) error {
@@ -398,6 +399,16 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 		runAs = &saID
 	}
 
+	// Classe des disques : celle du cluster du projet si le client n'en
+	// demande pas d'autre ; gardée ensuite (un disque ne change pas de classe).
+	prof, err := s.profileFor(ctx, pID)
+	if err != nil {
+		return nil, none, err
+	}
+	if prof.StorageClass != "" && (in.StorageClass == "" || in.StorageClass == utils.DefaultStorageClass) {
+		in.StorageClass = prof.StorageClass
+	}
+
 	workload := &domain.Workload{
 		ID:                 uuid.New(),
 		ProjectID:          pID,
@@ -427,7 +438,7 @@ func (s *WorkloadService) create(ctx context.Context, in *WorkloadServiceRequest
 	if workload.Spec, err = json.Marshal(spec); err != nil {
 		return nil, none, err
 	}
-	workload.ExternalURL = routeFor(in.Kind, in.Name, pID, in.TLSEnabled, in.NoPublicURL).URL
+	workload.ExternalURL = routeFor(in.Kind, in.Name, pID, in.TLSEnabled, in.NoPublicURL, prof).URL
 
 	if err := s.Repo.Create(ctx, workload); err != nil {
 		if errors.Is(err, repository.ErrNameTaken) {
@@ -553,7 +564,7 @@ func (s *WorkloadService) update(ctx context.Context, id string, req domain.Upda
 		return err
 	}
 	current.EnvRevision = edit.revision
-	in, err := s.inputFor(ctx, current, spec)
+	in, prof, err := s.inputFor(ctx, current, spec)
 	if err == nil {
 		// Le workflow d'abord : si un autre déploiement a pris la place ou si
 		// Temporal est indisponible, la base ne doit pas annoncer une version
@@ -574,7 +585,7 @@ func (s *WorkloadService) update(ctx context.Context, id string, req domain.Upda
 			return err
 		}
 	}
-	url := routeFor(spec.Kind, current.Name, current.ProjectID, spec.TLSEnabled, spec.NoPublicURL).URL
+	url := routeFor(spec.Kind, current.Name, current.ProjectID, spec.TLSEnabled, spec.NoPublicURL, prof).URL
 	return s.Repo.UpdateSpec(save, current.ID, current.Image, current.StorageSize, url, raw)
 }
 
@@ -741,19 +752,24 @@ func (s *WorkloadService) PatchVariables(ctx context.Context, id uuid.UUID, req 
 // revisionBehind : le Deployment ne porte pas la révision courante des variables
 // (ou n'existe pas). En cas de doute (cluster injoignable), on ne redéploie pas.
 func (s *WorkloadService) revisionBehind(ctx context.Context, w *domain.Workload) bool {
-	if s.K8sClient == nil || w.Image == "" {
+	if s.Kube == nil || w.Image == "" {
+		return false
+	}
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		s.warn("deployed revision unavailable", "workload", w.ID, "error", err)
 		return false
 	}
 	want := strconv.FormatInt(w.EnvRevision, 10)
 	if isCron(w) {
-		rev, found, err := cronRevision(ctx, s.K8sClient, w)
+		rev, found, err := cronRevision(ctx, kube.Client, w)
 		if err != nil {
 			s.warn("deployed revision unavailable", "workload", w.ID, "error", err)
 			return false
 		}
 		return !found || rev != want
 	}
-	dep, err := s.K8sClient.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{})
+	dep, err := kube.Client.AppsV1().Deployments(w.Namespace).Get(ctx, w.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return true
 	}
@@ -867,8 +883,8 @@ func (s *WorkloadService) applyRuntime(ctx context.Context, w *domain.Workload, 
 
 // deployInput : entrée du workflow de déploiement, construite de la même
 // façon à la création et à chaque mise à jour.
-func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWorkloadRequest) workflows.DeployWorkloadInput {
-	route := routeFor(spec.Kind, w.Name, w.ProjectID, spec.TLSEnabled, spec.NoPublicURL)
+func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWorkloadRequest, prof profile) workflows.DeployWorkloadInput {
+	route := routeFor(spec.Kind, w.Name, w.ProjectID, spec.TLSEnabled, spec.NoPublicURL, prof)
 	in := workflows.DeployWorkloadInput{
 		Process: activities.ProcessSpec{
 			Kind: kindOf(w), Command: spec.Command, Args: spec.Args, HealthCommand: spec.HealthCommand,
@@ -902,10 +918,14 @@ func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWork
 // currentEnv : variables d'environnement en place (secret <nom>-env créé au
 // déploiement) ; aucune si le secret n'existe pas.
 func (s *WorkloadService) currentEnv(ctx context.Context, w *domain.Workload) (map[string]string, error) {
-	if s.K8sClient == nil {
+	if s.Kube == nil {
 		return nil, nil
 	}
-	secret, err := s.K8sClient.CoreV1().Secrets(w.Namespace).Get(ctx, utils.EnvSecretName(w.Name), metav1.GetOptions{})
+	kube, err := s.cluster(ctx, w)
+	if err != nil {
+		return nil, err
+	}
+	secret, err := kube.Client.CoreV1().Secrets(w.Namespace).Get(ctx, utils.EnvSecretName(w.Name), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil, nil
 	}
@@ -933,11 +953,11 @@ type route struct {
 // routeFor : adresse publique d'un conteneur web ; aucune pour un worker ou
 // un cron (ni ingress, ni URL). noPublic : pas d'adresse sslip.io, mais la
 // classe d'ingress reste connue (domaines vérifiés, politique réseau).
-func routeFor(kind, name string, projectID uuid.UUID, tls, noPublic bool) route {
+func routeFor(kind, name string, projectID uuid.UUID, tls, noPublic bool, prof profile) route {
 	if kind != "" && kind != domain.KindWeb {
 		return route{}
 	}
-	r := publicRoute(name, projectID, tls)
+	r := publicRoute(name, projectID, tls, prof)
 	if noPublic {
 		r.Host, r.URL = "", ""
 	}
@@ -1004,12 +1024,9 @@ func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *d
 	return nil
 }
 
-func publicRoute(name string, projectID uuid.UUID, tls bool) route {
-	r := route{
-		IngressClass:     configs.AppConfig.Kubernetes.IngressClass,
-		IngressNamespace: configs.AppConfig.Kubernetes.IngressNamespace,
-	}
-	ip := strings.TrimSpace(configs.AppConfig.Vps.AdressIp)
+func publicRoute(name string, projectID uuid.UUID, tls bool, prof profile) route {
+	r := route{IngressClass: prof.IngressClass, IngressNamespace: prof.IngressNamespace}
+	ip := prof.PublicIP
 	if ip == "" {
 		return r
 	}

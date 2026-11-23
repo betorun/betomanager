@@ -22,10 +22,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	idempotency "github.com/thekrauss/kubemanager/internal/infrastructure/idempotence"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/modules/registries/pull"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
@@ -34,8 +33,9 @@ import (
 // WorkloadActivities : activities Temporal pour déployer des workloads via Helm.
 // Idempotency (optionnel) déduplique InstallChart / EnsureSecret sur retry.
 type WorkloadActivities struct {
-	K8sConfig *rest.Config
-	K8sClient *kubernetes.Clientset
+	// Kube : clients du cluster de chaque projet (les entrées des activités
+	// ne changent pas : le namespace ou le projet suffit à le retrouver).
+	Kube k8sprovider.Resolver
 	// Pull : Secret de pull des projets (registre de la plateforme et
 	// registres externes).
 	Pull        *pull.Secrets
@@ -145,6 +145,24 @@ type InstallWorkloadInput struct {
 	StartupTimeoutSeconds int
 }
 
+// forProject : cluster du projet (namespace en repli si l'identifiant est
+// mal formé).
+func (a *WorkloadActivities) forProject(ctx context.Context, projectID, namespace string) (*k8sprovider.ProviderK8s, error) {
+	var (
+		kube *k8sprovider.ProviderK8s
+		err  error
+	)
+	if id, perr := uuid.Parse(projectID); perr == nil {
+		kube, err = a.Kube.ForProject(ctx, id)
+	} else {
+		kube, err = a.Kube.ForNamespace(ctx, namespace)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("project cluster: %w", err)
+	}
+	return kube, nil
+}
+
 func helmLog(format string, v ...interface{}) {
 	fmt.Printf(format, v...)
 }
@@ -154,7 +172,11 @@ func (a *WorkloadActivities) InstallChart(ctx context.Context, input InstallWork
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, input,
 		idempotency.ActivityOptions{ProcessingTTL: InstallChartProcessingTTL, RetakeOnRetry: true},
 		func() (struct{}, error) {
-			actionConfig, err := helm.NewActionConfig(a.K8sConfig, input.Namespace, helmLog)
+			kube, err := a.forProject(ctx, input.ProjectID, input.Namespace)
+			if err != nil {
+				return struct{}{}, err
+			}
+			actionConfig, err := helm.NewActionConfig(kube.Config, input.Namespace, helmLog)
 			if err != nil {
 				return struct{}{}, err
 			}
@@ -260,7 +282,11 @@ func (a *WorkloadActivities) UninstallChart(ctx context.Context, namespace, rele
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, payload,
 		idempotency.ActivityOptions{ProcessingTTL: uninstallChartProcessingTTL},
 		func() (struct{}, error) {
-			actionConfig, err := helm.NewActionConfig(a.K8sConfig, namespace, helmLog)
+			kube, err := a.Kube.ForNamespace(ctx, namespace)
+			if err != nil {
+				return struct{}{}, fmt.Errorf("project cluster: %w", err)
+			}
+			actionConfig, err := helm.NewActionConfig(kube.Config, namespace, helmLog)
 			if err != nil {
 				return struct{}{}, err
 			}
@@ -628,7 +654,11 @@ func (a *WorkloadActivities) SyncEnvSecret(ctx context.Context, namespace, relea
 			Labels: map[string]string{utils.LabelKmProjectID: projectID}},
 		Data: data,
 	}
-	api := a.K8sClient.CoreV1().Secrets(namespace)
+	kube, err := a.forProject(ctx, projectID, namespace)
+	if err != nil {
+		return err
+	}
+	api := kube.Client.CoreV1().Secrets(namespace)
 	if _, err := api.Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
 			return err
@@ -641,7 +671,11 @@ func (a *WorkloadActivities) SyncEnvSecret(ctx context.Context, namespace, relea
 
 // DeleteEnvSecret : Secret des variables d'un conteneur supprimé.
 func (a *WorkloadActivities) DeleteEnvSecret(ctx context.Context, namespace, releaseName string) error {
-	err := a.K8sClient.CoreV1().Secrets(namespace).Delete(ctx, utils.EnvSecretName(releaseName), metav1.DeleteOptions{})
+	kube, err := a.Kube.ForNamespace(ctx, namespace)
+	if err != nil {
+		return fmt.Errorf("project cluster: %w", err)
+	}
+	err = kube.Client.CoreV1().Secrets(namespace).Delete(ctx, utils.EnvSecretName(releaseName), metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

@@ -5,7 +5,12 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+
 	"github.com/thekrauss/kubemanager/internal/auth"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	clustersRepo "github.com/thekrauss/kubemanager/internal/modules/clusters/repository"
 	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 )
@@ -50,6 +55,63 @@ func (a *App) clusterRegistry() *clustersSvc.Registry {
 	}
 	a.clusters = r
 	return r
+}
+
+// kube : client Kubernetes du cluster de chaque projet (lot 2b) ; sans
+// registre utilisable, le cluster de la configuration pour tous.
+func (a *App) kube() k8sprovider.Resolver {
+	if a.kubeResolver != nil {
+		return a.kubeResolver
+	}
+	reg := a.clusterRegistry()
+	a.kubeResolver = &clustersSvc.Pool{
+		Registry: reg,
+		Projects: &clustersRepo.RegistryStore{DB: a.DB},
+		Default:  a.K8sProvider,
+		RestConfig: func(raw []byte) (*rest.Config, error) {
+			rc, _, err := clustersRepo.ParseKubeconfig(raw)
+			return rc, err
+		},
+	}
+	return a.kubeResolver
+}
+
+// cnpgClients : clients (dynamique et typé) du cluster du namespace d'un
+// projet, pour les bases gérées.
+func (a *App) cnpgClients() func(ctx context.Context, ns string) (dynamic.Interface, kubernetes.Interface, error) {
+	kube := a.kube()
+	return func(ctx context.Context, ns string) (dynamic.Interface, kubernetes.Interface, error) {
+		p, err := kube.ForNamespace(ctx, ns)
+		if err != nil {
+			return nil, nil, err
+		}
+		dyn := p.Dynamic
+		if dyn == nil {
+			if dyn, err = dynamic.NewForConfig(p.Config); err != nil {
+				return nil, nil, err
+			}
+		}
+		return dyn, p.Client, nil
+	}
+}
+
+// clusterSettings : réglages (ingress, cible, stockage) du cluster de chaque
+// projet (lot 2c) ; nil sans pool.
+func (a *App) clusterSettings() *clustersSvc.Pool {
+	p, _ := a.kube().(*clustersSvc.Pool)
+	return p
+}
+
+// storageFor : classe des disques du cluster du namespace d'un projet.
+func (a *App) storageFor() func(ctx context.Context, ns string) (string, error) {
+	pool := a.clusterSettings()
+	if pool == nil {
+		return nil
+	}
+	return func(ctx context.Context, ns string) (string, error) {
+		st, err := pool.SettingsForNamespace(ctx, ns)
+		return st.StorageClass, err
+	}
 }
 
 // startClusterHealth : relevé de santé de chaque cluster (worker).

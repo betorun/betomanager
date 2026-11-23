@@ -94,6 +94,9 @@ func addClusterRoutes(app *App) {
 			list, tonic.Handler(r.ListClusters, http.StatusOK))
 		return
 	}
+	RootGroup.NewGroup("/regions", "Régions").AddRoute("", http.MethodGet,
+		"Régions où créer un projet (disponibles maintenant ou non) ; la région choisie se passe à la création du projet",
+		Authenticated(), tonic.Handler(reg.Regions, http.StatusOK))
 	adminClusters.AddRoute("", http.MethodGet,
 		"Registre des clusters : fournisseur, distribution, région, état, accès déposé, dernier relevé de santé",
 		list, tonic.Handler(reg.RegistryList, http.StatusOK))

@@ -44,6 +44,13 @@ type Cluster struct {
 	KubeconfigSetBy      string     `gorm:"not null;default:''" json:"-"`
 	DeclaredBy           string     `gorm:"not null;default:''" json:"-"`
 
+	// Réglages propres au cluster (vides : ceux de la configuration du
+	// déploiement, pour le cluster par défaut).
+	IngressClass     string `gorm:"not null;default:''" json:"ingress_class"`
+	IngressNamespace string `gorm:"not null;default:''" json:"ingress_namespace"`
+	IngressTarget    string `gorm:"not null;default:''" json:"ingress_target"`
+	StorageClass     string `gorm:"not null;default:''" json:"storage_class"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

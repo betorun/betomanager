@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/api/serviceerror"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
@@ -734,7 +734,7 @@ func TestCreate_UsageErrorRefused(t *testing.T) {
 // Conteneur antérieur, spec sans limites : Helm reçoit celles de la base.
 func TestDeployInput_FallsBackToSavedLimits(t *testing.T) {
 	s := &WorkloadService{}
-	in := s.deployInput(&domain.Workload{ID: uuid.New(), ProjectID: uuid.New(), Name: "web", CPULimit: "200m", MemoryLimit: "256Mi"}, domain.CreateWorkloadRequest{})
+	in := s.deployInput(&domain.Workload{ID: uuid.New(), ProjectID: uuid.New(), Name: "web", CPULimit: "200m", MemoryLimit: "256Mi"}, domain.CreateWorkloadRequest{}, profile{})
 	assert.Equal(t, "200m", in.CPULimit)
 	assert.Equal(t, "256Mi", in.MemoryLimit)
 }
@@ -755,7 +755,7 @@ func TestDeploy_StartFailureRemovesRow(t *testing.T) {
 }
 
 // fakeK8s : Deployment renvoyé par une API Kubernetes de test.
-func fakeK8s(t *testing.T, status int, body string) *kubernetes.Clientset {
+func fakeK8s(t *testing.T, status int, body string) k8sprovider.Resolver {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -763,9 +763,9 @@ func fakeK8s(t *testing.T, status int, body string) *kubernetes.Clientset {
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
-	c, err := kubernetes.NewForConfig(&rest.Config{Host: srv.URL})
+	p, err := k8sprovider.FromConfig("", &rest.Config{Host: srv.URL})
 	require.NoError(t, err)
-	return c
+	return k8sprovider.Single{P: p}
 }
 
 func deploymentAtRevision(revision string) string {
@@ -795,7 +795,7 @@ func TestPatchVariables_RedeploysWhenRevisionBehind(t *testing.T) {
 			id := uuid.New()
 			repo := &fakeRepo{w: domain.Workload{ID: id, ProjectID: uuid.New(), Name: "web", Namespace: "km-x", Image: "nginx:1", Status: "RUNNING", EnvRevision: 2}}
 			dist := &fakeDistributor{}
-			s := &WorkloadService{Repo: repo, Distributor: dist, Variables: &noChangeVariables{fakeVariables{revision: 2}}, K8sClient: fakeK8s(t, c.status, c.body)}
+			s := &WorkloadService{Repo: repo, Distributor: dist, Variables: &noChangeVariables{fakeVariables{revision: 2}}, Kube: fakeK8s(t, c.status, c.body)}
 			res, err := s.PatchVariables(context.Background(), id, domain.PatchVariablesRequest{Env: map[string]string{"A": "b"}})
 			require.NoError(t, err)
 			assert.False(t, res.Changed)
@@ -885,7 +885,7 @@ func TestLiveStatus_DiskNotBackedUp(t *testing.T) {
 	id := uuid.New()
 	for _, persistent := range []bool{true, false} {
 		repo := &fakeRepo{w: domain.Workload{ID: id, Name: "web", Namespace: "km-x", PersistenceEnabled: persistent, StorageSize: "5Gi"}}
-		s := &WorkloadService{Repo: repo, K8sClient: fakeK8s(t, http.StatusNotFound, notFound)}
+		s := &WorkloadService{Repo: repo, Kube: fakeK8s(t, http.StatusNotFound, notFound)}
 		st, err := s.LiveStatus(context.Background(), id)
 		require.NoError(t, err)
 		if !persistent {
@@ -917,7 +917,7 @@ func TestInputFor_ExternalPull(t *testing.T) {
 		"quay.io/org/app:v1": false,
 	} {
 		w := &domain.Workload{ID: uuid.New(), ProjectID: uuid.New(), Name: "web", Image: image}
-		in, err := s.inputFor(context.Background(), w, domain.CreateWorkloadRequest{})
+		in, _, err := s.inputFor(context.Background(), w, domain.CreateWorkloadRequest{})
 		require.NoError(t, err)
 		assert.Equal(t, want, in.ExternalPull, image)
 	}

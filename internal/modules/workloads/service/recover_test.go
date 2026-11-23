@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -89,8 +90,32 @@ func pod(name string, age time.Duration) *corev1.Pod {
 }
 
 func newRecoverer(store *fakeIncidents, pub *recordingPublisher, objs ...runtime.Object) *Recoverer {
-	return &Recoverer{Store: store, K8s: fake.NewSimpleClientset(objs...), Publisher: pub,
-		Logger: zap.NewNop().Sugar(), Now: func() time.Time { return recoverNow }}
+	kube := fake.NewSimpleClientset(objs...)
+	return &Recoverer{Store: store, K8s: func(context.Context, uuid.UUID) (kubernetes.Interface, error) { return kube, nil },
+		Publisher: pub, Logger: zap.NewNop().Sugar(), Now: func() time.Time { return recoverNow }}
+}
+
+// Lot 2b : chaque conteneur est lu sur le cluster de son projet. Même
+// namespace des deux côtés : seul le cluster du projet A porte un
+// déploiement sain.
+func TestRecover_ReadsEachProjectCluster(t *testing.T) {
+	a, b := crashedWorkload(), crashedWorkload()
+	clusters := map[uuid.UUID]kubernetes.Interface{
+		a.ProjectID: fake.NewSimpleClientset(readyDeployment(1), pod("web-1", 5*time.Minute)),
+		b.ProjectID: fake.NewSimpleClientset(),
+	}
+	store := &fakeIncidents{rows: []domain.Workload{a, b}}
+	r := &Recoverer{Store: store, Publisher: &recordingPublisher{}, Logger: zap.NewNop().Sugar(),
+		Now: func() time.Time { return recoverNow },
+		K8s: func(_ context.Context, project uuid.UUID) (kubernetes.Interface, error) {
+			return clusters[project], nil
+		}}
+
+	n, err := r.Sweep(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, []uuid.UUID{a.ID}, store.recovered)
 }
 
 func TestRecover_StableWorkloadBackToRunning(t *testing.T) {

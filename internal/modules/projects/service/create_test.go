@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
+	k8sprovider "github.com/thekrauss/kubemanager/internal/infrastructure/kubernetes"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	authdomain "github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	typesproject "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
@@ -255,9 +256,11 @@ func TestGetMetrics_UsageError(t *testing.T) {
 	defer srv.Close()
 	down := errors.New("db down")
 	svc := newProjectServiceForTest(&fakeDistributor{}, &fakeProjectRepo{project: &authdomain.Project{ID: uuid.New(), Name: "alpha"}})
-	svc.K8sConfig = &rest.Config{Host: srv.URL}
+	kube, err := k8sprovider.FromConfig("", &rest.Config{Host: srv.URL})
+	require.NoError(t, err)
+	svc.Kube = k8sprovider.Single{P: kube}
 	svc.WorkloadRepo = failingUsage{err: down}
-	_, err := svc.GetMetrics(context.Background(), uuid.NewString())
+	_, err = svc.GetMetrics(context.Background(), uuid.NewString())
 	require.ErrorIs(t, err, down)
 }
 

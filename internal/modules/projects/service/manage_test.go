@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -72,3 +73,41 @@ func TestUpdateProject(t *testing.T) {
 	_, err = svc.UpdateProject(ctx, typesproject.UpdateProjectRequest{ProjectID: id.String(), Name: &name})
 	assert.ErrorIs(t, err, ErrProjectNameTaken)
 }
+
+type fakePlacer struct {
+	cluster, gotRegion string
+	err                error
+}
+
+func (f *fakePlacer) Place(_ context.Context, region string) (string, error) {
+	f.gotRegion = region
+	return f.cluster, f.err
+}
+
+// Le projet porte le cluster choisi pour sa région ; une région sans place
+// est refusée avant toute écriture.
+func TestCreateProject_PlacedOnCluster(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeProjectRepo{}
+	svc := newProjectServiceForTest(&fakeDistributor{handle: temporal.WorkflowHandle{WorkflowID: "wf"}}, repo)
+	placer := &fakePlacer{cluster: "prox-gra-1"}
+	svc.Placer = placer
+	_, err := svc.CreateProject(ctx, typesproject.CreateProjectRequest{Name: "alpha", Region: "eu-west-gra"}, uuid.NewString())
+	require.NoError(t, err)
+	assert.Equal(t, "eu-west-gra", placer.gotRegion)
+	require.Len(t, repo.created, 1)
+	require.NotNil(t, repo.created[0].ClusterID)
+	assert.Equal(t, "prox-gra-1", *repo.created[0].ClusterID)
+
+	placer.cluster = "" // registre vide : cluster par défaut
+	_, err = svc.CreateProject(ctx, typesproject.CreateProjectRequest{Name: "beta"}, uuid.NewString())
+	require.NoError(t, err)
+	assert.Nil(t, repo.created[1].ClusterID)
+
+	placer.err = errNoPlace
+	_, err = svc.CreateProject(ctx, typesproject.CreateProjectRequest{Name: "gamma", Region: "eu-west-rbx"}, uuid.NewString())
+	assert.ErrorIs(t, err, errNoPlace)
+	assert.Len(t, repo.created, 2, "rien d'écrit")
+}
+
+var errNoPlace = errors.New("no capacity")

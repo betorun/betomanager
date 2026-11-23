@@ -15,7 +15,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	dynfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
@@ -276,6 +278,49 @@ func TestImportState_FromJob(t *testing.T) {
 	}
 }
 
+// Lot 2b : chaque namespace est servi par le cluster de son projet.
+func TestImport_OnProjectCluster(t *testing.T) {
+	ctx := context.Background()
+	clusters := map[string]*kubefake.Clientset{"km-a": kubefake.NewSimpleClientset(), "km-b": kubefake.NewSimpleClientset()}
+	c := &CNPG{Clients: func(_ context.Context, ns string) (dynamic.Interface, kubernetes.Interface, error) {
+		return nil, clusters[ns], nil
+	}}
+	spec := service.ImportJobSpec{ImportID: "i1", Cluster: "db-main", Image: "pg", FetchImage: "curl", DumpURL: "u"}
+	if err := c.StartImport(ctx, "km-b", spec); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clusters["km-b"].BatchV1().Jobs("km-b").Get(ctx, importJobName("i1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("Job absent du cluster du projet : %v", err)
+	}
+	if jobs, _ := clusters["km-a"].BatchV1().Jobs("km-b").List(ctx, metav1.ListOptions{}); len(jobs.Items) != 0 {
+		t.Fatal("Job posé sur le cluster d'un autre projet")
+	}
+	if st, err := c.ImportState(ctx, "km-b", "i1"); err != nil || !st.Exists {
+		t.Fatalf("état : %+v %v", st, err)
+	}
+}
+
 var listKinds = map[schema.GroupVersionResource]string{
 	ClusterGVR: "ClusterList", BackupGVR: "BackupList", ScheduledBackupGVR: "ScheduledBackupList", ObjectStoreGVR: "ObjectStoreList",
+}
+
+// Lot 2c : classe des disques réglée sur le cluster du projet, sinon celle
+// de la configuration.
+func TestCNPGCreate_ClusterStorageClass(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct{ cluster, want string }{{"csi-cinder", "csi-cinder"}, {"", "local-path"}} {
+		dyn := dynfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds)
+		c := &CNPG{Dynamic: dyn, Kube: kubefake.NewClientset(), StorageClass: "local-path",
+			StorageFor: func(_ context.Context, ns string) (string, error) { return tc.cluster, nil }}
+		if err := c.Create(ctx, "km-demo", service.ClusterSpec{Name: "db-main", DatabaseID: "d1", Storage: "2Gi"}); err != nil {
+			t.Fatal(err)
+		}
+		obj, err := dyn.Resource(ClusterGVR).Namespace("km-demo").Get(ctx, "db-main", metav1.GetOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sc, _, _ := unstructured.NestedString(obj.Object, "spec", "storage", "storageClass"); sc != tc.want {
+			t.Fatalf("storageClass = %q, attendu %q", sc, tc.want)
+		}
+	}
 }
