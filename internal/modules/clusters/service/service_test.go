@@ -90,7 +90,7 @@ func (f *fakeClusterRepo) Upsert(ctx context.Context, clusterID, version string)
 		ClusterID:  clusterID,
 		Version:    version,
 		LastSeenAt: &now,
-		EnrolledAt: now,
+		EnrolledAt: &now,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}

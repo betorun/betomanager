@@ -84,3 +84,15 @@ var PodEventsIngested = promauto.NewCounterVec(
 	},
 	[]string{"cluster_id", "status"},
 )
+
+// ClusterHealthState : santé relevée de chaque cluster du registre
+// (0 ok, 1 dégradé, 2 en panne, 3 inconnu : aucun accès).
+var ClusterHealthState = promauto.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: "kubemanager",
+		Subsystem: "cluster",
+		Name:      "health_state",
+		Help:      "Cluster health: 0 ok, 1 degraded, 2 down, 3 unknown (no access).",
+	},
+	[]string{"cluster_id", "provider", "region"},
+)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
+	"github.com/thekrauss/kubemanager/internal/modules/clusters"
 	"github.com/thekrauss/kubemanager/internal/modules/copilot/tools"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
@@ -83,10 +84,43 @@ func addClusterRoutes(app *App) {
 			watcher, tonic.Handler(iamCtl.ReportServiceAccountKeys, http.StatusNoContent))
 	}
 
-	adminClusters := RootGroup.NewGroup("/admin/clusters", "Admin — registry des clusters enrollés").Internal()
+	adminClusters := RootGroup.NewGroup("/admin/clusters", "Admin — registre des clusters et leur santé").Internal()
+	list := g.Perm(iam.PlatformClustersList, security.PlatformResource)
+	manage := g.Perm(iam.PlatformClustersManage, security.PlatformResource)
+	reg, ok := r.(*clusters.Controller)
+	if !ok || reg.Registry == nil {
+		adminClusters.AddRoute("", http.MethodGet,
+			"Liste les clusters enrollés (ClusterID, Version, LastSeenAt, EnrolledAt)",
+			list, tonic.Handler(r.ListClusters, http.StatusOK))
+		return
+	}
 	adminClusters.AddRoute("", http.MethodGet,
-		"Liste les clusters enrollés (ClusterID, Version, LastSeenAt, EnrolledAt)",
-		g.Perm(iam.PlatformClustersList, security.PlatformResource), tonic.Handler(r.ListClusters, http.StatusOK))
+		"Registre des clusters : fournisseur, distribution, région, état, accès déposé, dernier relevé de santé",
+		list, tonic.Handler(reg.RegistryList, http.StatusOK))
+	adminClusters.AddRoute("", http.MethodPost,
+		"Déclarer un cluster (sans accès : le kubeconfig se dépose ensuite)",
+		manage, tonic.Handler(reg.RegistryDeclare, http.StatusCreated))
+	adminClusters.AddRoute("/:clusterID", http.MethodGet,
+		"Un cluster du registre et son dernier relevé de santé",
+		list, tonic.Handler(reg.RegistryGet, http.StatusOK))
+	adminClusters.AddRoute("/:clusterID", http.MethodPatch,
+		"Modifier un cluster : nom, fournisseur, distribution, région, état (active, closed, disabled), notes",
+		manage, tonic.Handler(reg.RegistryUpdate, http.StatusOK))
+	adminClusters.AddRoute("/:clusterID", http.MethodDelete,
+		"Retirer un cluster du registre (jamais le cluster par défaut)",
+		manage, tonic.Handler(reg.RegistryDelete, http.StatusNoContent))
+	adminClusters.AddRoute("/:clusterID/kubeconfig", http.MethodPut,
+		"Déposer l'accès du cluster : vérifié (le cluster doit répondre), chiffré, jamais rendu",
+		manage, tonic.Handler(reg.RegistrySetKubeconfig, http.StatusOK))
+	adminClusters.AddRoute("/:clusterID/default", http.MethodPost,
+		"Faire de ce cluster le cluster par défaut",
+		manage, tonic.Handler(reg.RegistrySetDefault, http.StatusOK))
+	adminClusters.AddRoute("/:clusterID/check", http.MethodPost,
+		"Relever la santé du cluster tout de suite",
+		list, tonic.Handler(reg.RegistryCheck, http.StatusOK))
+	adminClusters.AddRoute("/:clusterID/nodes", http.MethodGet,
+		"Nœuds du cluster lus à l'instant : prêt, rôles, allouable, demandes",
+		list, tonic.Handler(reg.RegistryNodes, http.StatusOK))
 }
 
 func addRealtimeRoutes(app *App) {

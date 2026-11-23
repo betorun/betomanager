@@ -115,6 +115,28 @@ spec:
             description: "Cluster {{`{{ $labels.cluster_id }}`}} hasn't reported pod events for {{`{{ $value | humanizeDuration }}`}}. Watcher likely down."
             runbook_url: "https://docs.internal/runbook#watcher-offline-staleness-alert"
 
+        - alert: ClusterDown
+          expr: |
+            kubemanager_cluster_health_state == 2
+          for: 3m
+          labels:
+            severity: critical
+            service: kubemanager
+          annotations:
+            summary: "Cluster API unreachable or no ready node"
+            description: "Cluster {{`{{ $labels.cluster_id }}`}} ({{`{{ $labels.provider }}`}}, {{`{{ $labels.region }}`}}) is down. See the back-office, Clusters page."
+
+        - alert: ClusterDegraded
+          expr: |
+            kubemanager_cluster_health_state == 1
+          for: 15m
+          labels:
+            severity: warning
+            service: kubemanager
+          annotations:
+            summary: "Cluster degraded"
+            description: "Cluster {{`{{ $labels.cluster_id }}`}} is degraded (node not ready, resource pressure, failing pods or silent watcher). Reasons on the back-office Clusters page."
+
     # ── Infra runtime Go ────────────────────────────────────────────────────
     - name: kubemanager.runtime
       interval: 1m

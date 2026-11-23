@@ -2,5 +2,85 @@
  {
   "fr": "Le cluster_id est obligatoire",
   "en": "cluster_id is required"
+ },
+ {
+  "fr": "Cluster introuvable",
+  "en": "cluster not found"
+ },
+ {
+  "fr": "Un cluster porte déjà cet identifiant",
+  "en": "a cluster with this identifier already exists"
+ },
+ {
+  "fr": "Identifiant de cluster invalide : 3 à 63 minuscules, chiffres ou tirets",
+  "en": "invalid cluster identifier: 3 to 63 lowercase letters, digits or dashes"
+ },
+ {
+  "fr": "Fournisseur invalide : ovh, proxmox ou other",
+  "en": "invalid provider: ovh, proxmox or other"
+ },
+ {
+  "fr": "Distribution invalide : k3s ou k8s",
+  "en": "invalid distribution: k3s or k8s"
+ },
+ {
+  "fr": "État invalide : active, closed ou disabled",
+  "en": "invalid state: active, closed or disabled"
+ },
+ {
+  "fr": "Région invalide : 32 minuscules, chiffres ou tirets au plus",
+  "en": "invalid region: up to 32 lowercase letters, digits or dashes"
+ },
+ {
+  "fr": "Nom trop long (80 caractères au plus)",
+  "en": "name too long (80 characters max)"
+ },
+ {
+  "fr": "Notes trop longues (2 000 caractères au plus)",
+  "en": "notes too long (2000 characters max)"
+ },
+ {
+  "fr": "Le cluster par défaut ne peut être ni retiré ni mis hors service",
+  "en": "the default cluster cannot be deleted or disabled"
+ },
+ {
+  "fr": "Un cluster hors service ne peut pas devenir le cluster par défaut",
+  "en": "a disabled cluster cannot become the default"
+ },
+ {
+  "fr": "Le cluster n'a pas répondu avec ce kubeconfig",
+  "en": "the cluster did not answer with this kubeconfig"
+ },
+ {
+  "fr": "Le chiffrement des accès aux clusters n'est pas configuré",
+  "en": "cluster access encryption is not configured"
+ },
+ {
+  "fr": "Kubeconfig invalide",
+  "en": "invalid kubeconfig"
+ },
+ {
+  "fr": "Le kubeconfig ne doit pas lancer de commande (exec, auth-provider) : incluez un jeton ou un certificat client",
+  "en": "kubeconfig must not use exec or auth-provider plugins: embed a token or a client certificate"
+ },
+ {
+  "fr": "Le kubeconfig doit inclure ses certificats et son jeton, pas des chemins de fichiers",
+  "en": "kubeconfig must embed its certificates and token, not reference local files"
+ },
+ {
+  "fr": "Le serveur du kubeconfig doit être une adresse https",
+  "en": "kubeconfig server must be an https URL"
+ },
+ {
+  "fr": "Le kubeconfig n'a pas de contexte courant utilisable",
+  "en": "kubeconfig has no usable current context"
+ },
+ {
+  "fr": "Le kubeconfig n'a ni jeton ni certificat client pour l'utilisateur courant",
+  "en": "kubeconfig has no token or client certificate for the current user"
+ },
+ {
+  "fr": "Le cluster refuse de lister les nœuds ou les pods avec ce kubeconfig",
+  "en": "the cluster refused to list nodes or pods with this kubeconfig"
  }
 ]

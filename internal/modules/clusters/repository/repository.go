@@ -44,15 +44,17 @@ func (r *gormClusterRepo) Upsert(ctx context.Context, clusterID, version string)
 		ClusterID:  clusterID,
 		Version:    version,
 		LastSeenAt: &now,
-		EnrolledAt: now, // ignoré sur UPDATE (DoUpdates cible uniquement version/last_seen_at/updated_at)
+		EnrolledAt: &now,
 	}
 	err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "cluster_id"}},
+			// Déclaré par l'équipe avant le watcher : premier enrôlement daté ici.
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"version":      version,
 				"last_seen_at": now,
 				"updated_at":   now,
+				"enrolled_at":  gorm.Expr("COALESCE(clusters.enrolled_at, ?)", now),
 			}),
 		}).
 		Create(cluster).Error

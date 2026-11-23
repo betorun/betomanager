@@ -8,7 +8,8 @@
 - Fournir la config remote (dedup cooldown, batch size, enabled reasons K8s) au watcher.
 - Ingérer chaque pod event significatif → update du workload + broadcast Centrifugo.
 - Recevoir les clés publiques des jetons de comptes Kubernetes du cluster (identité des workloads, contrôleur `iamapi`).
-- Admin : lister les clusters enrollés + staleness (`LastSeenAt`).
+- **Registre multi-cluster** (socle multi-cluster, lot 1) : l'équipe déclare chaque cluster (fournisseur, distribution, région, état), dépose son accès chiffré et choisit le cluster par défaut, depuis le back-office.
+- **Santé** de chaque cluster, relevée chaque minute par le worker (API, nœuds, capacité, pods en échec, signe de vie du watcher), exposée à Prometheus (alertes `ClusterDown`, `ClusterDegraded`).
 
 ## Endpoints HTTP
 
@@ -26,11 +27,40 @@ Routes internes déclarées dans `addClusterRoutes` ([route.go](../../internal/i
 
 ### Admin — sous `/kmanager/v1/admin/clusters`
 
-Route interne, permission `platform.clusters.list` sur `platform` (staff).
+Routes internes sur `platform` (staff). `platform.clusters.manage` est **sensible** (double authentification) ; écran : back-office « Clusters ».
 
 | Méthode | Chemin | Permission | Description |
 |---------|--------|-----------|-------------|
-| `GET` | `/admin/clusters` | `platform.clusters.list` | Liste + LastSeenAt (monitoring staleness) |
+| `GET` | `/admin/clusters` | `platform.clusters.list` | Registre : champs du watcher (`cluster_id`, `version`, `last_seen_at`, `enrolled_at`), du registre (`name`, `provider`, `distribution`, `region`, `state`, `is_default`, `notes`, `api_server`, `kubeconfig_set_at`), `has_kubeconfig`, `from_config`, dernier relevé `health` |
+| `POST` | `/admin/clusters` | `platform.clusters.manage` | Déclarer un cluster (sans accès) |
+| `GET` | `/admin/clusters/:clusterID` | `platform.clusters.list` | Un cluster et son relevé |
+| `PATCH` | `/admin/clusters/:clusterID` | `platform.clusters.manage` | Nom, fournisseur, distribution, région, état, notes |
+| `DELETE` | `/admin/clusters/:clusterID` | `platform.clusters.manage` | Retrait (jamais le défaut : `409 DEFAULT_CLUSTER`) ; la clé du watcher se révoque sous `/admin/cluster-keys` |
+| `PUT` | `/admin/clusters/:clusterID/kubeconfig` | `platform.clusters.manage` | Dépôt de l'accès : contrôlé, testé (le cluster doit répondre, sinon `422 CLUSTER_UNREACHABLE` ; droits de lecture des nœuds ou pods refusés : `422 CLUSTER_ACCESS_DENIED`), chiffré, jamais rendu |
+| `POST` | `/admin/clusters/:clusterID/default` | `platform.clusters.manage` | Cluster par défaut (un seul ; pas un cluster `disabled`) |
+| `POST` | `/admin/clusters/:clusterID/check` | `platform.clusters.list` | Relevé de santé immédiat |
+| `GET` | `/admin/clusters/:clusterID/nodes` | `platform.clusters.list` | Nœuds lus à l'instant (prêt, rôles, allouable, demandes) |
+
+## Registre multi-cluster (lot 1)
+
+- **Déclaration** : un cluster peut être déclaré avant que son watcher ne s'enrôle (`enrolled_at` vide) ; l'enrôlement garde la déclaration. Un watcher qui s'enrôle sans déclaration crée une ligne (fournisseur `other`, distribution `k3s`) à compléter.
+- **Fournisseur** `ovh` | `proxmox` | `other`, **distribution** `k3s` | `k8s`, **région** (minuscules, chiffres, tirets).
+- **État** : `active` (recevra de nouveaux projets au lot 2), `closed` (garde ses projets, n'en reçoit plus), `disabled` (hors service, plus sondé ; interdit pour le défaut).
+- **Cluster par défaut** : celui de la configuration du déploiement (`kubernetes.cluster_id`) est inscrit au démarrage et devient le défaut s'il n'y en a aucun ; il est lu par le client Kubernetes du process (`from_config`). Un seul défaut (index unique).
+- **Accès** (`kubeconfig_ciphertext`) : chiffré par la clé maître (`iam.sts_key_encryption_key`), AAD lié au cluster (un chiffré ne sert pas à un autre). Refusé : greffon `exec` ou `auth-provider` (lancerait une commande sur nos serveurs), chemins de fichiers locaux (certificats, jeton), serveur non https, utilisateur sans jeton ni certificat. Tout le fichier est contrôlé, pas seulement le contexte courant. Délai de 10 s par appel, client mis en cache jusqu'au prochain dépôt.
+
+## Santé des clusters
+
+Worker, chaque minute, 4 clusters à la fois, 20 s par cluster (`cluster_health`, une ligne par cluster, `since` = depuis quand dans cet état) :
+
+| État | Quand |
+|---|---|
+| `down` | API muette (`api_unreachable`), droits de lecture refusés (`access_denied` : le compte de l'accès doit pouvoir lister `nodes` et `pods` de tout le cluster, voir `deploy/k8s/rbac.yaml`), aucun nœud (`no_nodes`) ou aucun prêt (`nodes_not_ready`) |
+| `degraded` | un nœud non prêt, demandes CPU ou mémoire ≥ 85 % de l'allouable (`cpu_pressure`, `memory_pressure`), conteneur qui boucle ou image introuvable (`pods_failing`), watcher jamais venu (`watcher_missing`) ou silencieux depuis 10 min (`watcher_stale`) |
+| `unknown` | aucun accès (`no_access`) |
+| `ok` | rien de tout cela |
+
+Le watcher relit sa configuration toutes les 5 min : c'est aussi son signe de vie (`last_seen_at`, jauge `kubemanager_cluster_last_seen_timestamp_seconds`), un cluster sans événement de pod n'est donc plus tenu pour silencieux. Jauge `kubemanager_cluster_health_state{cluster_id,provider,region}` (0 ok, 1 dégradé, 2 en panne, 3 inconnu) ; alertes `ClusterDown` (3 min) et `ClusterDegraded` (15 min) dans `chart/kubemanager-backend/templates/prometheusrule.yaml`.
 
 Les clés des watchers se gèrent sous `/admin/cluster-keys` (module `iamapi`, voir [auth.md](auth.md)).
 
@@ -38,7 +68,8 @@ Les clés des watchers se gèrent sous `/admin/cluster-keys` (module `iamapi`, v
 
 | Table | Rôle |
 |-------|------|
-| `clusters` | cluster_id (unique), version, last_seen_at, enrolled_at |
+| `clusters` | cluster_id (unique), version, last_seen_at, enrolled_at (vide : déclaré), registre (name, provider, distribution, region, state, is_default, notes), accès chiffré (kubeconfig_ciphertext, api_server, kubeconfig_set_at) |
+| `cluster_health` | dernier relevé de santé de chaque cluster (migration 000069) |
 
 Schéma : [migrations/000001_init.up.sql](../../migrations/000001_init.up.sql).
 
@@ -139,4 +170,4 @@ Aujourd'hui hardcodé dans le service. Évolution prévue : table `clusters_conf
 
 - Ajouter une `reason` K8s à traiter → map dans `reasonToWorkloadStatus` (dans le service) + mettre à jour `defaultRemoteConfig.EnabledReasons`.
 - Sortir la config remote de son hardcode → créer la table `clusters_config` + endpoint admin pour la patcher.
-- Nouveau champ sur `clusters` (région, cloud provider) → migration SQL + exposer dans ListClusters.
+- **Lot 2 du socle** : rattacher chaque projet à un cluster (région puis capacité, clusters `active` seulement) et résoudre le client Kubernetes par projet dans les modules (workloads, builds, bases, services, disques, identité des workloads).

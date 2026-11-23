@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/workers/queue"
+	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 	"net/http"
 	"os"
 	"os/signal"
@@ -73,9 +74,11 @@ type App struct {
 	Config *configs.GlobalConfig
 	Logger *zap.SugaredLogger
 
-	DB                  *gorm.DB
-	Redis               *redis.Client
-	K8sProvider         *k8sprovider.ProviderK8s
+	DB          *gorm.DB
+	Redis       *redis.Client
+	K8sProvider *k8sprovider.ProviderK8s
+	// clusters : registre des clusters (clusterRegistry, construit une fois).
+	clusters            *clustersSvc.Registry
 	Cache               cache.CacheRedis
 	AuthCache           cache.AuthCache
 	Temporal            TemporalComponents
@@ -222,6 +225,9 @@ func (a *App) RunWorker(ctx context.Context) error {
 		return fmt.Errorf("mail worker: %w", err)
 	}
 	defer stopMail()
+
+	// Santé de chaque cluster du registre (alertes ClusterDown / ClusterDegraded).
+	a.startClusterHealth(ctx)
 
 	// VPS : relais de l'outbox vers les workflows du mode compute.
 	a.startComputeRelay(ctx)
