@@ -39,6 +39,10 @@ rules:
   - apiGroups: [""]
     resources: [pods]
     verbs: [get, list, watch, delete]
+  # Santé du cluster (registre multi-cluster) : nœuds en lecture seule.
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [pods/log, events]
     verbs: [get, list, watch]

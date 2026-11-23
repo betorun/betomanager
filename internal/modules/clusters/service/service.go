@@ -133,6 +133,11 @@ func (s *service) GetConfig(ctx context.Context, clusterID string) (*domain.Remo
 	if clusterID == "" {
 		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "cluster_id is required")
 	}
+	// Relue toutes les 5 min par le watcher : c'est aussi son signe de vie
+	// (santé du registre). Un cluster pas encore enrôlé n'a pas de ligne : rien.
+	if s.clusters.TouchLastSeen(ctx, clusterID) == nil {
+		observability.ClusterLastSeenTimestamp.WithLabelValues(clusterID).SetToCurrentTime()
+	}
 	// Pour l'instant, defaults partagés. Évolution : table clusters_config.
 	cfg := defaultRemoteConfig
 	return &cfg, nil

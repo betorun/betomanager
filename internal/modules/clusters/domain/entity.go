@@ -26,8 +26,23 @@ type Cluster struct {
 	// Base pour les alertes staleness (watcher down > 5min → warning).
 	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 
-	// EnrolledAt : premier Enroll réussi. Immutable (set au INSERT initial).
-	EnrolledAt time.Time `json:"enrolled_at"`
+	// EnrolledAt : premier Enroll réussi (nil : déclaré, watcher pas encore venu).
+	EnrolledAt *time.Time `json:"enrolled_at,omitempty"`
+
+	// Registre (déclaré par l'équipe, lot 1 du socle multi-cluster).
+	Name         string `gorm:"not null;default:''" json:"name"`
+	Provider     string `gorm:"not null;default:'other'" json:"provider"`
+	Distribution string `gorm:"not null;default:'k3s'" json:"distribution"`
+	Region       string `gorm:"not null;default:''" json:"region"`
+	State        string `gorm:"not null;default:'active'" json:"state"`
+	IsDefault    bool   `gorm:"not null;default:false" json:"is_default"`
+	Notes        string `gorm:"not null;default:''" json:"notes"`
+	// KubeconfigCiphertext : jamais rendu (chiffré, AAD = cluster_id).
+	KubeconfigCiphertext []byte     `gorm:"column:kubeconfig_ciphertext" json:"-"`
+	APIServer            string     `gorm:"not null;default:''" json:"api_server"`
+	KubeconfigSetAt      *time.Time `json:"kubeconfig_set_at,omitempty"`
+	KubeconfigSetBy      string     `gorm:"not null;default:''" json:"-"`
+	DeclaredBy           string     `gorm:"not null;default:''" json:"-"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

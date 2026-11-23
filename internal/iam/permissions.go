@@ -156,7 +156,10 @@ const (
 	AuditLogsRead         Permission = "logging.auditLogs.read"
 
 	// platform : réservées au staff betorun, attribuables seulement sur "platform".
-	PlatformClustersList      Permission = "platform.clusters.list"
+	PlatformClustersList Permission = "platform.clusters.list"
+	// PlatformClustersManage : déclarer un cluster, déposer son accès,
+	// choisir le cluster par défaut, le fermer ou le retirer.
+	PlatformClustersManage    Permission = "platform.clusters.manage"
 	PlatformClusterKeysList   Permission = "platform.clusterKeys.list"
 	PlatformClusterKeysCreate Permission = "platform.clusterKeys.create"
 	PlatformClusterKeysRotate Permission = "platform.clusterKeys.rotate"
@@ -317,6 +320,7 @@ var catalog = map[Permission]PermissionInfo{
 	SupportTicketsCreate: {Title: "Ouvrir un ticket de support et y répondre", CustomRoles: true},
 
 	PlatformClustersList:           {Title: "Lister les clusters de la plateforme", PlatformOnly: true},
+	PlatformClustersManage:         {Title: "Gérer les clusters de la plateforme : déclaration, accès, cluster par défaut, fermeture", PlatformOnly: true, Sensitive: true},
 	PlatformClusterKeysList:        {Title: "Lister les clés de cluster", PlatformOnly: true},
 	PlatformClusterKeysCreate:      {Title: "Créer une clé de cluster", PlatformOnly: true, Sensitive: true},
 	PlatformClusterKeysRotate:      {Title: "Faire tourner une clé de cluster", PlatformOnly: true, Sensitive: true},

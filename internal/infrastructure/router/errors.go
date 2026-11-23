@@ -4,6 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	clustersDomain "github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
+	clustersRepo "github.com/thekrauss/kubemanager/internal/modules/clusters/repository"
+	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 	"github.com/thekrauss/kubemanager/internal/modules/compute"
 	computeDomain "github.com/thekrauss/kubemanager/internal/modules/compute/domain"
 	legalDomain "github.com/thekrauss/kubemanager/internal/modules/legal/domain"
@@ -270,6 +273,26 @@ var sentinelErrors = []sentinelMapping{
 	{statusDomain.ErrInvalidComponents, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{statusDomain.ErrInvalidWindow, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{statusDomain.ErrInvalidStatusUpdate, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrClusterNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{clustersDomain.ErrClusterExists, http.StatusConflict, "ALREADY_EXISTS", false},
+	{clustersDomain.ErrInvalidClusterID, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrInvalidProvider, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrInvalidDistribution, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrInvalidState, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrInvalidRegion, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrNameTooLong, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrNotesTooLong, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrDefaultCluster, http.StatusConflict, "DEFAULT_CLUSTER", false},
+	{clustersDomain.ErrDisabledDefault, http.StatusConflict, "CLUSTER_DISABLED", false},
+	{clustersDomain.ErrClusterUnreachable, http.StatusUnprocessableEntity, "CLUSTER_UNREACHABLE", false},
+	{clustersDomain.ErrAccessDenied, http.StatusUnprocessableEntity, "CLUSTER_ACCESS_DENIED", false},
+	{clustersRepo.ErrKubeconfigInvalid, http.StatusBadRequest, "KUBECONFIG_INVALID", false},
+	{clustersRepo.ErrKubeconfigExec, http.StatusBadRequest, "KUBECONFIG_EXEC_FORBIDDEN", false},
+	{clustersRepo.ErrKubeconfigFiles, http.StatusBadRequest, "KUBECONFIG_FILES_FORBIDDEN", false},
+	{clustersRepo.ErrKubeconfigHTTPS, http.StatusBadRequest, "KUBECONFIG_HTTPS_REQUIRED", false},
+	{clustersRepo.ErrKubeconfigNoContext, http.StatusBadRequest, "KUBECONFIG_INVALID", false},
+	{clustersRepo.ErrKubeconfigNoCredentials, http.StatusBadRequest, "KUBECONFIG_INVALID", false},
+	{clustersSvc.ErrNoSealer, http.StatusServiceUnavailable, "UNAVAILABLE", false},
 	{computeDomain.ErrOfferNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{computeDomain.ErrInvalidOffer, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{computeDomain.ErrUnavailable, http.StatusServiceUnavailable, "UNAVAILABLE", false},
