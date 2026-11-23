@@ -98,7 +98,7 @@ func decodeArgs(args json.RawMessage) (map[string]any, *Result) {
 // exécuter. Le message d'erreur est destiné au modèle (il corrige son appel).
 func (c *Catalog) Prepare(name string, args json.RawMessage) (*Prepared, error) {
 	t, ok := c.tools[name]
-	if !ok || t.run != nil {
+	if !ok || t.run != nil || t.Method == "" {
 		return nil, fmt.Errorf("unknown tool %q", name)
 	}
 	in, res := decodeArgs(args)
@@ -175,7 +175,8 @@ func (c *Catalog) callRoute(ctx context.Context, inv Invoker, t *Tool, in map[st
 // idempotencyKey : la même validation rejouée ne s'exécute qu'une fois.
 func (c *Catalog) Execute(ctx context.Context, inv Invoker, p *Prepared, idempotencyKey string) Result {
 	t, ok := c.tools[p.Tool]
-	if !ok || !t.Write || p.Method != t.Method {
+	// Outil composite (plan) : jamais joué d'un bloc ; ses étapes le sont.
+	if !ok || !t.Write || t.Method == "" || t.run != nil || p.Method != t.Method {
 		return errorResult(0, "unknown action")
 	}
 	return invoke(ctx, inv, p, false, idempotencyKey)

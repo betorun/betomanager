@@ -112,6 +112,11 @@ func AddFeatureMap(c *Catalog, rawSpec []byte, routesFR map[string]string, guide
 	m.features = append(m.features, Feature{Area: "Containers", Tool: ToolDiagnoseWorkload,
 		Summary:   "Diagnose a container that is down, crashing, slow or unreachable (configuration, live state, events, logs)",
 		SummaryFR: "Diagnostiquer un conteneur en panne, qui redémarre, lent ou injoignable"})
+	if t, ok := c.tools[ToolProposeLaunchPlan]; ok {
+		m.features = append(m.features, Feature{Area: "Containers", Tool: t.Name, Action: true,
+			Summary:   "Put an app from GitHub online in one validated plan: database or service, container built from the repository, domain, until it runs",
+			SummaryFR: "Mettre en ligne une application depuis GitHub en un seul plan validé : base ou service, conteneur construit depuis le dépôt, domaine, jusqu'à ce qu'il tourne"})
+	}
 	for i := range m.features {
 		f := &m.features[i]
 		f.text = fold(strings.Join([]string{f.Area, f.Summary, f.SummaryFR, f.Tool, f.Screen, f.Note}, " "))

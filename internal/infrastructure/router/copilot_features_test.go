@@ -23,6 +23,9 @@ func TestCopilotFeatureMap(t *testing.T) {
 	cat, err := tools.Build(CopilotRoutes(AllGroups), spec)
 	require.NoError(t, err)
 	require.NoError(t, tools.AddDiagnose(cat))
+	added, err := tools.AddLaunchPlan(cat)
+	require.NoError(t, err)
+	require.True(t, added, "propose_launch_plan : un outil dont il dépend manque au catalogue")
 	fr, guides := CopilotFeatureInput(AllGroups)
 	require.NoError(t, tools.AddFeatureMap(cat, spec, fr, guides, CopilotScreens()))
 
@@ -57,6 +60,25 @@ func TestCopilotFeatureMap(t *testing.T) {
 
 	out = find("deployer depuis github")
 	assert.Contains(t, out, "create_workload_from_github")
+
+	out = find("mettre en ligne mon application")
+	assert.Contains(t, out, "action card: propose_launch_plan")
+
+	out = find("depots github")
+	assert.Contains(t, out, "read tool: list_github_repositories")
+
+	// Les requêtes que le plan construit passent le contrôle du vrai catalogue.
+	for tool, args := range map[string]string{
+		tools.ToolCreateWorkloadGitHub: `{"id":"p","name":"web-app","installation_id":1,"repo_id":2,"branch":"main","kind":"web","target_port":3000,"context_dir":"app","dockerfile":"Dockerfile"}`,
+		tools.ToolCreateDatabase:       `{"id":"p","name":"web-db"}`,
+		tools.ToolAttachDatabase:       `{"id":"p","databaseID":"d","workload_id":"w"}`,
+		tools.ToolCreateAddon:          `{"id":"p","template":"redis","name":"cache"}`,
+		tools.ToolAttachAddon:          `{"id":"p","addonID":"a","workload_id":"w"}`,
+		tools.ToolAddWorkloadDomain:    `{"id":"w","hostname":"app.example.com"}`,
+	} {
+		_, err := cat.Prepare(tool, json.RawMessage(args))
+		require.NoError(t, err, tool)
+	}
 
 	out = find("mot de passe")
 	assert.Contains(t, out, "/settings")

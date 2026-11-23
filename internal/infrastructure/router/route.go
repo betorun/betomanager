@@ -462,6 +462,9 @@ func addGitHubRoutes(app *App) {
 	project := security.ProjectParam("id")
 	workload := workloadResource(app.Repos.Workload)
 	manage := g.Perm(iam.WorkloadsGitHubManage, project)
+	// Lire les comptes reliés, leurs dépôts et leurs branches : une lecture
+	// (ouverte au jeton délégué du Copilot en portée « read »).
+	read := g.Perm(iam.WorkloadsGitHubRead, project)
 
 	integrations := RootGroup.NewGroup("/integrations/github", "Connexion GitHub").
 		Named("Connexion GitHub", "Relier un compte GitHub à un projet, déployer un dépôt (privé compris) et le redéployer à chaque push.")
@@ -475,11 +478,11 @@ func addGitHubRoutes(app *App) {
 
 	p := RootGroup.NewGroup("/projects/:id/github", "Connexion GitHub d'un projet").
 		Named("Dépôts GitHub", "Comptes GitHub reliés au projet, dépôts et branches accessibles, création d'un conteneur depuis un dépôt.")
-	p.AddRoute("/installations", http.MethodGet, "Comptes GitHub reliés au projet", manage, tonic.Handler(r.ListInstallations, http.StatusOK))
+	p.AddRoute("/installations", http.MethodGet, "Comptes GitHub reliés au projet", read, tonic.Handler(r.ListInstallations, http.StatusOK))
 	p.AddRoute("/installations/url", http.MethodPost, "Adresse de la page GitHub où installer l'application (valable 10 minutes, pour vous seul)", manage, tonic.Handler(r.InstallURL, http.StatusOK))
 	p.AddRoute("/installations/:installationID", http.MethodDelete, "Délier un compte GitHub : les liens des conteneurs disparaissent, les conteneurs continuent de tourner", manage, tonic.Handler(r.DeleteInstallation, http.StatusNoContent))
-	p.AddRoute("/installations/:installationID/repositories", http.MethodGet, "Dépôts accessibles à un compte relié (paginés, recherche par nom)", manage, tonic.Handler(r.ListRepositories, http.StatusOK))
-	p.AddRoute("/installations/:installationID/repositories/:repoID/branches", http.MethodGet, "Branches d'un dépôt", manage, tonic.Handler(r.ListBranches, http.StatusOK))
+	p.AddRoute("/installations/:installationID/repositories", http.MethodGet, "Dépôts accessibles à un compte relié (paginés, recherche par nom)", read, tonic.Handler(r.ListRepositories, http.StatusOK))
+	p.AddRoute("/installations/:installationID/repositories/:repoID/branches", http.MethodGet, "Branches d'un dépôt", read, tonic.Handler(r.ListBranches, http.StatusOK))
 	// Déployer un conteneur est vérifié en plus par le service (workloads.workloads.create).
 	p.AddRoute("/workloads", http.MethodPost, "Créer un conteneur depuis un dépôt : conteneur, lien et première construction en une action", manage, tonic.Handler(r.CreateWorkload, http.StatusAccepted))
 

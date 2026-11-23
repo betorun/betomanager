@@ -141,4 +141,8 @@ func addCopilotRoutes(app *App) {
 	// ses droits) ou refuse. Jamais un jeton délégué : Authenticated() le refuse.
 	g.AddRoute("/actions/:token/approve", http.MethodPost, "Valider une action proposée par le Copilot", Authenticated(), r.Approve)
 	g.AddRoute("/actions/:token/reject", http.MethodPost, "Refuser une action proposée par le Copilot", Authenticated(), r.Reject)
+	// Plans « mettre en ligne » (lot B) : suivi d'un plan validé, et demande
+	// d'arrêt ; seulement par la personne qui l'a validé (sinon 404).
+	g.AddRoute("/plans/:token", http.MethodGet, "État d'un plan « mettre en ligne » validé", Authenticated(), r.GetPlan)
+	g.AddRoute("/plans/:token/pause", http.MethodPost, "Arrêter un plan « mettre en ligne » après l'étape en cours", Authenticated(), r.PausePlan)
 }

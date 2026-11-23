@@ -137,6 +137,8 @@ var CoreTools = []string{
 	"list_workloads", "get_workload", "get_workload_status", "get_workload_logs", "get_workload_events",
 	"list_builds", "get_build", "get_build_logs", "build_from_git", "create_workload", "restart_workload",
 	"list_databases", "list_addons", "list_sites",
+	// Parcours « mettre en ligne » (lot B) : lire GitHub, proposer UN plan.
+	ToolListGitHubAccounts, ToolListGitHubRepositories, ToolListGitHubBranches, ToolProposeLaunchPlan,
 	"get_price_catalog", "get_platform_status", "create_support_ticket",
 }
 

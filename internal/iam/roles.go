@@ -54,6 +54,9 @@ var (
 		VPSStart, VPSStop, VPSReboot, VPSSnapshot, VPSNetwork,
 		SupportTicketsCreate,
 		ServiceAccountsActAs,
+		// Voir les dépôts des comptes GitHub déjà reliés (noms, branches) pour
+		// choisir quoi déployer ; relier un compte reste un droit d'éditeur.
+		WorkloadsGitHubRead,
 	})
 
 	editorPerms = concat(developerPerms, []Permission{
@@ -115,7 +118,8 @@ var predefinedRoles = []Role{
 		Description: "Déploie et opère les conteneurs du projet.",
 		Permissions: []Permission{ProjectsGet, WorkloadsList, WorkloadsGet, WorkloadsCreate, WorkloadsUpdate,
 			WorkloadsStart, WorkloadsStop, WorkloadsRestart, WorkloadsRollback, WorkloadLogsRead, WorkloadMetrics,
-			WorkloadVariablesList, WorkloadVariablesUpdate, WorkloadDomainsList, WorkloadDomainsUpdate, BuildsList, BuildsGet, BuildsCreate, BuildsCancel, RegistriesList, ServiceAccountsActAs}},
+			WorkloadVariablesList, WorkloadVariablesUpdate, WorkloadDomainsList, WorkloadDomainsUpdate, BuildsList, BuildsGet, BuildsCreate, BuildsCancel, RegistriesList, ServiceAccountsActAs,
+			WorkloadsGitHubRead}},
 	{Name: "roles/workloads.viewer", Title: "Lecteur conteneurs",
 		Description: "Consulte les conteneurs, leurs logs et leurs métriques.",
 		Permissions: []Permission{ProjectsGet, WorkloadsList, WorkloadsGet, WorkloadLogsRead, WorkloadMetrics, WorkloadVariablesList, WorkloadDomainsList, BuildsList, BuildsGet}},

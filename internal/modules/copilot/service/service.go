@@ -153,9 +153,13 @@ type Service struct {
 	Redis redis.UniversalClient
 	// Proposals : cartes d'action (nil : Redis).
 	Proposals ProposalStore
-	Config    Config
-	Logger    *zap.SugaredLogger
-	Now       func() time.Time
+	// Plans : suivi des plans « mettre en ligne » (nil : Redis) ;
+	// PlanTimings : leurs bornes (zéro : valeurs par défaut).
+	Plans       PlanStore
+	PlanTimings PlanTimings
+	Config      Config
+	Logger      *zap.SugaredLogger
+	Now         func() time.Time
 
 	Mu      sync.RWMutex
 	Handler http.Handler
@@ -185,6 +189,10 @@ func (s *Service) Bind(h http.Handler, routes []tools.Route, publicSpec []byte, 
 		return err
 	}
 	if err := tools.AddDiagnose(cat); err != nil {
+		return err
+	}
+	// Plan « mettre en ligne » : seulement si ses outils-routes sont là.
+	if _, err := tools.AddLaunchPlan(cat); err != nil {
 		return err
 	}
 	rules := grounding.Rules{Screens: map[string]bool{}, ResourcePages: ResourcePages, ToolNames: map[string]bool{}, Hosts: map[string]bool{}}
@@ -267,7 +275,12 @@ func (r *BoundRunner) DefinitionsOf(names []string) []llm.Tool { return r.Cat.De
 
 func (r *BoundRunner) Run(ctx context.Context, name string, args json.RawMessage) tools.Result {
 	if t, ok := r.Cat.Lookup(name); ok && t.Write {
-		res := r.propose(ctx, t, args)
+		var res tools.Result
+		if name == tools.ToolProposeLaunchPlan {
+			res = r.proposePlan(ctx, t, args)
+		} else {
+			res = r.propose(ctx, t, args)
+		}
 		outcome := "proposed"
 		if res.IsError {
 			outcome = "error"

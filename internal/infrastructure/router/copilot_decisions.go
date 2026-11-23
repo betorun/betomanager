@@ -196,11 +196,14 @@ var copilotDecisions = map[string]copilotDecision{
 	"DELETE /workloads/:id/github":      asStrong("unlink_workload_github", "get_workload", false),
 	"POST /projects/:id/github/workloads": asTool(CopilotTool{Name: "create_workload_from_github", Write: true, Risk: tools.RiskLow,
 		Hint: "One action: container, GitHub link and first build. Needs a GitHub account linked to the project (see the console)."}),
-	// Lecture des dépôts : permission workloads.github.manage (pas une lecture) :
-	// refusée au jeton délégué en lecture ; ouverte au lot B (parcours « mettre en ligne »).
-	"GET /projects/:id/github/installations":                                               asGuide("/workloads/new"),
-	"GET /projects/:id/github/installations/:installationID/repositories":                  asGuide("/workloads/new"),
-	"GET /projects/:id/github/installations/:installationID/repositories/:repoID/branches": asGuide("/workloads/new"),
+	// Lecture des comptes reliés, dépôts et branches : permission
+	// workloads.github.read (une lecture, accordée au jeton délégué en portée
+	// « read ») ; base du parcours « mettre en ligne » (propose_launch_plan).
+	"GET /projects/:id/github/installations": asTool(CopilotTool{Name: "list_github_accounts",
+		Hint: "GitHub accounts linked to the project. None: the person links one on the new container screen (/workloads/new); never invent an account."}),
+	"GET /projects/:id/github/installations/:installationID/repositories": asTool(CopilotTool{Name: "list_github_repositories",
+		Max: map[string]int{"per_page": 50}, Hint: "Use q to search by name; id and full_name identify a repository."}),
+	"GET /projects/:id/github/installations/:installationID/repositories/:repoID/branches": asTool(CopilotTool{Name: "list_github_branches"}),
 	"POST /projects/:id/github/installations/url":                                          asGuide("/workloads/new", "relier un compte GitHub se fait sur la page de GitHub"),
 	"DELETE /projects/:id/github/installations/:installationID":                            asStrong("unlink_github_account", "", false),
 	"GET /integrations/github/status":                                                      outOfCopilot(outTechnics),

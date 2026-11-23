@@ -41,6 +41,10 @@ type Proposal struct {
 	// authentification exigée par l'API) ; ConfirmName : Target se retape.
 	Strong      bool `json:"strong,omitempty"`
 	ConfirmName bool `json:"confirm_name,omitempty"`
+	// Plan : carte « mettre en ligne » (lot B) : plusieurs étapes jouées à la
+	// suite par le serveur après UNE validation (Request ne porte que le nom
+	// de l'outil).
+	Plan *LaunchPlan `json:"plan,omitempty"`
 }
 
 // View : ce que la console affiche d'une proposition (jamais l'utilisateur
@@ -57,6 +61,8 @@ type View struct {
 	// ConfirmName : la personne retape Target avant de valider.
 	Strong      bool `json:"strong,omitempty"`
 	ConfirmName bool `json:"confirm_name,omitempty"`
+	// Plan : étapes d'une carte « mettre en ligne » (contrat de la console).
+	Plan *PlanView `json:"plan,omitempty"`
 }
 
 // view : détails = arguments hors identifiants de chemin (déjà résumés par Target).
@@ -70,8 +76,13 @@ func (p *Proposal) View(pathParams map[string]bool) View {
 	if len(details) == 0 {
 		details = nil
 	}
-	return View{Token: p.Token, Tool: p.Request.Tool, Risk: p.Risk, Target: p.Target,
+	v := View{Token: p.Token, Tool: p.Request.Tool, Risk: p.Risk, Target: p.Target,
 		Details: details, ExpiresAt: p.ExpiresAt, Undo: p.UndoOf != "", Strong: p.Strong, ConfirmName: p.ConfirmName}
+	if p.Plan != nil {
+		pv := p.Plan.View()
+		v.Plan, v.Details = &pv, nil
+	}
+	return v
 }
 
 var (
