@@ -2730,5 +2730,33 @@
  {
   "fr": "Réseau privé du projet : conteneurs et bases, leurs adresses internes et publiques, liens déclarés (bases branchées, attentes au démarrage) et règles appliquées",
   "en": "The project's private network: containers and databases, their internal and public addresses, declared links (attached databases, startup waits) and the rules enforced"
+ },
+ {
+  "fr": "IP de sortie dédiée",
+  "en": "Dedicated egress IP"
+ },
+ {
+  "fr": "Une adresse IP propre au projet, par laquelle sortent tous ses conteneurs (à faire autoriser chez un partenaire).",
+  "en": "An IP address of the project's own, used by all its containers for outgoing traffic (to allow-list at a partner)."
+ },
+ {
+  "fr": "IP de sortie dédiée du projet, ou si l'on peut en demander une",
+  "en": "The project's dedicated egress IP, or whether one can be requested"
+ },
+ {
+  "fr": "Demander une IP de sortie dédiée (facturée au mois) : tous les conteneurs du projet sortent par elle",
+  "en": "Request a dedicated egress IP (billed monthly): all the project's containers go out through it"
+ },
+ {
+  "fr": "Rendre l'IP de sortie dédiée : le trafic ressort par une adresse partagée, la facturation s'arrête",
+  "en": "Release the dedicated egress IP: traffic goes out through a shared address again and billing stops"
+ },
+ {
+  "fr": "Prix mensuel d'une IP de sortie dédiée d'un projet (0 : gratuite)",
+  "en": "Monthly price of a project's dedicated egress IP (0: free)"
+ },
+ {
+  "fr": "Passerelle de sortie installée sur le cluster : cilium, ou vide (pas d'IP de sortie dédiée)",
+  "en": "Egress gateway installed on the cluster: cilium, or empty (no dedicated egress IP)"
  }
 ]

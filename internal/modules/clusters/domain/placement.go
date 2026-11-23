@@ -16,8 +16,9 @@ var (
 	ErrNoClusterInRegion = errors.New("no capacity available in this region, choose another region")
 	ErrInvalidRegionCode = errors.New("invalid region")
 	// ErrClusterHasProjects : un cluster qui porte des projets ne se retire pas.
-	ErrClusterHasProjects = errors.New("this cluster still hosts projects")
-	ErrInvalidSetting     = errors.New("invalid cluster setting: lowercase letters, digits, dots or dashes")
+	ErrClusterHasProjects   = errors.New("this cluster still hosts projects")
+	ErrInvalidSetting       = errors.New("invalid cluster setting: lowercase letters, digits, dots or dashes")
+	ErrInvalidEgressGateway = errors.New("invalid egress gateway: cilium or empty")
 )
 
 var (
@@ -27,6 +28,9 @@ var (
 
 // ValidRegionCode : code de région demandé par un client.
 func ValidRegionCode(r string) bool { return regionCodeRe.MatchString(r) }
+
+// ValidEgressGateway : passerelle de sortie connue ("" : aucune).
+func ValidEgressGateway(g string) bool { return g == "" || g == "cilium" }
 
 // ValidSetting : classe d'ingress, namespace, classe de stockage ou cible
 // (nom DNS ou adresse IPv4) ; vide : celui de la configuration.

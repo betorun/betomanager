@@ -2,6 +2,8 @@ package router
 
 import (
 	"errors"
+	egressDomain "github.com/thekrauss/kubemanager/internal/modules/egress/domain"
+	egressRepo "github.com/thekrauss/kubemanager/internal/modules/egress/repository"
 	"net/http"
 
 	clustersDomain "github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
@@ -290,6 +292,20 @@ var sentinelErrors = []sentinelMapping{
 	{clustersDomain.ErrInvalidRegionCode, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{clustersDomain.ErrClusterHasProjects, http.StatusConflict, "CLUSTER_HAS_PROJECTS", false},
 	{clustersDomain.ErrInvalidSetting, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrInvalidEgressGateway, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{egressDomain.ErrAddressNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{egressDomain.ErrProjectNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
+	{egressDomain.ErrAddressExists, http.StatusConflict, "ALREADY_EXISTS", false},
+	{egressDomain.ErrInvalidAddress, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{egressDomain.ErrInvalidNode, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{egressDomain.ErrNotesTooLong, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{egressDomain.ErrAddressInUse, http.StatusConflict, "EGRESS_ADDRESS_IN_USE", false},
+	{egressDomain.ErrNoGateway, http.StatusConflict, "EGRESS_NOT_OFFERED", false},
+	{egressDomain.ErrNoFreeAddress, http.StatusConflict, "EGRESS_NONE_FREE", false},
+	{egressDomain.ErrAlreadyHasAddress, http.StatusConflict, "EGRESS_ALREADY_ASSIGNED", false},
+	{egressDomain.ErrNoAddress, http.StatusNotFound, "EGRESS_NONE", false},
+	{egressRepo.ErrGatewayMissing, http.StatusServiceUnavailable, "EGRESS_GATEWAY_MISSING", false},
+	{egressRepo.ErrUnknownCluster, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{clustersDomain.ErrAgentImageMissing, http.StatusBadRequest, "AGENT_IMAGE_MISSING", false},
 	{clustersDomain.ErrInvalidAgentImage, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{clustersDomain.ErrAgentAPIURLMissing, http.StatusServiceUnavailable, "UNAVAILABLE", false},

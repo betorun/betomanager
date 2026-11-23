@@ -32,6 +32,7 @@ var (
 		WorkloadsList, WorkloadsGet, WorkloadLogsRead, WorkloadMetrics, WorkloadVariablesList, WorkloadDomainsList, BuildsList, BuildsGet,
 		SitesList, SitesGet, SiteDeploymentsList, SiteDomainsList,
 		DatabasesList, DatabasesGet,
+		EgressAddressesGet,
 		AddonsList, AddonsGet,
 		VPSList, VPSGet,
 		SupportTicketsList, SupportTicketsGet,
@@ -62,6 +63,8 @@ var (
 		DatabasesCreate, DatabasesDelete, DatabasesImport, DatabasesReset, DatabasesStop,
 		// Un service occupe des ressources et sa suppression perd des données : éditeur.
 		AddonsCreate, AddonsUpdate, AddonsDelete, AddonsRestore,
+		// Une IP dédiée est facturée au mois : éditeur.
+		EgressAddressesManage,
 		// Réinstaller efface le disque du VPS : éditeur.
 		VPSReinstall, VPSRestore, VPSRescue, VPSDelete,
 		// Relier un compte GitHub ouvre au projet du code privé : pas un droit de développeur.

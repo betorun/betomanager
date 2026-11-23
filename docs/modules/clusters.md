@@ -60,7 +60,7 @@ Routes internes sur `platform` (staff). `platform.clusters.manage` est **sensibl
   - région demandée : celui qui n'est pas sous pression CPU/mémoire, puis le plus de CPU libre, puis le moins de projets, puis l'identifiant ; aucun : `409 NO_CAPACITY_IN_REGION` avant toute écriture ;
   - sans région : le défaut s'il peut recevoir, sinon le meilleur ; aucun : le défaut quand même (installation à un seul cluster).
 - Un cluster qui porte des projets ne se retire pas (`409 CLUSTER_HAS_PROJECTS`, clé étrangère en base). Le back-office montre le nombre de projets de chaque cluster (`projects`).
-- **Réglages par cluster** (`PATCH /admin/clusters/:clusterID`) : `ingress_class`, `ingress_namespace`, `ingress_target`, `storage_class` ; vides : ceux de la configuration du déploiement. Ils servent au déploiement (lot 2c).
+- **Réglages par cluster** (`PATCH /admin/clusters/:clusterID`) : `ingress_class`, `ingress_namespace`, `ingress_target`, `storage_class`, `egress_gateway` (passerelle de sortie : vide ou `cilium`, voir [network.md](network.md#ip-de-sortie-dédiée-module-egress-adr-0014)) ; vides : ceux de la configuration du déploiement. Ils servent au déploiement (lot 2c).
 
 ## Clusters des projets (lots 2b et 2c)
 

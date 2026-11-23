@@ -594,5 +594,13 @@
  {
   "fr": "Gérer les VPS des clients : abus, port 25, résiliation, rattachement, réconciliation",
   "en": "Manage customers' VPS: abuse, port 25, cancellation, attachment, reconciliation"
+ },
+ {
+  "fr": "Voir l'IP de sortie dédiée du projet",
+  "en": "View the project's dedicated egress IP"
+ },
+ {
+  "fr": "Demander ou rendre l'IP de sortie dédiée du projet (facturée)",
+  "en": "Request or release the project's dedicated egress IP (billed)"
  }
 ]

@@ -43,3 +43,21 @@ Réponse (`domain.ProjectNetwork`) :
 - [service/service.go](../../internal/modules/network/service/service.go) — lecture et liens
 - [network_wiring.go](../../internal/infrastructure/router/network_wiring.go) — route
 - Application aujourd'hui : [network-policy.yaml](../../internal/infrastructure/helm/charts/standard-app/templates/network-policy.yaml), `networkPolicy` de [cnpg.go](../../internal/modules/databases/repository/cnpg.go)
+
+## IP de sortie dédiée (module `egress`, ADR 0014)
+
+Un projet peut avoir une IP propre par laquelle sortent tous ses conteneurs (à faire autoriser chez un partenaire). Décision et découpage : [ADR 0014](../adr/0014-ip-sortie-dediee.md).
+
+| Méthode | Chemin | Permission | Description |
+|---|---|---|---|
+| `GET` | `/projects/:id/network/egress` | `network.egressAddresses.get` (lecteur) | `address` (vide : aucune), `offered` (la région en propose), `available` (une est libre maintenant). Outil Copilot `get_egress_ip`. |
+| `POST` | `/projects/:id/network/egress` | `network.egressAddresses.manage` (éditeur) | Une IP libre du cluster du projet, puis la règle posée ; règle refusée : l'IP revient dans la réserve. `409 EGRESS_NOT_OFFERED`, `EGRESS_NONE_FREE`, `EGRESS_ALREADY_ASSIGNED` ; `503 EGRESS_GATEWAY_MISSING`. |
+| `DELETE` | `/projects/:id/network/egress` | `network.egressAddresses.manage` | Règle retirée, IP rendue (la facturation s'arrête). |
+| `GET` / `POST` | `/admin/clusters/:clusterID/egress-addresses` | `platform.clusters.list` / `.manage` | Réserve du cluster (avec le projet qui tient chaque IP) ; ajout d'une IPv4 publique **déjà montée** sur l'interface du nœud passerelle (`gateway_node`). |
+| `DELETE` | `/admin/clusters/:clusterID/egress-addresses/:addressID` | `platform.clusters.manage` | Retrait d'une IP libre (`409 EGRESS_ADDRESS_IN_USE` sinon). |
+
+- **Passerelle du cluster** : `clusters.egress_gateway` (`PATCH /admin/clusters/:clusterID`, `egress_gateway`) : vide = pas d'IP dédiée, `cilium` = règles `CiliumEgressGatewayPolicy` (une par projet, `betorun-egress-<namespace>`, tous les pods du namespace, destinations privées exclues, nœud passerelle et IP de la réserve).
+- **Réserve** : table `egress_addresses` (migration 000072) ; deux demandes simultanées n'obtiennent jamais la même IP (`FOR UPDATE SKIP LOCKED`), un projet n'en a qu'une (index unique).
+- **Facturation** : compteur horaire `egress_ip`, prix mensuel `egress_ip_monthly` de la grille (back-office, Grilles de prix), ligne « IP de sortie dédiées » de la facture.
+- **Projet supprimé** : le worker rend ses IP toutes les 5 minutes (`Service.Sweep`) ; la facturation ne compte que les projets vivants.
+- **Compte plateforme** : droits sur `cilium.io/ciliumegressgatewaypolicies` (`deploy/k8s/rbac.yaml`, `PlatformRules`).

@@ -14,6 +14,7 @@ const (
 	KindDatabase   ResourceKind = "database"
 	KindBuild      ResourceKind = "build"
 	KindSiteDomain ResourceKind = "site_domain"
+	KindEgressIP   ResourceKind = "egress_ip"
 )
 
 // Reservation : ce qu'une ressource réserve au moment du relevé (lu par
@@ -93,6 +94,8 @@ func (c Catalog) Price(r Reservation, hour time.Time) []Usage {
 		}
 	case KindSiteDomain:
 		out = append(out, line(MeterSiteDomain, "", 1, PerHour(c.SiteDomain), hour))
+	case KindEgressIP:
+		out = append(out, line(MeterEgressIP, "", 1, PerHour(c.EgressIP), hour))
 	case KindPlan:
 		if r.Monthly > 0 {
 			out = append(out, line(MeterPlan, r.Size, 1, PerHour(r.Monthly), hour))

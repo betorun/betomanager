@@ -13,6 +13,7 @@ const (
 	MeterDatabaseDisk Meter = "database_disk" // disque d'une base, en Go
 	MeterBuildMinutes Meter = "build_minutes" // minutes de build
 	MeterSiteDomain   Meter = "site_domain"   // domaine personnalisé d'un site
+	MeterEgressIP     Meter = "egress_ip"     // IP de sortie dédiée d'un projet
 )
 
 // Hourly : le compteur est-il facturé à l'heure (plafonné au mois) ? Les
@@ -54,7 +55,9 @@ type Catalog struct {
 	DiskGiMonthly   Milli
 	BuildMinute     Milli
 	SiteDomain      Milli
-	Free            FreeTier
+	// EgressIP : prix mensuel d'une IP de sortie dédiée.
+	EgressIP Milli
+	Free     FreeTier
 	// TopupMin / TopupMax : montant d'une recharge (0 : recharges fermées).
 	TopupMin, TopupMax Milli
 	// TrialCredit : crédit d'essai offert à l'activation de la facturation

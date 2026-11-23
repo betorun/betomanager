@@ -27,7 +27,7 @@ func New(db *gorm.DB) *Inventory { return &Inventory{DB: db} }
 func (i *Inventory) Reservations(ctx context.Context, since time.Time) ([]domain.Reservation, error) {
 	var out []domain.Reservation
 	for _, read := range []func(context.Context, time.Time) ([]domain.Reservation, error){
-		i.containers, i.databases, i.builds, i.siteDomains, i.plans,
+		i.containers, i.databases, i.builds, i.siteDomains, i.egressIPs, i.plans,
 	} {
 		rs, err := read(ctx, since)
 		if err != nil {
@@ -145,6 +145,23 @@ func (i *Inventory) siteDomains(ctx context.Context, _ time.Time) ([]domain.Rese
 	out := make([]domain.Reservation, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, domain.Reservation{Kind: domain.KindSiteDomain, OrganizationID: r.OrganizationID, ProjectID: r.ProjectID,
+			ResourceID: r.ID, ResourceName: r.Hostname})
+	}
+	return out, nil
+}
+
+// egressIPs : IP de sortie dédiées attribuées à un projet vivant (ADR 0014).
+func (i *Inventory) egressIPs(ctx context.Context, _ time.Time) ([]domain.Reservation, error) {
+	var rows []domainRow
+	err := i.DB.WithContext(ctx).Raw(`
+		SELECT e.id, e.project_id, p.organization_id, e.address AS hostname
+		FROM egress_addresses e JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("billing inventory egress addresses: %w", err)
+	}
+	out := make([]domain.Reservation, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.Reservation{Kind: domain.KindEgressIP, OrganizationID: r.OrganizationID, ProjectID: r.ProjectID,
 			ResourceID: r.ID, ResourceName: r.Hostname})
 	}
 	return out, nil

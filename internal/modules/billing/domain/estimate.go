@@ -219,6 +219,7 @@ type CatalogView struct {
 	DiskGiMonthly   int64      `json:"disk_gi_monthly"`
 	BuildMinute     int64      `json:"build_minute"`
 	SiteDomain      int64      `json:"site_domain_monthly"`
+	EgressIP        int64      `json:"egress_ip_monthly"`
 	Free            FreeView   `json:"free_tier"`
 	TopupMin        int64      `json:"topup_min"`
 	TopupMax        int64      `json:"topup_max"`
@@ -252,7 +253,7 @@ type FreeView struct {
 // View : grille en unités.
 func (c Catalog) View() CatalogView {
 	v := CatalogView{Version: c.Version, Currency: c.Currency, DatabaseMonthly: c.DatabaseMonthly.Units(),
-		DiskGiMonthly: c.DiskGiMonthly.Units(), BuildMinute: c.BuildMinute.Units(), SiteDomain: c.SiteDomain.Units(),
+		DiskGiMonthly: c.DiskGiMonthly.Units(), BuildMinute: c.BuildMinute.Units(), SiteDomain: c.SiteDomain.Units(), EgressIP: c.EgressIP.Units(),
 		Free:     FreeView{Compute: c.Free.Compute.Units(), Database: c.Free.Database.Units(), BuildMinutes: c.Free.BuildMinutes},
 		TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(), TrialCredit: c.TrialCredit.Units(), TrialDays: c.TrialDays, GraceDays: c.GraceDays,
 		PostpaidCreditLimit: c.PostpaidCreditLimit.Units(), PostpaidTermsDays: c.PostpaidTermsDays,

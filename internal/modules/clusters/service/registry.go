@@ -114,6 +114,8 @@ type UpdateInput struct {
 	IngressNamespace *string `json:"ingress_namespace,omitempty" description:"Namespace du contrôleur d'ingress (ex. kube-system)"`
 	IngressTarget    *string `json:"ingress_target,omitempty" description:"Nom DNS ou adresse IPv4 vers laquelle pointent les domaines personnalisés"`
 	StorageClass     *string `json:"storage_class,omitempty" description:"Classe des disques des projets (vide : celle par défaut du cluster)"`
+	// EgressGateway : passerelle de sortie installée (IP dédiées des projets).
+	EgressGateway *string `json:"egress_gateway,omitempty" description:"Passerelle de sortie installée sur le cluster : cilium, ou vide (pas d'IP de sortie dédiée)"`
 }
 
 // EnsureDefault : le cluster de la configuration figure au registre.
@@ -226,6 +228,10 @@ func (r *Registry) Update(ctx context.Context, clusterID string, in UpdateInput)
 	set(&c.IngressNamespace, in.IngressNamespace, "ingress_namespace")
 	set(&c.IngressTarget, in.IngressTarget, "ingress_target")
 	set(&c.StorageClass, in.StorageClass, "storage_class")
+	set(&c.EgressGateway, in.EgressGateway, "egress_gateway")
+	if !domain.ValidEgressGateway(c.EgressGateway) {
+		return nil, domain.ErrInvalidEgressGateway
+	}
 	for _, v := range []string{c.IngressClass, c.IngressNamespace, c.IngressTarget, c.StorageClass} {
 		if !domain.ValidSetting(v) {
 			return nil, domain.ErrInvalidSetting

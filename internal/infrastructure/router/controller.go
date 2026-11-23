@@ -17,6 +17,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
 	"github.com/thekrauss/kubemanager/internal/modules/domainsales"
+	"github.com/thekrauss/kubemanager/internal/modules/egress"
 	"github.com/thekrauss/kubemanager/internal/modules/github"
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identity "github.com/thekrauss/kubemanager/internal/modules/identity"
@@ -77,6 +78,7 @@ type ControllerContainer struct {
 	Copilot    *copilot.Controller
 	Databases  *databases.Controller
 	Network    *network.Controller
+	Egress     *egress.Controller
 	// Addons : services additionnels (Redis via Valkey…).
 	Addons *addons.Controller
 	// DiskUsage : usage réel des disques des projets.
@@ -117,6 +119,7 @@ func AddAllRoutes(a *App) {
 	addCopilotRoutes(a)
 	addDatabaseRoutes(a)
 	addNetworkRoutes(a)
+	addEgressRoutes(a)
 	addAddonRoutes(a)
 	addDiskResizeRoutes(a)
 	addAlertPreferenceRoutes(a)
