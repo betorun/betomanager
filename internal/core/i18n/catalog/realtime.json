@@ -20,15 +20,15 @@
   "en": "not allowed to follow this channel"
  },
  {
-  "fr": "Le canal doit être « support:ticket:<ticketID> »",
-  "en": "channel must be 'support:ticket:<ticketID>'"
+  "fr": "Le canal doit être « support:ticket:<ticketID> » ou « support:org:<organizationID> »",
+  "en": "channel must be 'support:ticket:<ticketID>' or 'support:org:<organizationID>'"
  },
  {
   "fr": "Identifiant de ticket invalide",
   "en": "invalid ticket id"
  },
  {
-  "fr": "Identifiant de ticket invalide dans le canal",
-  "en": "invalid ticketID in channel"
+  "fr": "Identifiant invalide dans le canal du support",
+  "en": "invalid id in support channel"
  }
 ]

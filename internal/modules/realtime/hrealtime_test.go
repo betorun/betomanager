@@ -130,6 +130,20 @@ func TestGetSubscriptionToken_SupportTicket(t *testing.T) {
 			t.Fatalf("%s accepté", bad)
 		}
 	}
+	// Fil de l'organisation : lecteurs de ses tickets ; le fil de l'équipe
+	// n'est jamais servi par cette route.
+	orgChannel := "support:org:" + org.String()
+	if res, err := ctrl.GetSubscriptionToken(ctx(member), &SubscribeRequest{Channel: orgChannel}); err != nil || res.Channel != orgChannel {
+		t.Fatalf("fil de l'organisation refusé à un membre : %v", err)
+	}
+	if _, err := ctrl.GetSubscriptionToken(ctx(iam.UserPrincipal(uuid.New())), &SubscribeRequest{Channel: orgChannel}); err == nil {
+		t.Fatal("fil de l'organisation accordé à un étranger")
+	}
+	for _, bad := range []string{"support:staff", "support:org:" + uuid.NewString(), "support:org:x"} {
+		if _, err := ctrl.GetSubscriptionToken(ctx(member), &SubscribeRequest{Channel: bad}); err == nil {
+			t.Fatalf("%s accepté", bad)
+		}
+	}
 	none := &Controller{signer: fakeSigner{}, authz: ticketReaders{p: member, org: org}}
 	if _, err := none.GetSubscriptionToken(ctx(member), &SubscribeRequest{Channel: channel}); err == nil {
 		t.Fatal("sans résolveur de tickets, le canal doit être refusé")
@@ -143,5 +157,6 @@ type ticketReaders struct {
 }
 
 func (r ticketReaders) Check(_ context.Context, p iam.Principal, perm iam.Permission, res iam.ResourceName) (iam.Decision, error) {
-	return iam.Decision{Allowed: p == r.p && perm == iam.SupportTicketsGet && res == iam.OrganizationName(r.org)}, nil
+	read := perm == iam.SupportTicketsGet || perm == iam.SupportTicketsList
+	return iam.Decision{Allowed: p == r.p && read && res == iam.OrganizationName(r.org)}, nil
 }

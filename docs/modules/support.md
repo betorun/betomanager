@@ -121,6 +121,32 @@ qui ont écrit dans le ticket ; ticket résolu ou fermé par l'équipe : au
 créateur. Rien à l'équipe : le compteur `/admin/support/summary` suffit.
 Lien vers la console : `<frontend.base_url>/support/<ticket>`.
 
+## Temps réel et notifications
+
+Canaux Centrifugo (espace `support`) ; une publication ratée est journalisée,
+jamais rendue :
+
+- `support:ticket:<ticket>` : `{ticket_id, kind, author_role, at}` à chaque
+  changement, sans contenu (la console relit le ticket).
+- `support:staff` : fil de l'équipe, jeton par `GET /admin/support/live/feed`
+  (`platform.support.manage`, sans motif). À la création d'un ticket
+  (`ticket_created`) et à chaque message d'un client (`customer_message`) :
+  `{kind, ticket_id, organization_id, organization_name, subject, priority,
+  status, author_email, assigned_to_user_id?, at}`. Jamais servi par
+  `/realtime/subscribe`.
+- `support:org:<organisation>` : par `/realtime/subscribe`, avec
+  `support.tickets.list` sur l'organisation. À chaque réponse de l'équipe
+  (`agent_message`) et changement de statut par l'équipe (`status`) :
+  `{kind, ticket_id, subject, status, at}`. Jamais pour une note interne.
+
+E-mails à l'équipe, dans la langue de l'agent, avec un lien
+`<frontend.platform_url>/admin/support?ticket=<id>&org=<org>` :
+nouveau ticket HIGH ou URGENT (toute l'équipe, avec la description),
+message d'un client (agent assigné, avec le message), nouvelle assignation
+par quelqu'un d'autre (agent assigné). Sans `frontend.platform_url`
+(`KUBEMANAGER_FRONTEND_PLATFORM_URL`), seul le process du back-office les
+envoie, avec sa propre console.
+
 ## Tests
 
 `domain` et `service` : tests unitaires. Parcours complet sur Postgres :

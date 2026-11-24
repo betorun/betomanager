@@ -20,13 +20,18 @@ import (
 const sendTimeout = 30 * time.Second
 
 // MailNotifier : e-mails du support au client (accusé de réception, réponse
-// de l'équipe, demande résolue). Envoi en arrière-plan, erreurs journalisées.
+// de l'équipe, demande résolue) et à l'équipe (ticket prioritaire, message
+// d'un client, assignation). Envoi en arrière-plan, erreurs journalisées.
 type MailNotifier struct {
 	Store      Store
 	Mail       mail.Sender
 	ConsoleURL string
-	Logger     *zap.SugaredLogger
-	Spawner    background.Spawner
+	// StaffURL : console de l'équipe ; vide : aucun e-mail à l'équipe.
+	StaffURL string
+	// Staff : liste de l'équipe (tickets prioritaires) ; nil : pas d'envoi à tous.
+	Staff   StaffStore
+	Logger  *zap.SugaredLogger
+	Spawner background.Spawner
 	// Sync : envoi dans l'appel (tests).
 	Sync bool
 }
@@ -53,6 +58,24 @@ var (
 		i18n.EN: {"Request handled: \"%s\"", "Your request was handled",
 			"The betorun team closed your request \"%s\". If the problem persists, reopen it from the console.", "View the request"},
 	}
+	staffUrgentCopy = map[i18n.Locale]supportCopy{
+		i18n.FR: {"Ticket prioritaire : « %s »", "Nouveau ticket prioritaire",
+			"Un client a ouvert le ticket « %s » en priorité haute ou urgente :", "Ouvrir le ticket"},
+		i18n.EN: {"Priority ticket: \"%s\"", "New priority ticket",
+			"A customer opened the ticket \"%s\" with high or urgent priority:", "Open the ticket"},
+	}
+	staffMessageCopy = map[i18n.Locale]supportCopy{
+		i18n.FR: {"Le client a répondu : « %s »", "Nouveau message d'un client",
+			"Le client a répondu sur le ticket « %s », qui vous est assigné :", "Répondre"},
+		i18n.EN: {"The customer replied: \"%s\"", "New message from a customer",
+			"The customer replied on the ticket \"%s\", assigned to you:", "Reply"},
+	}
+	staffAssignedCopy = map[i18n.Locale]supportCopy{
+		i18n.FR: {"Ticket assigné : « %s »", "Un ticket vous est assigné",
+			"Le ticket « %s » vous a été assigné.", "Ouvrir le ticket"},
+		i18n.EN: {"Ticket assigned: \"%s\"", "A ticket was assigned to you",
+			"The ticket \"%s\" was assigned to you.", "Open the ticket"},
+	}
 	supportGreeting = map[i18n.Locale]string{i18n.FR: "Bonjour %s,", i18n.EN: "Hello %s,"}
 )
 
@@ -71,19 +94,75 @@ func (n *MailNotifier) Resolved(ctx context.Context, t *domain.Ticket) {
 	n.send(ctx, t, resolvedCopy, "", customerRecipients(t, nil))
 }
 
+func (n *MailNotifier) StaffUrgent(ctx context.Context, t *domain.Ticket) {
+	if n == nil || n.Staff == nil || n.StaffURL == "" {
+		return
+	}
+	n.staffSend(ctx, t, staffUrgentCopy, t.Description, func(ctx context.Context) ([]uuid.UUID, error) {
+		agents, err := n.Staff.Agents(ctx)
+		ids := make([]uuid.UUID, 0, len(agents))
+		for _, a := range agents {
+			ids = append(ids, a.UserID)
+		}
+		return ids, err
+	})
+}
+
+func (n *MailNotifier) StaffCustomerMessage(ctx context.Context, t *domain.Ticket, m *domain.Message, agent uuid.UUID) {
+	n.staffSend(ctx, t, staffMessageCopy, m.Body, fixed(agent))
+}
+
+func (n *MailNotifier) StaffAssigned(ctx context.Context, t *domain.Ticket, agent uuid.UUID) {
+	n.staffSend(ctx, t, staffAssignedCopy, "", fixed(agent))
+}
+
+func fixed(ids ...uuid.UUID) func(context.Context) ([]uuid.UUID, error) {
+	return func(context.Context) ([]uuid.UUID, error) { return ids, nil }
+}
+
+// staffSend : à l'équipe, lien vers le back-office ; pas de contrôle
+// d'appartenance à l'organisation du ticket.
+func (n *MailNotifier) staffSend(ctx context.Context, t *domain.Ticket, copies map[i18n.Locale]supportCopy, quote string,
+	to func(context.Context) ([]uuid.UUID, error)) {
+	if n == nil || n.StaffURL == "" {
+		return
+	}
+	link := strings.TrimRight(n.StaffURL, "/") + "/admin/support?ticket=" + t.ID.String() + "&org=" + t.OrganizationID.String()
+	n.dispatch(ctx, t, copies, quote, link, func(ctx context.Context) ([]Contact, error) {
+		ids, err := to(ctx)
+		if err != nil || len(ids) == 0 {
+			return nil, err
+		}
+		return n.Store.Contacts(ctx, ids)
+	})
+}
+
 func (n *MailNotifier) send(ctx context.Context, t *domain.Ticket, copies map[i18n.Locale]supportCopy, quote string, to []uuid.UUID) {
-	if n == nil || n.Mail == nil || n.Store == nil || len(to) == 0 {
+	if n == nil || len(to) == 0 {
+		return
+	}
+	link := strings.TrimRight(n.ConsoleURL, "/") + "/support/" + t.ID.String()
+	org := t.OrganizationID
+	n.dispatch(ctx, t, copies, quote, link, func(ctx context.Context) ([]Contact, error) {
+		return n.Store.MemberContacts(ctx, org, to)
+	})
+}
+
+// dispatch : destinataires résolus puis envois, en arrière-plan.
+func (n *MailNotifier) dispatch(ctx context.Context, t *domain.Ticket, copies map[i18n.Locale]supportCopy, quote, link string,
+	recipients func(context.Context) ([]Contact, error)) {
+	if n.Mail == nil || n.Store == nil {
 		return
 	}
 	ticket := *t
 	run := func(ctx context.Context) {
-		contacts, err := n.Store.MemberContacts(ctx, ticket.OrganizationID, to)
+		contacts, err := recipients(ctx)
 		if err != nil {
 			n.log().Warnw("support e-mail recipients lookup failed", "ticket", ticket.ID, zap.Error(err))
 			return
 		}
 		for _, c := range contacts {
-			if err := n.Mail.Send(ctx, n.render(ctx, copies, c, &ticket, quote)); err != nil {
+			if err := n.Mail.Send(ctx, n.render(ctx, copies, c, &ticket, quote, link)); err != nil {
 				n.log().Warnw("support e-mail failed", "ticket", ticket.ID, zap.Error(err))
 			}
 		}
@@ -108,7 +187,7 @@ func (n *MailNotifier) log() *zap.SugaredLogger {
 }
 
 // render : langue choisie par la personne, sinon celle de la requête.
-func (n *MailNotifier) render(ctx context.Context, copies map[i18n.Locale]supportCopy, to Contact, t *domain.Ticket, quote string) mail.Message {
+func (n *MailNotifier) render(ctx context.Context, copies map[i18n.Locale]supportCopy, to Contact, t *domain.Ticket, quote, link string) mail.Message {
 	lang := i18n.From(ctx)
 	switch to.Locale {
 	case "en":
@@ -124,7 +203,6 @@ func (n *MailNotifier) render(ctx context.Context, copies map[i18n.Locale]suppor
 	if who == "" {
 		who, _, _ = strings.Cut(to.Email, "@")
 	}
-	link := strings.TrimRight(n.ConsoleURL, "/") + "/support/" + t.ID.String()
 	data := map[string]string{"Lang": string(lang), "Title": c.Title, "Greeting": fmt.Sprintf(supportGreeting[lang], who),
 		"Body": fmt.Sprintf(c.Body, t.Subject), "Quote": quote, "Button": c.Button, "Link": link}
 	var text strings.Builder

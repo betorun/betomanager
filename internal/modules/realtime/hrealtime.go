@@ -131,11 +131,16 @@ func (ctrl *Controller) GetSubscriptionToken(c *gin.Context, in *SubscribeReques
 	if !ok {
 		return nil, betoerrors.New(betoerrors.CodeForbidden, "not a member of this project")
 	}
-	if ticket, isTicket, err := parseSupportTicketChannel(channel); isTicket {
+	if target, isSupport, err := parseSupportChannel(channel); isSupport {
 		if err != nil {
 			return nil, err
 		}
-		if err := ctrl.requireTicketRead(c.Request.Context(), principal, ticket); err != nil {
+		if target.org {
+			// Fil d'une organisation : lister ses tickets.
+			if err := ctrl.require(c.Request.Context(), principal, iam.SupportTicketsList, iam.OrganizationName(target.id)); err != nil {
+				return nil, err
+			}
+		} else if err := ctrl.requireTicketRead(c.Request.Context(), principal, target.id); err != nil {
 			return nil, err
 		}
 		return ctrl.SubscriptionToken(c.Request.Context(), userID, channel)
@@ -192,21 +197,38 @@ func (ctrl *Controller) GetStaffTicketToken(c *gin.Context, in *StaffTicketPath)
 	return ctrl.SubscriptionToken(c.Request.Context(), userID, realtime.SupportTicketChannel(id.String()))
 }
 
-// parseSupportTicketChannel : "support:ticket:<id>" ; isTicket faux pour
-// tout autre espace de canaux.
-func parseSupportTicketChannel(channel string) (uuid.UUID, bool, error) {
+// GetStaffFeedToken : jeton du fil de l'équipe (support:staff). Pas de
+// motif : le fil ne montre que ce que la file montre déjà.
+func (ctrl *Controller) GetStaffFeedToken(c *gin.Context) (*SubscriptionTokenResponse, error) {
+	userID, err := requireUserID(c)
+	if err != nil {
+		return nil, err
+	}
+	return ctrl.SubscriptionToken(c.Request.Context(), userID, realtime.SupportStaffChannel)
+}
+
+// supportTarget : ticket ou organisation d'un canal du support.
+type supportTarget struct {
+	id  uuid.UUID
+	org bool
+}
+
+// parseSupportChannel : "support:ticket:<id>" ou "support:org:<id>" ;
+// isSupport faux pour tout autre espace de canaux. Le fil de l'équipe
+// (support:staff) n'est jamais servi ici.
+func parseSupportChannel(channel string) (supportTarget, bool, error) {
 	parts := strings.Split(channel, realtime.ChannelSeparator)
 	if parts[0] != realtime.ChannelSupportNamespace {
-		return uuid.Nil, false, nil
+		return supportTarget{}, false, nil
 	}
-	if len(parts) != 3 || parts[1] != "ticket" {
-		return uuid.Nil, true, betoerrors.New(betoerrors.CodeInvalidInput, "channel must be 'support:ticket:<ticketID>'")
+	if len(parts) != 3 || (parts[1] != "ticket" && parts[1] != "org") {
+		return supportTarget{}, true, betoerrors.New(betoerrors.CodeInvalidInput, "channel must be 'support:ticket:<ticketID>' or 'support:org:<organizationID>'")
 	}
 	id, err := uuid.Parse(strings.TrimSpace(parts[2]))
 	if err != nil {
-		return uuid.Nil, true, betoerrors.New(betoerrors.CodeInvalidInput, "invalid ticketID in channel")
+		return supportTarget{}, true, betoerrors.New(betoerrors.CodeInvalidInput, "invalid id in support channel")
 	}
-	return id, true, nil
+	return supportTarget{id: id, org: parts[1] == "org"}, true, nil
 }
 
 // requireTicketRead : lire les tickets de l'organisation du ticket. Ticket

@@ -31,6 +31,10 @@ const (
 	// (support:ticket:<ticket>), lus par le client et par l'équipe.
 	ChannelSupportNamespace    = "support"
 	supportTicketChannelFormat = "support:ticket:%s"
+	// SupportStaffChannel : fil de l'équipe (nouveaux tickets, messages des
+	// clients), seulement par la route du back-office.
+	SupportStaffChannel     = "support:staff"
+	supportOrgChannelFormat = "support:org:%s"
 )
 
 // En-tête des jetons de connexion signés (HMAC).

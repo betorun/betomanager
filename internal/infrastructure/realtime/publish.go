@@ -101,6 +101,12 @@ func DeploymentChannel(projectID string, workloadID string) string {
 	return fmt.Sprintf(deploymentChannelFormat, strings.TrimSpace(projectID), strings.TrimSpace(workloadID))
 }
 
+// SupportOrgChannel : réponses de l'équipe et changements de statut des
+// tickets d'une organisation.
+func SupportOrgChannel(orgID string) string {
+	return fmt.Sprintf(supportOrgChannelFormat, strings.TrimSpace(orgID))
+}
+
 // SupportTicketChannel : changements d'un ticket de support.
 func SupportTicketChannel(ticketID string) string {
 	return fmt.Sprintf(supportTicketChannelFormat, strings.TrimSpace(ticketID))

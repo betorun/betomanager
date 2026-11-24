@@ -65,10 +65,16 @@ type Files interface {
 	Delete(ctx context.Context, key string) error
 }
 
-// Notifier : e-mails au client. Jamais d'erreur rendue : un envoi raté ne
-// fait pas échouer la requête.
+// Notifier : e-mails au client et à l'équipe. Jamais d'erreur rendue : un
+// envoi raté ne fait pas échouer la requête.
 type Notifier interface {
 	Received(ctx context.Context, t *domain.Ticket)
 	AgentReplied(ctx context.Context, t *domain.Ticket, m *domain.Message, to []uuid.UUID)
 	Resolved(ctx context.Context, t *domain.Ticket)
+	// StaffUrgent : nouveau ticket prioritaire (HIGH, URGENT), à toute l'équipe.
+	StaffUrgent(ctx context.Context, t *domain.Ticket)
+	// StaffCustomerMessage : message d'un client, à l'agent assigné.
+	StaffCustomerMessage(ctx context.Context, t *domain.Ticket, m *domain.Message, agent uuid.UUID)
+	// StaffAssigned : ticket assigné par quelqu'un d'autre, à l'agent.
+	StaffAssigned(ctx context.Context, t *domain.Ticket, agent uuid.UUID)
 }
