@@ -142,5 +142,13 @@
  {
   "fr": "copilot: outil %q : une lecture n'est pas une carte sensible",
   "en": "copilot: tool %q: a read is not a sensitive card"
+ },
+ {
+  "fr": "copilot: schéma de %s invalide",
+  "en": "copilot: invalid %s schema"
+ },
+ {
+  "fr": "Plan introuvable ou expiré",
+  "en": "plan not found or expired"
  }
 ]
