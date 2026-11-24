@@ -26,6 +26,11 @@ const (
 	workloadChannelFormat   = "project:%s:workload:%s"
 	deploymentChannelFormat = "project:%s:workload:%s:deploy"
 	vpsChannelFormat        = "project:%s:vps:%s"
+
+	// ChannelSupportNamespace : canaux des tickets de support
+	// (support:ticket:<ticket>), lus par le client et par l'équipe.
+	ChannelSupportNamespace    = "support"
+	supportTicketChannelFormat = "support:ticket:%s"
 )
 
 // En-tête des jetons de connexion signés (HMAC).

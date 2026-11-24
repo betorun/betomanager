@@ -27,6 +27,8 @@ type Service struct {
 	Files Files
 	// Notify nil : aucun e-mail.
 	Notify Notifier
+	// Live nil : rien en direct (la console relit le ticket à intervalle).
+	Live   Publisher
 	Logger *zap.SugaredLogger
 	Now    func() time.Time
 }
@@ -333,6 +335,7 @@ func (s *Service) Attach(ctx context.Context, org, id uuid.UUID, by Actor, in At
 		cancel()
 		return nil, err
 	}
+	s.publish(ctx, t, LiveAttachment, "")
 	return s.view(ctx, t)
 }
 
@@ -498,6 +501,7 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, by Actor, in Up
 	if err := s.Store.SaveTicket(ctx, t, nil, events); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, t, LiveStatus, "")
 	if resolved && s.Notify != nil {
 		s.Notify.Resolved(ctx, t)
 	}
@@ -534,6 +538,7 @@ func (s *Service) Assign(ctx context.Context, id uuid.UUID, by Actor, to *uuid.U
 	if err := s.Store.SaveTicket(ctx, t, nil, []domain.Event{ev}); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, t, LiveAssign, "")
 	return s.view(ctx, t)
 }
 
@@ -618,6 +623,7 @@ func (s *Service) addMessage(ctx context.Context, t *domain.Ticket, by Actor, ro
 	if err := s.Store.SaveTicket(ctx, t, msg, events); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, t, LiveMessage, role)
 	return s.view(ctx, t)
 }
 
@@ -633,6 +639,7 @@ func (s *Service) changeStatus(ctx context.Context, t *domain.Ticket, by Actor, 
 	if err := s.Store.SaveTicket(ctx, t, nil, []domain.Event{ev}); err != nil {
 		return nil, err
 	}
+	s.publish(ctx, t, LiveStatus, "")
 	return s.view(ctx, t)
 }
 

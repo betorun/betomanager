@@ -401,7 +401,9 @@ services:
     environment:
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:?}
       CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_HMAC_SECRET:?}
-      CENTRIFUGO_ALLOWED_ORIGINS: https://${CONSOLE_HOST:?}
+      # Console des clients, et back-office de l'équipe lancé sur son poste
+      # (tunnel SSH, deploy/README.txt 7 sexies) : jetons exigés dans les deux cas.
+      CENTRIFUGO_ALLOWED_ORIGINS: https://${CONSOLE_HOST:?} http://localhost:3001
     volumes:
       - ./docker/centrifugo/config.prod.json:/etc/centrifugo/config.json:ro
     ulimits:
