@@ -686,5 +686,13 @@
  {
   "fr": "Voir l'état des composants et les incidents",
   "en": "View component health and incidents"
+ },
+ {
+  "fr": "Accorder un accès d'assistance à l'équipe betorun",
+  "en": "Grant the betorun team assistance access"
+ },
+ {
+  "fr": "Refuser ou retirer un accès d'assistance de l'équipe betorun",
+  "en": "Deny or revoke the betorun team's assistance access"
  }
 ]

@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"github.com/thekrauss/kubemanager/internal/modules/assistance"
 	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
 	"github.com/thekrauss/kubemanager/internal/modules/operatoraccess"
 	"net/http"
@@ -92,6 +93,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Support:        &support.Controller{},
 				Mail:           &mailmod.Controller{},
 				OperatorAccess: &operatoraccess.Controller{},
+				Assistance:     &assistance.Controller{},
 				Databases:      &databases.Controller{},
 				StorageS3:      &storages3.Controller{},
 				Network:        &network.Controller{},

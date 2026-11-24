@@ -222,6 +222,7 @@ func (a *App) initDomainLayers() error {
 		Status:         a.newStatusController(),
 		Support:        a.newSupportController(),
 		OperatorAccess: a.newOperatorAccessController(),
+		Assistance:     a.newAssistanceController(),
 		RBAC:           rbacController,
 		APIKey:         apiKeyController,
 		Project:        projectController,
@@ -241,6 +242,11 @@ func (a *App) initDomainLayers() error {
 		DiskUsage:      a.newDiskUsageController(),
 		DiskResize:     a.newDiskResizeController(),
 		Alerts:         a.newAlertsController(),
+	}
+	// Outils de l'Opérateur chez un client : ouverts pendant un accès
+	// d'assistance actif (ADR 0017 §5).
+	if op, as := a.Controllers.OperatorAccess, a.Controllers.Assistance; op != nil && as != nil {
+		op.Assistance = as.Service
 	}
 	// Constats : réutilisent les services des contrôleurs ci-dessus.
 	a.Controllers.Insights = a.newInsightsController()

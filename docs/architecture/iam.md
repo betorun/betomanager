@@ -352,7 +352,8 @@ Les rôles Keycloak `SUPER_ADMIN`/`ADMIN` ne donnent plus de contournement globa
 - Le staff a des **rôles plateforme** explicites sur la ressource `platform` (`roles/platform.support` : lecture de la flotte et tickets de support, `roles/platform.admin`), vérifiés par le même `iam.Check`. Ils sont attribués par la configuration (`iam.platform_admins`, `iam.platform_support` : listes d'e-mails), réconciliée toutes les 10 min ; un e-mail retiré perd son rôle.
 - `roles/platform.admin` porte les clés de cluster et `platform.projects.setLimits` : `PATCH /admin/projects/{id}/limits` (CPU, mémoire, stockage ; sensible). Un client ne choisit pas ses limites : un projet naît avec les valeurs par défaut, seul le staff les change.
 - Accéder aux données d'un client exige une **justification** (ticket) et produit une entrée d'audit **visible par le client** (équivalent « Access Transparency » de Google).
-- Accès d'urgence (*break-glass*) : temporaire (1 h), à double validation, alerte immédiate (pas encore fait).
+- **Accès d'assistance** (fait, [ADR 0017](../adr/0017-acces-assistance.md), [module](../modules/assistance.md)) : pour agir chez un client, une personne nommée reçoit une liaison temporaire `roles/support.assistant` sur l'organisation (rôle réservé, lecture et actions réversibles). Le client accorde depuis un ticket (4 h par défaut, 24 h au plus), refuse ou retire d'un clic. Ses politiques de refus s'appliquent.
+- Accès d'urgence (*break-glass*) : même mécanisme, sans l'accord du client, 1 h au plus ; administrateurs seulement, double authentification, propriétaires prévenus immédiatement.
 
 **Fait (C, 2026-11-20).** `router.Access.Staff(target)` et `security.StaffAccess` couvrent les routes staff qui touchent un client :
 - limites d'un projet et d'une organisation ;

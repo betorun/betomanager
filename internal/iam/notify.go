@@ -43,3 +43,8 @@ func fire(p Principal) {
 		f(p)
 	}
 }
+
+// NotifyChanged : les droits de p ont changé (cache des moteurs invalidé).
+// À rappeler après la validation d'une transaction qui retire un accès : une
+// relecture faite avant la validation aurait gardé l'ancien état.
+func NotifyChanged(p Principal) { notifyChanged(p) }

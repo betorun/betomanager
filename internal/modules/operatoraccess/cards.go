@@ -198,12 +198,26 @@ func (h *Controller) Propose(c *gin.Context, in *ProposeInput) (*CardView, error
 	if !ok || !known || !t.Write {
 		return nil, betoerrors.New(betoerrors.CodeNotFound, "unknown Operator card")
 	}
-	has, err := h.hasPerms(c.Request.Context(), p, perm)
-	if err != nil {
-		return nil, err
-	}
-	if !has[perm] {
-		return nil, betoerrors.New(betoerrors.CodeForbidden, "this person cannot perform this action")
+	customer := cat.Customer[in.Tool]
+	if customer {
+		// Ressource d'un client : la permission vaut chez lui, pas sur
+		// platform. La lecture de la cible (jeton de la personne, contrôlé
+		// par la route) prouve l'accès d'assistance ; la route de l'action le
+		// contrôle encore à l'exécution.
+		if t.TargetTool == "" {
+			return nil, betoerrors.New(betoerrors.CodeInternal, "this customer card has no target read")
+		}
+		if _, err := h.hasPerms(c.Request.Context(), p); err != nil {
+			return nil, err
+		}
+	} else {
+		has, err := h.hasPerms(c.Request.Context(), p, perm)
+		if err != nil {
+			return nil, err
+		}
+		if !has[perm] {
+			return nil, betoerrors.New(betoerrors.CodeForbidden, "this person cannot perform this action")
+		}
 	}
 	prepared, err := cat.Tools.Prepare(in.Tool, in.Arguments)
 	if err != nil {
@@ -213,6 +227,9 @@ func (h *Controller) Propose(c *gin.Context, in *ProposeInput) (*CardView, error
 	justification := c.GetHeader(security.HeaderJustification)
 	target, err := h.target(c, cat, t, prepared, token, justification)
 	if err != nil {
+		if customer {
+			return nil, errNoAssistance
+		}
 		return nil, err
 	}
 	user, _ := security.InternalUserID(c)
@@ -230,6 +247,11 @@ func (h *Controller) Propose(c *gin.Context, in *ProposeInput) (*CardView, error
 	v := h.view(row, cat, now)
 	return &v, nil
 }
+
+// errNoAssistance : action chez un client sans accès d'assistance actif sur
+// son organisation (ou ressource introuvable).
+var errNoAssistance = betoerrors.New(betoerrors.CodeForbidden,
+	"no active assistance access on this customer's organization (or the resource does not exist): ask the customer with request_assistance")
 
 // target : nom lisible de la cible, lu avec les droits de la personne (une
 // cible introuvable ou interdite : pas de carte).
@@ -334,14 +356,28 @@ func (h *Controller) Approve(c *gin.Context) {
 	}
 	principal, _ := security.PrincipalFromContext(c)
 	perm, known := cat.Perms[current.Tool]
-	has, err := h.hasPerms(ctx, principal, perm)
-	if err != nil {
-		writeCardError(c, err)
-		return
-	}
-	if !known || !has[perm] {
-		writeCardError(c, betoerrors.New(betoerrors.CodeForbidden, "you do not have the permission this action requires"))
-		return
+	if cat.Customer[current.Tool] {
+		// Ressource d'un client : la personne qui valide doit avoir son
+		// propre accès d'assistance (lecture de la cible avec sa session) ;
+		// la route de l'action le contrôle encore à l'exécution.
+		if _, err := h.hasPerms(ctx, principal); err != nil {
+			writeCardError(c, err)
+			return
+		}
+		if err := h.canReachTarget(c, cat, current); err != nil {
+			writeCardError(c, err)
+			return
+		}
+	} else {
+		has, err := h.hasPerms(ctx, principal, perm)
+		if err != nil {
+			writeCardError(c, err)
+			return
+		}
+		if !known || !has[perm] {
+			writeCardError(c, betoerrors.New(betoerrors.CodeForbidden, "you do not have the permission this action requires"))
+			return
+		}
 	}
 	now := h.Cards.now()
 	email := c.GetString("email")
@@ -407,6 +443,24 @@ func (h *Controller) Approve(c *gin.Context) {
 	row.Status, row.HTTPStatus, row.Message, row.Result, row.ExecutedAt = status, res.Status, message, result, &done
 	row.DecidedEmail, row.DecidedAt = email, &now
 	c.JSON(http.StatusOK, h.view(row, cat, done))
+}
+
+// canReachTarget : la personne qui valide lit la cible d'une carte chez un
+// client avec sa session (son accès d'assistance, pas celui de l'auteur).
+func (h *Controller) canReachTarget(c *gin.Context, cat *Catalog, row cardRow) error {
+	t, ok := cat.Tools.Lookup(row.Tool)
+	if !ok || t.TargetTool == "" {
+		return betoerrors.New(betoerrors.CodeNotFound, "unknown Operator card")
+	}
+	var req tools.Prepared
+	if err := json.Unmarshal(row.Request, &req); err != nil {
+		return err
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+	if _, err := h.target(c, cat, t, &req, token, row.Justification); err != nil {
+		return betoerrors.New(betoerrors.CodeForbidden, "you have no active assistance access on this customer's organization")
+	}
+	return nil
 }
 
 func (h *Controller) release(ctx context.Context, id uuid.UUID) {

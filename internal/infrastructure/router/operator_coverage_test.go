@@ -18,7 +18,7 @@ func TestOperatorCoverage(t *testing.T) {
 	problems := operatorCoverageProblems(AllGroups)
 	require.Empty(t, problems, "\n"+strings.Join(problems, "\n"))
 
-	routes, perms := OperatorRoutes(AllGroups)
+	routes, perms, _ := OperatorRoutes(AllGroups)
 	cards, out := 0, 0
 	for _, d := range operatorDecisions {
 		switch {
@@ -43,7 +43,7 @@ func TestOperatorCatalogBuilds(t *testing.T) {
 	f := documentedAPI(t)
 	spec, err := json.Marshal(f.Generator().API())
 	require.NoError(t, err)
-	routes, _ := OperatorRoutes(AllGroups)
+	routes, _, _ := OperatorRoutes(AllGroups)
 	cat, err := tools.Build(routes, spec)
 	require.NoError(t, err)
 	defs := cat.Definitions()

@@ -23,9 +23,13 @@ import (
 
 // Catalog : outils et permission de leur route, posés au démarrage.
 type Catalog struct {
-	Tools   *tools.Catalog
-	Perms   map[string]iam.Permission
-	Handler http.Handler
+	Tools *tools.Catalog
+	Perms map[string]iam.Permission
+	// Customer : outils sur une ressource d'un client (ADR 0017 §5) : la
+	// permission vaut sur la ressource, pas sur platform ; la route la
+	// contrôle à chaque appel.
+	Customer map[string]bool
+	Handler  http.Handler
 }
 
 type catalogSlot struct {
@@ -91,8 +95,10 @@ func (h *Controller) Tools(c *gin.Context) (*ToolsResponse, error) {
 		return nil, err
 	}
 	var wanted []iam.Permission
-	for _, perm := range cat.Perms {
-		wanted = append(wanted, perm)
+	for name, perm := range cat.Perms {
+		if !cat.Customer[name] {
+			wanted = append(wanted, perm)
+		}
 	}
 	granted, err := h.IAM.TestPermissions(c.Request.Context(), p, iam.Platform, append(wanted, iam.PlatformOperatorUse))
 	if err != nil {
@@ -105,9 +111,17 @@ func (h *Controller) Tools(c *gin.Context) (*ToolsResponse, error) {
 	if !has[iam.PlatformOperatorUse] {
 		return nil, betoerrors.New(betoerrors.CodeForbidden, "access to the Operator has been withdrawn")
 	}
+	assisting, err := h.assisting(c)
+	if err != nil {
+		return nil, err
+	}
 	out := ToolsResponse{Items: []ToolView{}, Cards: []CardToolView{}}
 	for _, d := range cat.Tools.Definitions() {
-		if !has[cat.Perms[d.Name]] {
+		if cat.Customer[d.Name] {
+			if !assisting {
+				continue
+			}
+		} else if !has[cat.Perms[d.Name]] {
 			continue
 		}
 		v := ToolView{Name: d.Name, Description: d.Description, Parameters: d.Parameters}
@@ -121,6 +135,20 @@ func (h *Controller) Tools(c *gin.Context) (*ToolsResponse, error) {
 		out.Items = append(out.Items, v)
 	}
 	return &out, nil
+}
+
+// assisting : la personne a un accès d'assistance actif quelque part. Les
+// outils d'un client ne servent qu'alors ; l'organisation visée est
+// contrôlée par la route, à chaque appel.
+func (h *Controller) assisting(c *gin.Context) (bool, error) {
+	if h.Assistance == nil {
+		return false, nil
+	}
+	user, ok := security.InternalUserID(c)
+	if !ok {
+		return false, nil
+	}
+	return h.Assistance.HasActive(c.Request.Context(), user)
 }
 
 // CallInput : un appel d'outil.

@@ -233,6 +233,19 @@ const (
 	// PlatformOperatorUse : utiliser l'Opérateur, l'agent d'exploitation de
 	// l'équipe (ADR 0016). Il agit avec les droits de la personne, jamais plus.
 	PlatformOperatorUse Permission = "platform.operator.use"
+	// PlatformAssistanceRequest : demander à un client un accès d'assistance
+	// depuis un ticket (ADR 0017) ; voir et clore ses propres accès.
+	PlatformAssistanceRequest Permission = "platform.assistance.request"
+	// PlatformAssistanceBreakglass : ouvrir un accès d'assistance sans
+	// l'accord du client (incident, 1 h au plus, propriétaires prévenus).
+	PlatformAssistanceBreakglass Permission = "platform.assistance.breakglass"
+
+	// OrganizationsGrantAssistance : accorder, refuser ou révoquer un accès
+	// d'assistance de l'équipe betorun sur l'organisation (ADR 0017).
+	OrganizationsGrantAssistance Permission = "resourcemanager.organizations.grantAssistance"
+	// OrganizationsRevokeAssistance : refuser une demande ou retirer un accès
+	// d'assistance. Pas sensible : retirer un accès doit rester immédiat.
+	OrganizationsRevokeAssistance Permission = "resourcemanager.organizations.revokeAssistance"
 )
 
 // PermissionInfo : métadonnées d'une permission (doc, UI, rôles personnalisés).
@@ -395,6 +408,10 @@ var catalog = map[Permission]PermissionInfo{
 	PlatformSupportGet:             {Title: "Lire les tickets de support de tous les clients", PlatformOnly: true},
 	PlatformStatusGet:              {Title: "Voir l'état des composants et les incidents", PlatformOnly: true},
 	PlatformOperatorUse:            {Title: "Utiliser l'Opérateur, l'agent d'exploitation de l'équipe", PlatformOnly: true},
+	PlatformAssistanceRequest:      {Title: "Demander un accès d'assistance à un client", PlatformOnly: true},
+	PlatformAssistanceBreakglass:   {Title: "Ouvrir un accès d'assistance sans l'accord du client (incident)", PlatformOnly: true, Sensitive: true},
+	OrganizationsGrantAssistance:   {Title: "Accorder un accès d'assistance à l'équipe betorun", CustomRoles: true, Sensitive: true},
+	OrganizationsRevokeAssistance:  {Title: "Refuser ou retirer un accès d'assistance de l'équipe betorun", CustomRoles: true},
 }
 
 // Known : la permission figure au catalogue.
