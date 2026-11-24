@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/thekrauss/kubemanager/internal/modules/addons"
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
+	"github.com/thekrauss/kubemanager/internal/modules/assistance"
 	controller "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authRepos "github.com/thekrauss/kubemanager/internal/modules/auth/repository"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
@@ -110,6 +111,8 @@ type ControllerContainer struct {
 	Support *support.Controller
 	// OperatorAccess : jeton de l'équipe pour l'Opérateur (ADR 0016).
 	OperatorAccess *operatoraccess.Controller
+	// Assistance : accès d'assistance de l'équipe chez un client (ADR 0017).
+	Assistance *assistance.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -141,6 +144,7 @@ func AddAllRoutes(a *App) {
 	addSupportRoutes(a)
 	addStatusRoutes(a)
 	addOperatorRoutes(a)
+	addAssistanceRoutes(a)
 	addInsightsRoutes(a)
 	// Copilot : outils et guides de la table de couverture (copilot_decisions.go).
 	applyCopilotDecisions(AllGroups)

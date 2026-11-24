@@ -92,11 +92,11 @@ func (a *App) bindOperator(f *fizz.Fizz, h http.Handler) error {
 	if err != nil {
 		return err
 	}
-	routes, perms := OperatorRoutes(AllGroups)
+	routes, perms, customer := OperatorRoutes(AllGroups)
 	cat, err := tools.Build(routes, spec)
 	if err != nil {
 		return fmt.Errorf("operator: outils : %w", err)
 	}
-	r.Bind(&operatoraccess.Catalog{Tools: cat, Perms: perms, Handler: h})
+	r.Bind(&operatoraccess.Catalog{Tools: cat, Perms: perms, Customer: customer, Handler: h})
 	return nil
 }

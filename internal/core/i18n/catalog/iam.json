@@ -330,5 +330,9 @@
  {
   "fr": "Permission refusée invalide",
   "en": "invalid denied permission"
+ },
+ {
+  "fr": "%w : %q n'est pas un rôle réservé",
+  "en": "%w: %q is not reserved"
  }
 ]

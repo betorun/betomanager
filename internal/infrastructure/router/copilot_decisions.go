@@ -72,6 +72,7 @@ var consoleScreens = map[string]consoleScreen{
 	"/service-accounts": {"Service accounts, their API keys, keys and CI trust (OIDC)", "Comptes de service, clés API, clés et confiance CI (OIDC)"},
 	"/api-keys":         {"Personal API keys", "Clés API personnelles"},
 	"/audit":            {"Audit log", "Journal d'audit"},
+	"/team-access":      {"betorun team access: requests, open access, revocation", "Accès de l'équipe betorun : demandes, accès ouverts, révocation"},
 	"/billing":          {"Billing: balance, top-up, plan, budget, invoices, billing details", "Facturation : solde, recharge, plan, budget, factures, informations"},
 	"/support":          {"Support tickets", "Tickets de support"},
 	"/settings":         {"Settings: account security (password, two-factor, passkeys, sessions, linked accounts), e-mail preferences, organization security and company sign-in (SSO)", "Paramètres : sécurité du compte (mot de passe, double authentification, passkeys, sessions, comptes liés), préférences d'e-mail, sécurité de l'organisation et connexion d'entreprise (SSO)"},
@@ -335,6 +336,16 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /users/api-keys/audit":                                      asGuide("/api-keys"),
 	"POST /users/api-keys":                                           asGuide("/api-keys", "le secret n'est montré qu'une fois"),
 	"DELETE /users/api-keys/:id":                                     asGuide("/api-keys"),
+
+	// ── Accès d'assistance (ADR 0017) ─────────────────────────────────
+	// Lire et retirer : oui ; ouvrir l'organisation à l'équipe : dans la
+	// console seulement (double authentification, jamais par un agent).
+	"GET /organizations/:id/assistance": asTool(CopilotTool{Name: "list_assistance_access",
+		Hint: "betorun team members who asked for or hold temporary access to the organization, with the reason and the end date."}),
+	"POST /organizations/:id/assistance/:grantID/approve":  asGuide("/team-access", "double authentification"),
+	"POST /organizations/:id/assistance/tickets/:ticketID": asGuide("/team-access", "double authentification"),
+	"POST /organizations/:id/assistance/:grantID/deny":     asTool(CopilotTool{Name: "deny_assistance_request", Write: true, Risk: tools.RiskLow}),
+	"POST /organizations/:id/assistance/:grantID/revoke":   asTool(CopilotTool{Name: "revoke_assistance_access", Write: true, Risk: tools.RiskLow}),
 
 	// ── Support ────────────────────────────────────────────────────────
 	"GET /organizations/:id/support/tickets":           asTool(CopilotTool{Name: "list_support_tickets"}),

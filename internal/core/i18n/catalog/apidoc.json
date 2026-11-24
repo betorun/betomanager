@@ -3090,5 +3090,65 @@
  {
   "fr": "Renouvellement automatique prévu",
   "en": "Scheduled automatic renewal"
+ },
+ {
+  "fr": "Accès de l'équipe betorun sur l'organisation : demandes, accès ouverts, passés",
+  "en": "betorun team access to the organization: requests, open access, past access"
+ },
+ {
+  "fr": "Accepter une demande d'accès de l'équipe (durée de 1 à 24 h)",
+  "en": "Accept a team access request (1 to 24 h)"
+ },
+ {
+  "fr": "Refuser une demande d'accès de l'équipe",
+  "en": "Deny a team access request"
+ },
+ {
+  "fr": "Retirer un accès de l'équipe (effet immédiat)",
+  "en": "Remove a team access (immediate effect)"
+ },
+ {
+  "fr": "Ouvrir un accès à l'agent assigné à un ticket, sans attendre sa demande",
+  "en": "Open access to the agent assigned to a ticket, without waiting for a request"
+ },
+ {
+  "fr": "Durée en heures (1 à 24) ; défaut : la durée demandée",
+  "en": "Duration in hours (1 to 24); default: the requested duration"
+ },
+ {
+  "fr": "Durée en heures (1 à 24, défaut 4)",
+  "en": "Duration in hours (1 to 24, default 4)"
+ },
+ {
+  "fr": "Raison (facultative)",
+  "en": "Reason (optional)"
+ },
+ {
+  "fr": "Pourquoi l'équipe doit intervenir",
+  "en": "Why the team needs to step in"
+ },
+ {
+  "fr": "Organisation",
+  "en": "Organization"
+ },
+ {
+  "fr": "Ticket",
+  "en": "Ticket"
+ },
+ {
+  "fr": "Accès d'assistance",
+  "en": "Assistance access"
+ },
+ {
+  "fr": "Accès d'assistance de l'équipe betorun",
+  "en": "betorun team assistance access"
+ },
+ {
+  "fr": "Accès temporaires de l'équipe betorun à l'organisation : demandes, accès ouverts, révocation.",
+  "en": "Temporary access of the betorun team to the organization: requests, open access, revocation."
+ },
+ {
+  "fr": "Ticket concerné",
+  "en": "Related ticket"
  }
 ]

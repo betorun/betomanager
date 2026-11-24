@@ -14,6 +14,9 @@ type Role struct {
 	Permissions []Permission `json:"permissions"`
 	// PlatformOnly : rôle du staff betorun, attribuable seulement sur "platform".
 	PlatformOnly bool `json:"-"`
+	// Reserved : posé seulement par la plateforme (accès d'assistance,
+	// ADR 0017), jamais par l'éditeur des accès d'un client.
+	Reserved bool `json:"-"`
 }
 
 func (r Role) has(p Permission) bool {
@@ -97,7 +100,22 @@ var (
 		DenyPoliciesUpdate,
 		BillingAccountsGet, BillingAccountsUpdate, BillingPaymentsCreate,
 		AuditLogsRead,
+		// Ouvrir l'organisation à l'équipe betorun (ADR 0017) : propriétaire.
+		OrganizationsGrantAssistance, OrganizationsRevokeAssistance,
 	})
+
+	// assistantPerms : accès d'assistance (ADR 0017) : lire et faire des
+	// actions réversibles, rien créer, modifier, supprimer ni ouvrir (secrets,
+	// fichiers, accès, facturation). Aucune permission sensible.
+	assistantPerms = []Permission{
+		OrganizationsGet, ProjectsGet, ProjectsList,
+		WorkloadsList, WorkloadsGet, WorkloadLogsRead, WorkloadMetrics, BuildsList, BuildsGet, WorkloadDomainsList,
+		WorkloadsRestart, WorkloadsRollback, WorkloadsStart, WorkloadsStop,
+		SitesList, SitesGet, SiteDeploymentsList, SiteDomainsList, SiteDeploymentsActive,
+		DatabasesList, DatabasesGet, DatabasesStop,
+		AddonsList, AddonsGet,
+		VPSList, VPSGet, VPSStart, VPSStop, VPSReboot,
+	}
 
 	platformAdminPerms = []Permission{
 		PlatformClustersList, PlatformClustersManage, PlatformClusterKeysList, PlatformClusterKeysCreate, PlatformClusterKeysRotate,
@@ -108,6 +126,7 @@ var (
 		PlatformSupportManage,
 		PlatformLegalManage, PlatformStatusManage,
 		PlatformOperatorUse, PlatformSupportGet, PlatformStatusGet,
+		PlatformAssistanceRequest, PlatformAssistanceBreakglass,
 	}
 )
 
@@ -167,7 +186,7 @@ var predefinedRoles = []Role{
 			GroupsList, GroupsGet, GroupsCreate, GroupsUpdate, GroupsDelete,
 			ServiceAccountsList, ServiceAccountsGet, ServiceAccountKeysList, APIKeysList, APIKeysDelete,
 			DenyPoliciesList, DenyPoliciesUpdate,
-			AuditLogsRead}},
+			AuditLogsRead, OrganizationsGrantAssistance, OrganizationsRevokeAssistance}},
 	{Name: "roles/iam.groupAdmin", Title: "Administrateur des groupes",
 		Description: "Crée les groupes de l'organisation et gère leurs membres (dans la limite de ses propres droits).",
 		Permissions: []Permission{OrganizationsGet, GroupsList, GroupsGet, GroupsCreate, GroupsUpdate, GroupsDelete}},
@@ -183,12 +202,28 @@ var predefinedRoles = []Role{
 		Permissions: platformAdminPerms, PlatformOnly: true},
 	{Name: RolePlatformSupport, Title: "Support plateforme",
 		Description: "Staff betorun : consulte la flotte et traite les tickets de support.",
-		Permissions: []Permission{PlatformClustersList, PlatformClusterKeysList, PlatformSupportManage, PlatformSupportGet, PlatformStatusGet, PlatformOperatorUse}, PlatformOnly: true},
+		Permissions: []Permission{PlatformClustersList, PlatformClusterKeysList, PlatformSupportManage, PlatformSupportGet, PlatformStatusGet, PlatformOperatorUse,
+			PlatformAssistanceRequest}, PlatformOnly: true},
+	// Accès d'assistance d'une personne de l'équipe sur une organisation
+	// (ADR 0017) : posé et retiré par le service d'assistance seulement.
+	{Name: RoleSupportAssistant, Title: "Assistance betorun",
+		Description: "Accès temporaire d'une personne de l'équipe betorun : lecture et actions réversibles (redémarrer, revenir en arrière, arrêter).",
+		Permissions: assistantPerms, Reserved: true},
 	// Attribué par la plateforme au compte de service système d'un cluster,
 	// jamais à une personne (iam.md §7.4).
 	{Name: RoleClusterAgent, Title: "Agent de cluster",
 		Description: "Compte système du watcher d'un cluster : rend compte de ce seul cluster.",
 		Permissions: []Permission{PlatformClustersReport}, PlatformOnly: true},
+}
+
+// RoleSupportAssistant : rôle des accès d'assistance (ADR 0017).
+const RoleSupportAssistant = "roles/support.assistant"
+
+// IsReserved : rôle posé seulement par la plateforme (jamais par l'éditeur
+// des accès d'un client).
+func IsReserved(role string) bool {
+	r, ok := LookupRole(role)
+	return ok && r.Reserved
 }
 
 // RoleClusterAgent : rôle du compte de service système d'un cluster.
@@ -212,7 +247,7 @@ func LookupRole(name string) (Role, bool) {
 func PredefinedRoles() []Role {
 	out := make([]Role, 0, len(predefinedRoles))
 	for _, r := range predefinedRoles {
-		if !r.PlatformOnly {
+		if !r.PlatformOnly && !r.Reserved {
 			out = append(out, r)
 		}
 	}

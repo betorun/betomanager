@@ -1,0 +1,42 @@
+[
+ {
+  "fr": "accès d'assistance introuvable",
+  "en": "assistance access not found"
+ },
+ {
+  "fr": "cet accès d'assistance n'est pas actif",
+  "en": "this assistance access is not active"
+ },
+ {
+  "fr": "cet accès d'assistance n'est plus en attente",
+  "en": "this assistance access is no longer pending"
+ },
+ {
+  "fr": "la durée doit être comprise entre 1 et 24 heures",
+  "en": "the duration must be between 1 and 24 hours"
+ },
+ {
+  "fr": "la note tient en 500 caractères",
+  "en": "the note is limited to 500 characters"
+ },
+ {
+  "fr": "le ticket n'a pas d'agent assigné à qui ouvrir l'accès",
+  "en": "the ticket has no assigned agent to grant access to"
+ },
+ {
+  "fr": "ticket introuvable",
+  "en": "ticket not found"
+ },
+ {
+  "fr": "un motif de 20 à 500 caractères est requis",
+  "en": "a reason of 20 to 500 characters is required"
+ },
+ {
+  "fr": "une demande ou un accès d'assistance est déjà ouvert pour cette personne sur cette organisation",
+  "en": "an assistance request or access is already open for this person on this organization"
+ },
+ {
+  "fr": "une personne connectée est requise",
+  "en": "a signed-in person is required"
+ }
+]

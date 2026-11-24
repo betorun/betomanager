@@ -137,6 +137,33 @@ func AddBinding(ctx context.Context, db *gorm.DB, b Binding, actor string) error
 	return nil
 }
 
+// RemoveRole : retire le rôle role de p sur la ressource (et fait tourner
+// l'etag) ; rend false s'il n'y était pas.
+func RemoveRole(ctx context.Context, db *gorm.DB, r ResourceName, role string, p Principal, actor string) (bool, error) {
+	res := db.WithContext(ctx).Where("resource_name = ? AND role = ? AND principal = ?", string(r), role, string(p)).Delete(&bindingRow{})
+	if res.Error != nil || res.RowsAffected == 0 {
+		return false, res.Error
+	}
+	if err := touchPolicy(ctx, db, r, actor); err != nil {
+		return false, err
+	}
+	notifyChanged(p)
+	return true, nil
+}
+
+// ReservedBindings : liaisons d'un rôle réservé (rapprochement des accès
+// d'assistance).
+func ReservedBindings(ctx context.Context, db *gorm.DB, role string) ([]Binding, error) {
+	if !IsReserved(role) {
+		return nil, fmt.Errorf("%w: %q is not reserved", ErrInvalidBinding, role)
+	}
+	var rows []bindingRow
+	if err := db.WithContext(ctx).Where("role = ?", role).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return decodeBindings(rows)
+}
+
 // RemovePrincipal : retire tous les rôles de p sur la ressource.
 func RemovePrincipal(ctx context.Context, db *gorm.DB, r ResourceName, p Principal, actor string) error {
 	if err := db.WithContext(ctx).

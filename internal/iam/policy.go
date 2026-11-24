@@ -147,6 +147,10 @@ func (s *PolicyService) Set(ctx context.Context, caller Principal, r ResourceNam
 	if _, err := s.Engine.Ancestry(ctx, r); err != nil {
 		return nil, err
 	}
+	// Les rôles réservés (accès d'assistance, ADR 0017) ne passent pas par
+	// l'éditeur : ignorés à l'entrée, gardés tels quels en base (avec leur
+	// échéance). Un client les révoque par sa page « Accès de l'équipe ».
+	in.Bindings = withoutReserved(in.Bindings)
 	bindings, err := s.normalize(ctx, r, in)
 	if err != nil {
 		return nil, err
@@ -162,6 +166,7 @@ func (s *PolicyService) Set(ctx context.Context, caller Principal, r ResourceNam
 		if in.Etag != current.Etag {
 			return ErrEtagMismatch
 		}
+		current = &Policy{Version: current.Version, Etag: current.Etag, Bindings: withoutReserved(current.Bindings)}
 		if err := s.checkNoEscalation(ctx, caller, r, current, bindings); err != nil {
 			return err
 		}
@@ -179,7 +184,7 @@ func (s *PolicyService) Set(ctx context.Context, caller Principal, r ResourceNam
 		audit.Annotate(ctx, "bindings_added", added)
 		audit.Annotate(ctx, "bindings_removed", removed)
 
-		if err := tx.Where("resource_name = ?", string(r)).Delete(&bindingRow{}).Error; err != nil {
+		if err := tx.Where("resource_name = ? AND role NOT IN ?", string(r), reservedRoles()).Delete(&bindingRow{}).Error; err != nil {
 			return err
 		}
 		for _, b := range bindings {
@@ -523,4 +528,26 @@ func scanMembers(ctx context.Context, db *gorm.DB, q, kind string, ids []uuid.UU
 	}
 	// Connexion coupée en cours de lecture : pas de liste de membres tronquée.
 	return out, rows.Err()
+}
+
+// withoutReserved : la policy sans les rôles réservés.
+func withoutReserved(in []PolicyBinding) []PolicyBinding {
+	out := make([]PolicyBinding, 0, len(in))
+	for _, b := range in {
+		if !IsReserved(b.Role) {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// reservedRoles : noms des rôles réservés.
+func reservedRoles() []string {
+	var out []string
+	for _, r := range predefinedRoles {
+		if r.Reserved {
+			out = append(out, r.Name)
+		}
+	}
+	return out
 }

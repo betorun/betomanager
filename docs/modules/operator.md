@@ -4,7 +4,7 @@ Décision : [ADR 0016](../adr/0016-operateur-back-office.md). Code : [cmd/operat
 
 L'Opérateur est un **binaire à part** (`cmd/operator`) qui tourne sur le serveur de gestion, hors du serveur 1 et des clusters. Il enquête sur les incidents avec Claude (adaptateur [llm/anthropic](../../internal/infrastructure/llm/anthropic/anthropic.go)) et garde chaque enquête dans **sa propre base** (dossiers d'investigation). Il n'agit jamais seul : il lit, propose des actions sur des **cartes**, et n'exécute une carte qu'après la validation d'une personne de l'équipe.
 
-État : lot 1 terminé côté serveur. Fait : dossiers, boucle d'agent, outils Kubernetes et Prometheus en lecture (chemin de secours), accès de l'équipe par jeton délégué, outils de lecture du back-office (chemin normal), accès de secours local, recopie signée du journal dans l'audit, banc d'évaluation (6 scénarios en lecture). Lot 2 : agents de nœud (lecture, redémarrage signé) et **moteur de cartes** (actions sur les nœuds et les clusters). Lot 3 a : cartes du back-office, validées auprès de l'API. Reste : la page de la console (session kweb, avec les cartes) et le lot 3 b (ressources des clients, après la décision sur l'accès d'assistance).
+État : lot 1 terminé côté serveur. Fait : dossiers, boucle d'agent, outils Kubernetes et Prometheus en lecture (chemin de secours), accès de l'équipe par jeton délégué, outils de lecture du back-office (chemin normal), accès de secours local, recopie signée du journal dans l'audit, banc d'évaluation (6 scénarios en lecture). Lot 2 : agents de nœud (lecture, redémarrage signé) et **moteur de cartes** (actions sur les nœuds et les clusters). Lot 3 a : cartes du back-office, validées auprès de l'API. Lot 3 b : ressources des clients, pendant un accès d'assistance ([ADR 0017](../adr/0017-acces-assistance.md)). Reste : la page de la console (session kweb, avec les cartes).
 
 ## Accès de l'équipe
 
@@ -102,7 +102,7 @@ Un tour : 30 appels au modèle, 80 appels d'outils, 10 minutes au plus. Chaque a
 
 ## Outils du back-office (chemin normal, lecture)
 
-[operator_decisions.go](../../internal/infrastructure/router/operator_decisions.go) tranche **chaque route `/admin`** : outil de lecture, carte (lot 3, « sensible » ou non) ou hors Opérateur. `TestOperatorCoverage` refuse une route `/admin` sans décision, une décision sans route, et un outil qui ne serait pas un `GET` sur une permission de lecture. Aujourd'hui : 22 outils (support, comptes et recettes, VPS, clusters enregistrés, page de statut), 31 cartes prévues, 26 routes hors Opérateur (tarifs, conditions de vente, clés des watchers, pièces jointes…).
+[operator_decisions.go](../../internal/infrastructure/router/operator_decisions.go) tranche **chaque route `/admin`** : outil de lecture, carte (lot 3, « sensible » ou non) ou hors Opérateur. `TestOperatorCoverage` refuse une route `/admin` sans décision, une décision sans route, et un outil qui ne serait pas un `GET` sur une permission de lecture. Aujourd'hui sur `/admin` : 23 outils (support, accès d'assistance, comptes et recettes, VPS, clusters enregistrés, page de statut), 32 cartes, 33 routes hors Opérateur (tarifs, conditions de vente, clés des watchers, pièces jointes, bris de glace…). S'y ajoutent 20 lectures et 10 cartes sur les ressources d'un client, ouvertes pendant un accès d'assistance (voir plus bas).
 
 L'Opérateur ne fabrique aucune URL de l'API :
 
@@ -177,7 +177,7 @@ Ni `create`, ni `delete` d'un contrôleur, ni `secrets`, ni `pods/exec`.
 
 ### Cartes de l'API (back-office)
 
-Les routes `/admin` marquées `opCard` ou `opStrong` dans [operator_decisions.go](../../internal/infrastructure/router/operator_decisions.go) (31 cartes : support, commercial, VPS, page d'état, e-mails) sont des actions `api.<outil>`, proposées par l'outil `propose_api_<outil>`. **L'Opérateur n'a jamais de quoi écrire dans l'API** : son jeton est en lecture, et la validation a lieu auprès de l'API elle-même, avec la session de la personne.
+Les routes `/admin` marquées `opCard` ou `opStrong` dans [operator_decisions.go](../../internal/infrastructure/router/operator_decisions.go) (32 cartes : support, commercial, VPS, page d'état, e-mails, demande d'accès d'assistance) sont des actions `api.<outil>`, proposées par l'outil `propose_api_<outil>`. **L'Opérateur n'a jamais de quoi écrire dans l'API** : son jeton est en lecture, et la validation a lieu auprès de l'API elle-même, avec la session de la personne.
 
 1. **Catalogue** : `GET /admin/operator/tools` rend `{items, cards}` ; une carte : `{name, description, parameters, risk, strong}`, seulement si la personne a la permission de la route.
 2. **Proposition** : `POST /admin/operator/cards` `{tool, arguments, investigation_id}` (jeton de l'Opérateur, motif du dossier en `X-Betorun-Justification`). L'API contrôle l'outil et ses arguments, lit le nom de la cible avec les droits de la personne, et **fige la requête** dans `operator_cards` (30 min). Rien n'est exécuté.
@@ -190,6 +190,26 @@ Une carte de l'Opérateur porte `executor` (`operator` ou `api`). Pour l'API, el
 Une carte validée à temps auprès de l'API mais relue plus tard par l'Opérateur, après ses 30 min, reçoit quand même son issue. Une carte expirée auprès de l'API est close ici aussi et n'est plus relue. Deux lectures simultanées du même dossier ne relisent les cartes qu'une fois, en parallèle.
 
 Les permissions qui exigent la double authentification dans l'IAM (limites, VPS, boîte du fournisseur) donnent toujours une carte sensible : le catalogue refuse de les construire autrement. Les tarifs, les textes juridiques et les accès des watchers restent hors Opérateur.
+
+### Cartes chez un client (accès d'assistance)
+
+L'équipe n'a aucun droit chez un client par défaut. Pendant un **accès d'assistance** accordé par le client ([module assistance](assistance.md)), l'Opérateur reçoit des outils `customer_*`, déclarés dans [operator_decisions.go](../../internal/infrastructure/router/operator_decisions.go) :
+
+- **Lectures** : projet et son état, conteneurs (fiche, état, événements, métriques, journaux : 300 lignes, une fois), builds, sites et déploiements, bases, modules, VPS.
+- **Cartes** :
+  - conteneur : redémarrer, revenir à la version précédente, démarrer, arrêter ;
+  - site : réactiver un déploiement ;
+  - base : arrêter, redémarrer ;
+  - VPS : démarrer, arrêter, redémarrer.
+
+Le contenu des bases, les variables et les fichiers restent hors Opérateur. `TestOperatorCoverage` refuse une route client dont la permission sort de `roles/support.assistant`, une carte sans lecture de sa cible, et une carte sensible.
+
+1. **Catalogue** : les outils `customer_*` n'apparaissent que si la personne a au moins un accès actif (`HasActive`). Leur permission vaut chez le client : elle n'est pas testée sur `platform`, c'est la route du client qui décide à chaque appel.
+2. **Proposition** : l'API lit la cible avec le jeton de la personne. Un refus (pas d'accès sur cette organisation, ou ressource introuvable) donne `403`, et le message invite le modèle à proposer `request_assistance` sur le ticket.
+3. **Validation** : la personne qui valide relit la cible **avec sa session**. Sans son propre accès : `403`, et la carte reste en attente. La carte est ensuite jouée comme les autres, avec un jeton délégué en écriture. L'action entre au journal du client, au nom de la personne, « via l'Opérateur ».
+4. **Accès retiré entre-temps** : la route refuse à l'exécution ; la carte passe en `failed` (`http_status` 403) et rien n'est fait.
+
+L'agent peut **demander** un accès (`propose_api_request_assistance`, depuis le ticket). Il ne peut ni l'accorder ni ouvrir un bris de glace : ce sont des décisions humaines.
 
 Reste (lot 3 b) : les actions sur les ressources des clients (retour arrière d'un conteneur, redéploiement d'un site…) passent par les routes du client, que l'équipe n'a pas le droit d'appeler aujourd'hui. Il faut d'abord décider d'un **accès d'assistance** (accordé par le client ou par un motif, borné dans le temps, visible dans son audit) : à trancher dans l'IAM avant tout code. D'ici là, l'agent dépanne les conteneurs et les sites des clients au niveau Kubernetes (`k8s.*`).
 

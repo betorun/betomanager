@@ -32,6 +32,11 @@ type Authorizer interface {
 	TestPermissions(ctx context.Context, p iam.Principal, r iam.ResourceName, perms []iam.Permission) ([]iam.Permission, error)
 }
 
+// AssistanceLookup : accès d'assistance de la personne (ADR 0017).
+type AssistanceLookup interface {
+	HasActive(ctx context.Context, staff uuid.UUID) (bool, error)
+}
+
 // Controller : routes /admin/operator.
 type Controller struct {
 	STS Minter
@@ -40,6 +45,9 @@ type Controller struct {
 	Journal *JournalImporter
 	// Cards : cartes sur les routes /admin ; nil = routes fermées.
 	Cards *Cards
+	// Assistance : outils sur les ressources d'un client, ouverts pendant un
+	// accès d'assistance actif ; nil = jamais ouverts.
+	Assistance AssistanceLookup
 
 	slot catalogSlot
 }

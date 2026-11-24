@@ -3,6 +3,9 @@
 !README.md
 !docs/**/*.md
 !internal/**/docs/*.md
+# Prompts de l'Opérateur, embarqués par go:embed : sans eux, le binaire ne compile pas.
+!internal/operator/prompt.md
+!internal/operator/eval/judge.md
 .env
 .env.local
 .env.prod

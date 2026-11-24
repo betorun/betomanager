@@ -406,5 +406,17 @@
  {
   "fr": "vous n'avez pas la permission qu'exige cette action",
   "en": "you do not have the permission this action requires"
+ },
+ {
+  "fr": "aucun accès d'assistance actif sur l'organisation de ce client (ou la ressource n'existe pas) : demandez-le au client avec request_assistance",
+  "en": "no active assistance access on this customer's organization (or the resource does not exist): ask the customer with request_assistance"
+ },
+ {
+  "fr": "cette carte chez un client n'a pas de lecture de sa cible",
+  "en": "this customer card has no target read"
+ },
+ {
+  "fr": "vous n'avez pas d'accès d'assistance actif sur l'organisation de ce client",
+  "en": "you have no active assistance access on this customer's organization"
  }
 ]
