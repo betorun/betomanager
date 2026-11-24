@@ -13,6 +13,9 @@
       "history_size": 50,
       "history_ttl": "1h",
       "presence": true
+    },
+    {
+      "name": "support"
     }
   ],
 

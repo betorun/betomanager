@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
+	realtimeCtrl "github.com/thekrauss/kubemanager/internal/modules/realtime"
 	"github.com/thekrauss/kubemanager/internal/modules/support"
 	supportRepo "github.com/thekrauss/kubemanager/internal/modules/support/repository"
 	supportSvc "github.com/thekrauss/kubemanager/internal/modules/support/service"
@@ -25,6 +27,9 @@ func (a *App) newSupportController() *support.Controller {
 	}
 	store := &supportRepo.GormStore{DB: a.DB}
 	s := &supportSvc.Service{Store: store, Logger: a.Logger.With("component", "support")}
+	if a.Publisher != nil {
+		s.Live = a.Publisher // support:ticket:<ticket>, après chaque changement
+	}
 	if a.ObjectStore != nil {
 		s.Files = a.ObjectStore
 	}
@@ -84,6 +89,19 @@ func addSupportRoutes(app *App) {
 	admin.AddRoute("/tickets/:ticketID/assign", http.MethodPost, "Assigner un ticket à un agent", onTicket, tonic.Handler(r.Assign, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/messages", http.MethodPost, "Répondre au client (le ticket attend le client, prévenu par e-mail)", onTicket, tonic.Handler(r.AdminReply, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/attachments/:attachmentID", http.MethodGet, "Télécharger une pièce jointe", onTicket, wrapRawHandler(r.AdminDownload))
+	// En direct (canal support:ticket:<ticket>) : le back-office n'a pas les
+	// routes /realtime ; le jeton d'un ticket porte la même garde que sa lecture.
+	if rt, ok := app.Controllers.Realtime.(*realtimeCtrl.Controller); ok && rt != nil {
+		admin.AddRoute("/live/token", http.MethodGet, "Jeton de connexion au flux en direct du support (back-office)", manage, tonic.Handler(rt.GetConnectionToken, http.StatusOK))
+		admin.AddRoute("/tickets/:ticketID/live", http.MethodGet, "Jeton d'abonnement aux changements d'un ticket (back-office)", onTicket, tonic.Handler(rt.GetStaffTicketToken, http.StatusOK))
+		rt.TicketOrganization = func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+			t, err := r.Service.Store.Ticket(ctx, id)
+			if err != nil {
+				return uuid.Nil, err
+			}
+			return t.OrganizationID, nil
+		}
+	}
 	admin.AddRoute("/macros", http.MethodGet, "Réponses types", manage, tonic.Handler(r.Macros, http.StatusOK))
 	admin.AddRoute("/macros", http.MethodPost, "Créer une réponse type", manage, tonic.Handler(r.CreateMacro, http.StatusCreated))
 	admin.AddRoute("/macros/:macroID", http.MethodPatch, "Modifier une réponse type", manage, tonic.Handler(r.UpdateMacro, http.StatusOK))

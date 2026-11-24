@@ -50,6 +50,9 @@ type Controller struct {
 	signer realtime.TokenSigner
 	authz  Authorizer
 	wsURL  string // URL WS publique (ex: ws://localhost:8000/connection/websocket)
+	// TicketOrganization : organisation d'un ticket de support (canaux
+	// support:ticket:<id>) ; nil : ces canaux sont refusés.
+	TicketOrganization func(ctx context.Context, ticket uuid.UUID) (uuid.UUID, error)
 }
 
 func NewController(cfg configs.CentrifugoConfig, signer realtime.TokenSigner, authz Authorizer) *Controller {
@@ -122,16 +125,25 @@ func (ctrl *Controller) GetSubscriptionToken(c *gin.Context, in *SubscribeReques
 		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "channel is required")
 	}
 
-	projectID, err := parseProjectIDFromChannel(channel)
-	if err != nil {
-		return nil, err
-	}
-
 	// Authz : le principal IAM (identifiant interne, pas celui de l'annuaire
-	// porté par « userID ») doit pouvoir lire le projet.
+	// porté par « userID ») doit pouvoir lire la ressource du canal.
 	principal, ok := security.PrincipalFromContext(c)
 	if !ok {
 		return nil, betoerrors.New(betoerrors.CodeForbidden, "not a member of this project")
+	}
+	if ticket, isTicket, err := parseSupportTicketChannel(channel); isTicket {
+		if err != nil {
+			return nil, err
+		}
+		if err := ctrl.requireTicketRead(c.Request.Context(), principal, ticket); err != nil {
+			return nil, err
+		}
+		return ctrl.SubscriptionToken(c.Request.Context(), userID, channel)
+	}
+
+	projectID, err := parseProjectIDFromChannel(channel)
+	if err != nil {
+		return nil, err
 	}
 	if err := ctrl.requireProjectMembership(c.Request.Context(), principal, projectID); err != nil {
 		return nil, err
@@ -144,8 +156,13 @@ func (ctrl *Controller) GetSubscriptionToken(c *gin.Context, in *SubscribeReques
 		}
 	}
 
+	return ctrl.SubscriptionToken(c.Request.Context(), userID, channel)
+}
+
+// SubscriptionToken : jeton signé pour un canal déjà autorisé par l'appelant.
+func (ctrl *Controller) SubscriptionToken(ctx context.Context, userID, channel string) (*SubscriptionTokenResponse, error) {
 	exp := time.Now().Add(subscriptionTokenTTL)
-	token, err := ctrl.signer.GenerateSubscriptionToken(c.Request.Context(), userID, channel, exp)
+	token, err := ctrl.signer.GenerateSubscriptionToken(ctx, userID, channel, exp)
 	if err != nil {
 		return nil, fmt.Errorf("sign subscription token: %w", err)
 	}
@@ -154,6 +171,55 @@ func (ctrl *Controller) GetSubscriptionToken(c *gin.Context, in *SubscribeReques
 		Channel:   channel,
 		ExpiresAt: exp,
 	}, nil
+}
+
+// StaffTicketPath : ticket suivi en direct par l'équipe.
+type StaffTicketPath struct {
+	TicketID string `path:"ticketID" binding:"required" description:"Identifiant du ticket"`
+}
+
+// GetStaffTicketToken : jeton du canal d'un ticket pour l'équipe (back-office).
+// La route porte la garde staff du ticket (motif, accès journalisé).
+func (ctrl *Controller) GetStaffTicketToken(c *gin.Context, in *StaffTicketPath) (*SubscriptionTokenResponse, error) {
+	userID, err := requireUserID(c)
+	if err != nil {
+		return nil, err
+	}
+	id, err := uuid.Parse(strings.TrimSpace(in.TicketID))
+	if err != nil {
+		return nil, betoerrors.New(betoerrors.CodeInvalidInput, "invalid ticket id")
+	}
+	return ctrl.SubscriptionToken(c.Request.Context(), userID, realtime.SupportTicketChannel(id.String()))
+}
+
+// parseSupportTicketChannel : "support:ticket:<id>" ; isTicket faux pour
+// tout autre espace de canaux.
+func parseSupportTicketChannel(channel string) (uuid.UUID, bool, error) {
+	parts := strings.Split(channel, realtime.ChannelSeparator)
+	if parts[0] != realtime.ChannelSupportNamespace {
+		return uuid.Nil, false, nil
+	}
+	if len(parts) != 3 || parts[1] != "ticket" {
+		return uuid.Nil, true, betoerrors.New(betoerrors.CodeInvalidInput, "channel must be 'support:ticket:<ticketID>'")
+	}
+	id, err := uuid.Parse(strings.TrimSpace(parts[2]))
+	if err != nil {
+		return uuid.Nil, true, betoerrors.New(betoerrors.CodeInvalidInput, "invalid ticketID in channel")
+	}
+	return id, true, nil
+}
+
+// requireTicketRead : lire les tickets de l'organisation du ticket. Ticket
+// inconnu : même refus (son existence n'est pas révélée).
+func (ctrl *Controller) requireTicketRead(ctx context.Context, principal iam.Principal, ticket uuid.UUID) error {
+	if ctrl.TicketOrganization == nil {
+		return betoerrors.New(betoerrors.CodeForbidden, "not allowed to follow this channel")
+	}
+	org, err := ctrl.TicketOrganization(ctx, ticket)
+	if err != nil {
+		return betoerrors.New(betoerrors.CodeForbidden, "not allowed to follow this channel")
+	}
+	return ctrl.require(ctx, principal, iam.SupportTicketsGet, iam.OrganizationName(org))
 }
 
 //  Helpers ─

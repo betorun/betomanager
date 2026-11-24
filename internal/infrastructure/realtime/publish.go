@@ -100,3 +100,8 @@ func VPSChannel(projectID, vpsID string) string {
 func DeploymentChannel(projectID string, workloadID string) string {
 	return fmt.Sprintf(deploymentChannelFormat, strings.TrimSpace(projectID), strings.TrimSpace(workloadID))
 }
+
+// SupportTicketChannel : changements d'un ticket de support.
+func SupportTicketChannel(ticketID string) string {
+	return fmt.Sprintf(supportTicketChannelFormat, strings.TrimSpace(ticketID))
+}
