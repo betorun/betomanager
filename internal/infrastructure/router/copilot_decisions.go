@@ -178,6 +178,7 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /projects/:id/disk-usage":                      asTool(CopilotTool{Name: "get_project_disk_usage"}),
 	"GET /projects/:id/alert-webhooks":                  asTool(CopilotTool{Name: "list_alert_webhooks"}),
 	"POST /projects/:id/alert-webhooks":                 asGuide("/projects", "le secret de signature n'est montré qu'une fois"),
+	"POST /projects/:id/alert-webhooks/telegram/chats":  asGuide("/projects", "le jeton du bot se colle dans la console, jamais dans la conversation"),
 	"POST /projects/:id/alert-webhooks/:webhookID/test": asTool(CopilotTool{Name: "test_alert_webhook", Write: true, Risk: tools.RiskLow}),
 	"DELETE /projects/:id/alert-webhooks/:webhookID":    asStrong("delete_alert_webhook", "", false),
 
@@ -406,6 +407,8 @@ var copilotDecisions = map[string]copilotDecision{
 	"GET /realtime/subscribe":                       outOfCopilot(outTechnics),
 	"GET /realtime/token":                           outOfCopilot(outTechnics),
 	"POST /alerts/unsubscribe":                      outOfCopilot(outAuth),
+	"POST /alerts/email/confirm":                    outOfCopilot(outAuth),
+	"POST /alerts/email/remove":                     outOfCopilot(outAuth),
 }
 
 // decisionKey : « MÉTHODE chemin » sans le préfixe de l'API.

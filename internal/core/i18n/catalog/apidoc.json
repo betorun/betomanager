@@ -300,16 +300,16 @@
   "en": "Public https:// address (Slack incoming webhook URL, or your service)"
  },
  {
-  "fr": "Ajouter un webhook d'alertes (Slack ou JSON signé ; secret de signature montré une fois)",
-  "en": "Add an alert webhook (Slack or signed JSON; signing secret shown once)"
+  "fr": "Ajouter un webhook d'alertes (Slack, Telegram ou JSON signé ; secret de signature montré une fois)",
+  "en": "Add an alert webhook (Slack, Telegram or signed JSON; signing secret shown once)"
  },
  {
   "fr": "Ajouter un webhook d'alertes",
   "en": "Add an alert webhook"
  },
  {
-  "fr": "Alertes du projet envoyées aussi vers Slack ou vers votre service (JSON signé).",
-  "en": "Project alerts also sent to Slack or to your service (signed JSON)."
+  "fr": "Alertes du projet envoyées aussi vers Slack, Telegram ou votre service (JSON signé).",
+  "en": "Project alerts also sent to Slack, Telegram or your service (signed JSON)."
  },
  {
   "fr": "Envoyer un message d'essai au webhook",
@@ -3026,5 +3026,53 @@
  {
   "fr": "Ouvrir ou fermer la lecture publique",
   "en": "Open or close public read"
+ },
+ {
+  "fr": "Discussions Telegram où le bot a été ajouté (jeton du bot ; rien n'est enregistré)",
+  "en": "Telegram chats the bot was added to (bot token; nothing is stored)"
+ },
+ {
+  "fr": "Jeton du bot donné par @BotFather",
+  "en": "Bot token given by @BotFather"
+ },
+ {
+  "fr": "Telegram : jeton du bot, jamais renvoyé",
+  "en": "Telegram: bot token, never returned"
+ },
+ {
+  "fr": "Telegram : discussion (identifiant, ou @nom d'un canal public)",
+  "en": "Telegram: chat (ID, or @name of a public channel)"
+ },
+ {
+  "fr": "slack, telegram ou json",
+  "en": "slack, telegram or json"
+ },
+ {
+  "fr": "Slack ou json : adresse https:// publique (URL de webhook entrant Slack, ou votre service)",
+  "en": "Slack or json: public https:// address (Slack incoming webhook URL, or your service)"
+ },
+ {
+  "fr": "E-mail : adresse qui recevra les alertes après confirmation",
+  "en": "Email: address that will receive the alerts once confirmed"
+ },
+ {
+  "fr": "slack, telegram, email ou json",
+  "en": "slack, telegram, email or json"
+ },
+ {
+  "fr": "Ajouter un webhook d'alertes (Slack, Telegram, e-mail confirmé ou JSON signé ; secret de signature montré une fois)",
+  "en": "Add an alert webhook (Slack, Telegram, confirmed email or signed JSON; signing secret shown once)"
+ },
+ {
+  "fr": "Alertes du projet envoyées aussi vers Slack, Telegram, une adresse e-mail ou votre service (JSON signé).",
+  "en": "Project alerts also sent to Slack, Telegram, an email address or your service (signed JSON)."
+ },
+ {
+  "fr": "Confirmer une adresse e-mail ajoutée aux alertes d'un projet (jeton du lien reçu)",
+  "en": "Confirm an email address added to a project's alerts (token from the received link)"
+ },
+ {
+  "fr": "Retirer une adresse e-mail des alertes d'un projet (jeton du lien reçu ; retrait en un clic)",
+  "en": "Remove an email address from a project's alerts (token from the received link; one-click removal)"
  }
 ]

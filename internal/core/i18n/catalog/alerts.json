@@ -36,7 +36,31 @@
   "en": "webhook not found"
  },
  {
-  "fr": "Le type de webhook doit être slack ou json",
-  "en": "webhook type must be slack or json"
+  "fr": "Le type de webhook doit être slack, telegram, email ou json",
+  "en": "webhook type must be slack, telegram, email or json"
+ },
+ {
+  "fr": "Le jeton du bot Telegram est invalide",
+  "en": "the Telegram bot token is invalid"
+ },
+ {
+  "fr": "Le bot ne peut pas écrire dans cette discussion Telegram : ajoutez-le à la discussion, puis réessayez",
+  "en": "the bot cannot write to this Telegram chat: add it to the chat, then try again"
+ },
+ {
+  "fr": "Ce bot Telegram envoie déjà ses messages à un autre service : utilisez un bot réservé aux alertes",
+  "en": "this Telegram bot already sends its messages to another service: use a bot dedicated to alerts"
+ },
+ {
+  "fr": "Telegram est injoignable, réessayez",
+  "en": "Telegram could not be reached, try again"
+ },
+ {
+  "fr": "L'adresse e-mail est invalide",
+  "en": "the email address is invalid"
+ },
+ {
+  "fr": "Les alertes par e-mail ne sont pas disponibles sur cette plateforme",
+  "en": "email alerts are not available on this platform"
  }
 ]

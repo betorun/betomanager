@@ -22,11 +22,13 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/thekrauss/kubemanager/internal/core/i18n"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/mail"
 )
 
 // Webhooks d'alertes d'un projet : les alertes de projet (conteneurs, builds,
-// disques, clés API) partent aussi vers Slack ou vers une URL qui reçoit un
-// JSON signé (HMAC-SHA256, en-tête X-Betorun-Signature).
+// disques, clés API) partent aussi vers Slack, vers Telegram (bot du client,
+// telegram.go), vers une adresse e-mail confirmée (email.go) ou vers une URL qui reçoit un JSON signé (HMAC-SHA256, en-tête
+// X-Betorun-Signature).
 
 // Sortes de webhook.
 const (
@@ -40,7 +42,7 @@ const MaxWebhooks = 5
 // Erreurs des webhooks.
 var (
 	ErrWebhookURL      = errors.New("the webhook address must be a public https:// URL")
-	ErrWebhookKind     = errors.New("webhook type must be slack or json")
+	ErrWebhookKind     = errors.New("webhook type must be slack, telegram, email or json")
 	ErrWebhookName     = errors.New("webhook name must be 1 to 60 characters")
 	ErrWebhookLimit    = errors.New("this project already has the maximum number of webhooks")
 	ErrWebhookNotFound = errors.New("webhook not found")
@@ -63,8 +65,12 @@ type Webhook struct {
 	Locale         string     `json:"locale"`
 	CreatedAt      time.Time  `json:"created_at"`
 	LastDeliveryAt *time.Time `json:"last_delivery_at,omitempty"`
-	// LastStatus : « ok », « HTTP 404 », « unreachable »…
+	// LastStatus : « ok », « HTTP 404 », « unreachable », « pending » (e-mail
+	// pas encore confirmé)…
 	LastStatus string `json:"last_status"`
+	// ConfirmedAt : absent pour une adresse e-mail pas encore confirmée (elle
+	// ne reçoit rien).
+	ConfirmedAt *time.Time `json:"confirmed_at,omitempty"`
 }
 
 type webhookRow struct {
@@ -79,8 +85,13 @@ func (webhookRow) TableName() string { return "alert_webhooks" }
 // CreateWebhookRequest : nouveau webhook.
 type CreateWebhookRequest struct {
 	Name string `json:"name" binding:"required" description:"Nom affiché (1 à 60 caractères)"`
-	Kind string `json:"kind" binding:"required" description:"slack ou json"`
-	URL  string `json:"url" binding:"required" description:"Adresse https:// publique (URL de webhook entrant Slack, ou votre service)"`
+	Kind string `json:"kind" binding:"required" description:"slack, telegram, email ou json"`
+	URL  string `json:"url" description:"Slack ou json : adresse https:// publique (URL de webhook entrant Slack, ou votre service)"`
+	// Telegram : jeton du bot (@BotFather) et discussion (id ou @canal).
+	BotToken string `json:"bot_token" description:"Telegram : jeton du bot, jamais renvoyé"`
+	ChatID   string `json:"chat_id" description:"Telegram : discussion (identifiant, ou @nom d'un canal public)"`
+	// E-mail : adresse à confirmer.
+	Email string `json:"email" description:"E-mail : adresse qui recevra les alertes après confirmation"`
 }
 
 // CreatedWebhook : le secret de signature (sorte json) n'est montré qu'ici.
@@ -101,6 +112,13 @@ type WebhookService struct {
 	Sealer Sealer
 	Client *http.Client
 	Now    func() time.Time
+	// Sorte « email » (nil ou vide : refusée) : envoi, clé des liens signés,
+	// console (liens) et API publique (retrait en un clic).
+	Mail        mail.Sender
+	Key         []byte
+	ConsoleURL  string
+	APIURL      string
+	ProjectName func(ctx context.Context, project uuid.UUID) (string, error)
 }
 
 func (s *WebhookService) now() time.Time {
@@ -164,12 +182,33 @@ func (s *WebhookService) Create(ctx context.Context, project uuid.UUID, by strin
 	if n := len([]rune(name)); n == 0 || n > 60 {
 		return nil, ErrWebhookName
 	}
-	if in.Kind != WebhookSlack && in.Kind != WebhookJSON {
+	if in.Kind != WebhookSlack && in.Kind != WebhookJSON && in.Kind != WebhookTelegram && in.Kind != WebhookEmail {
 		return nil, ErrWebhookKind
 	}
-	u, err := validateWebhookURL(in.URL)
-	if err != nil {
-		return nil, err
+	// Adresse à chiffrer et libellé affiché.
+	var target, urlHint string
+	if in.Kind == WebhookEmail {
+		if !s.emailReady() {
+			return nil, ErrEmailUnavailable
+		}
+		addr, err := validEmail(in.Email)
+		if err != nil {
+			return nil, err
+		}
+		target, urlHint = "mailto:"+addr, maskEmail(addr)
+	} else if in.Kind == WebhookTelegram {
+		// Adresse construite ici (API de Telegram) ; jeton et discussion vérifiés.
+		t, h, err := s.telegramTarget(ctx, in.BotToken, in.ChatID)
+		if err != nil {
+			return nil, err
+		}
+		target, urlHint = t, h
+	} else {
+		u, err := validateWebhookURL(in.URL)
+		if err != nil {
+			return nil, err
+		}
+		target, urlHint = u.String(), hint(u)
 	}
 	var count int64
 	if err := s.DB.WithContext(ctx).Model(&webhookRow{}).Where("project_id = ?", project).Count(&count).Error; err != nil {
@@ -182,9 +221,16 @@ func (s *WebhookService) Create(ctx context.Context, project uuid.UUID, by strin
 	if i18n.From(ctx) == i18n.EN {
 		locale = "en"
 	}
-	row := webhookRow{Webhook: Webhook{ID: uuid.New(), ProjectID: project, Name: name, Kind: in.Kind, URLHint: hint(u),
+	row := webhookRow{Webhook: Webhook{ID: uuid.New(), ProjectID: project, Name: name, Kind: in.Kind, URLHint: urlHint,
 		Locale: locale, CreatedAt: s.now()}, CreatedBy: by}
-	if row.URLSealed, err = s.Sealer.Seal([]byte(u.String()), sealContext(row.ID, "url")); err != nil {
+	if in.Kind == WebhookEmail {
+		row.LastStatus = StatusPending
+	} else {
+		now := s.now()
+		row.ConfirmedAt = &now
+	}
+	var err error
+	if row.URLSealed, err = s.Sealer.Seal([]byte(target), sealContext(row.ID, "url")); err != nil {
 		return nil, err
 	}
 	out := &CreatedWebhook{Webhook: row.Webhook}
@@ -200,6 +246,17 @@ func (s *WebhookService) Create(ctx context.Context, project uuid.UUID, by strin
 	}
 	if err := s.DB.WithContext(ctx).Create(&row).Error; err != nil {
 		return nil, err
+	}
+	if in.Kind == WebhookEmail {
+		project := ""
+		if s.ProjectName != nil {
+			project, _ = s.ProjectName(ctx, row.ProjectID)
+		}
+		if err := s.sendConfirmation(ctx, row, project); err != nil {
+			return nil, err
+		}
+		_ = s.DB.WithContext(ctx).Where("id = ?", row.ID).Take(&row).Error
+		out.Webhook = row.Webhook
 	}
 	return out, nil
 }
@@ -237,6 +294,16 @@ func (s *WebhookService) Test(ctx context.Context, project, id uuid.UUID, projec
 		}
 		return nil, err
 	}
+	// Adresse pas encore confirmée : on renvoie le lien, pas une alerte.
+	if row.Kind == WebhookEmail && row.ConfirmedAt == nil {
+		if err := s.sendConfirmation(ctx, row, projectName); err != nil {
+			return nil, err
+		}
+		if err := s.DB.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
+			return nil, err
+		}
+		return &row.Webhook, nil
+	}
 	copies := testCopies[i18n.FR]
 	if row.Locale == "en" {
 		copies = testCopies[i18n.EN]
@@ -264,6 +331,9 @@ func (s *WebhookService) Send(ctx context.Context, project uuid.UUID, kind strin
 		return
 	}
 	for _, row := range rows {
+		if row.ConfirmedAt == nil {
+			continue // adresse e-mail pas encore confirmée
+		}
 		t := texts[i18n.FR]
 		if row.Locale == "en" {
 			t = texts[i18n.EN]
@@ -282,12 +352,21 @@ func (s *WebhookService) deliver(ctx context.Context, row webhookRow, ev Webhook
 }
 
 func (s *WebhookService) post(ctx context.Context, row webhookRow, ev WebhookEvent) string {
+	if row.Kind == WebhookEmail {
+		return s.sendEmailAlert(ctx, row, ev)
+	}
 	rawURL, err := s.Sealer.Open(row.URLSealed, sealContext(row.ID, "url"))
 	if err != nil {
 		return "error"
 	}
 	var body []byte
-	if row.Kind == WebhookSlack {
+	if row.Kind == WebhookTelegram {
+		target, b, err := telegramRequest(string(rawURL), ev)
+		if err != nil {
+			return "error"
+		}
+		rawURL, body = []byte(target), b
+	} else if row.Kind == WebhookSlack {
 		body, _ = json.Marshal(map[string]string{"text": fmt.Sprintf("*%s*\n%s\n<%s|%s>", slackEscape(ev.Title),
 			slackEscape(ev.Text), ev.Link, slackEscape(ev.Project))})
 	} else {
@@ -312,11 +391,7 @@ func (s *WebhookService) post(ctx context.Context, row webhookRow, ev WebhookEve
 		req.Header.Set("X-Betorun-Timestamp", ts)
 		req.Header.Set("X-Betorun-Signature", "sha256="+hex.EncodeToString(m.Sum(nil)))
 	}
-	client := s.Client
-	if client == nil {
-		client = PublicHTTPClient()
-	}
-	res, err := client.Do(req)
+	res, err := s.client().Do(req)
 	if err != nil {
 		if errors.Is(err, ErrWebhookPrivate) || strings.Contains(err.Error(), ErrWebhookPrivate.Error()) {
 			return "private address refused"
