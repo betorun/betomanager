@@ -186,5 +186,9 @@
  {
   "fr": "wait_for : 8 adresses nom:port du projet au plus",
   "en": "wait_for: at most 8 addresses name:port of the project"
+ },
+ {
+  "fr": "health_path : un chemin commençant par /, 256 caractères au plus, sans espace",
+  "en": "health_path: a path starting with /, at most 256 characters, without spaces"
  }
 ]
