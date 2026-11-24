@@ -18,6 +18,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/thekrauss/kubemanager/internal/core/apierr"
+
 	"github.com/google/uuid"
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
 	"gorm.io/gorm"
@@ -97,10 +99,14 @@ func (Grant) TableName() string { return "assistance_grants" }
 // Erreurs.
 var (
 	ErrNotFound    = betoerrors.New(betoerrors.CodeNotFound, "assistance access not found")
-	ErrAlreadyOpen = betoerrors.New(betoerrors.CodeConflict, "an assistance request or access is already open for this person on this organization")
-	ErrNotPending  = betoerrors.New(betoerrors.CodeConflict, "this assistance access is no longer pending")
-	ErrNotActive   = betoerrors.New(betoerrors.CodeConflict, "this assistance access is not active")
-	ErrNoAssignee  = betoerrors.New(betoerrors.CodeInvalidInput, "the ticket has no assigned agent to grant access to")
+	ErrAlreadyOpen = apierr.WithReason(betoerrors.New(betoerrors.CodeConflict,
+		"an assistance request or access is already open for this person on this organization"), "ASSISTANCE_ALREADY_OPEN")
+	ErrNotPending = apierr.WithReason(betoerrors.New(betoerrors.CodeConflict,
+		"this assistance access is no longer pending"), "ASSISTANCE_NOT_PENDING")
+	ErrNotActive = apierr.WithReason(betoerrors.New(betoerrors.CodeConflict,
+		"this assistance access is not active"), "ASSISTANCE_NOT_ACTIVE")
+	ErrNoAssignee = apierr.WithReason(betoerrors.New(betoerrors.CodeInvalidInput,
+		"the ticket has no assigned agent to grant access to"), "ASSISTANCE_NO_ASSIGNEE")
 )
 
 // Service : les attributions.
@@ -121,7 +127,7 @@ func (s *Service) now() time.Time {
 func checkReason(reason string) (string, error) {
 	reason = strings.TrimSpace(reason)
 	if n := utf8.RuneCountInString(reason); n < minReason || n > maxReason {
-		return "", betoerrors.New(betoerrors.CodeInvalidInput, "a reason of 20 to 500 characters is required")
+		return "", apierr.WithReason(betoerrors.New(betoerrors.CodeInvalidInput, "a reason of 20 to 500 characters is required"), "ASSISTANCE_REASON_INVALID")
 	}
 	return reason, nil
 }
@@ -131,7 +137,7 @@ func checkHours(h int) (int, error) {
 		return DefaultHours, nil
 	}
 	if h < 1 || h > MaxHours {
-		return 0, betoerrors.New(betoerrors.CodeInvalidInput, "the duration must be between 1 and 24 hours")
+		return 0, apierr.WithReason(betoerrors.New(betoerrors.CodeInvalidInput, "the duration must be between 1 and 24 hours"), "ASSISTANCE_DURATION_INVALID")
 	}
 	return h, nil
 }
