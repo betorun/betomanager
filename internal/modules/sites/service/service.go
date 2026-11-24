@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
+	"github.com/thekrauss/kubemanager/internal/core/certstatus"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/objectstore"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	"github.com/thekrauss/kubemanager/internal/modules/sites/activities"

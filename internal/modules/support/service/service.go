@@ -28,7 +28,11 @@ type Service struct {
 	// Notify nil : aucun e-mail.
 	Notify Notifier
 	// Live nil : rien en direct (la console relit le ticket à intervalle).
-	Live   Publisher
+	Live Publisher
+	// Staff nil : back-office sans contexte, agents ni délais.
+	Staff StaffStore
+	// Wallet nil : contexte d'un ticket sans porte-monnaie.
+	Wallet func(ctx context.Context, org uuid.UUID) (*BillingContext, error)
 	Logger *zap.SugaredLogger
 	Now    func() time.Time
 }
@@ -370,11 +374,12 @@ func (s *Service) OpenAttachment(ctx context.Context, org *uuid.UUID, ticket, id
 type AdminListInput struct {
 	ListInput
 	OrganizationID string `query:"organization_id" description:"Restreindre aux tickets d'une organisation"`
+	Assigned       string `query:"assigned" description:"Agent en charge : me, none ou identifiant d'un agent"`
 }
 
 // AdminList : tickets à traiter d'abord (OPEN, IN_PROGRESS), puis par
 // priorité, la plus ancienne activité d'abord.
-func (s *Service) AdminList(ctx context.Context, in AdminListInput) (*TicketList, error) {
+func (s *Service) AdminList(ctx context.Context, in AdminListInput, me *uuid.UUID) (*StaffTicketList, error) {
 	f, err := in.filter()
 	if err != nil {
 		return nil, err
@@ -386,20 +391,31 @@ func (s *Service) AdminList(ctx context.Context, in AdminListInput) (*TicketList
 		}
 		f.OrganizationID = &org
 	}
+	if err := assignedFilter(in.Assigned, me, &f); err != nil {
+		return nil, err
+	}
 	f.StaffOrder = true
-	return s.list(ctx, f)
+	list, err := s.list(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	items, err := s.staffTickets(ctx, list.Items)
+	if err != nil {
+		return nil, err
+	}
+	return &StaffTicketList{Items: items, Total: list.Total}, nil
 }
 
-func (s *Service) AdminGet(ctx context.Context, id uuid.UUID) (*TicketView, error) {
+func (s *Service) AdminGet(ctx context.Context, id uuid.UUID) (*StaffTicketView, error) {
 	t, err := s.Store.Ticket(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return s.view(ctx, t)
+	return s.staffView(ctx, t)
 }
 
 // AdminReply : réponse de l'équipe ; le ticket attend le client, qui est prévenu.
-func (s *Service) AdminReply(ctx context.Context, id uuid.UUID, by Actor, body string) (*TicketView, error) {
+func (s *Service) AdminReply(ctx context.Context, id uuid.UUID, by Actor, body string) (*StaffTicketView, error) {
 	body, err := domain.CleanBody(body, domain.ErrInvalidBody)
 	if err != nil {
 		return nil, err
@@ -416,7 +432,7 @@ func (s *Service) AdminReply(ctx context.Context, id uuid.UUID, by Actor, body s
 		msg := v.Messages[len(v.Messages)-1]
 		s.Notify.AgentReplied(ctx, v.Ticket, &msg, customerRecipients(v.Ticket, v.Messages))
 	}
-	return v, nil
+	return s.staffView(ctx, v.Ticket)
 }
 
 // customerRecipients : créateur et personnes de l'organisation qui ont écrit.
@@ -447,7 +463,7 @@ type UpdateInput struct {
 }
 
 // AdminUpdate : statut, priorité, catégorie, étiquettes ; un événement par changement.
-func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, by Actor, in UpdateInput) (*TicketView, error) {
+func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, by Actor, in UpdateInput) (*StaffTicketView, error) {
 	t, err := s.Store.Ticket(ctx, id)
 	if err != nil {
 		return nil, err
@@ -505,7 +521,7 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, by Actor, in Up
 	if resolved && s.Notify != nil {
 		s.Notify.Resolved(ctx, t)
 	}
-	return s.view(ctx, t)
+	return s.staffView(ctx, t)
 }
 
 // AssignInput : agent en charge (null : personne).
@@ -513,13 +529,18 @@ type AssignInput struct {
 	AssignedToUserID *uuid.UUID `json:"assigned_to_user_id" description:"Agent en charge (null : retirer)"`
 }
 
-func (s *Service) Assign(ctx context.Context, id uuid.UUID, by Actor, to *uuid.UUID) (*TicketView, error) {
+func (s *Service) Assign(ctx context.Context, id uuid.UUID, by Actor, to *uuid.UUID) (*StaffTicketView, error) {
 	t, err := s.Store.Ticket(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if to != nil {
-		ok, err := s.Store.UserExists(ctx, *to)
+		// Back-office complet : seulement un membre de l'équipe.
+		exists := s.Store.UserExists
+		if s.Staff != nil {
+			exists = s.Staff.IsAgent
+		}
+		ok, err := exists(ctx, *to)
 		if err != nil {
 			return nil, err
 		}
@@ -539,11 +560,11 @@ func (s *Service) Assign(ctx context.Context, id uuid.UUID, by Actor, to *uuid.U
 		return nil, err
 	}
 	s.publish(ctx, t, LiveAssign, "")
-	return s.view(ctx, t)
+	return s.staffView(ctx, t)
 }
 
-func (s *Service) Summary(ctx context.Context) (domain.Summary, error) {
-	return s.Store.Summary(ctx)
+func (s *Service) Summary(ctx context.Context, me *uuid.UUID) (domain.Summary, error) {
+	return s.Store.Summary(ctx, me)
 }
 
 // ── Réponses types ──────────────────────────────────────────────────────
@@ -648,8 +669,31 @@ func (s *Service) event(t *domain.Ticket, typ domain.EventType, by Actor, payloa
 		ActorUserID: by.UserID, Payload: payload, CreatedAt: s.now()}
 }
 
-// view : ticket, messages, pièces jointes et journal.
+// view : ticket tel que le client le voit (sans les notes internes de
+// l'équipe ni leur trace dans le journal).
 func (s *Service) view(ctx context.Context, t *domain.Ticket) (*TicketView, error) {
+	v, err := s.fullView(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	msgs := v.Messages[:0:0]
+	for _, m := range v.Messages {
+		if !m.Internal {
+			msgs = append(msgs, m)
+		}
+	}
+	events := v.Events[:0:0]
+	for _, e := range v.Events {
+		if e.Type != domain.EventNoteAdded {
+			events = append(events, e)
+		}
+	}
+	v.Messages, v.Events = msgs, events
+	return v, nil
+}
+
+// fullView : ticket, messages (notes internes comprises), pièces jointes et journal.
+func (s *Service) fullView(ctx context.Context, t *domain.Ticket) (*TicketView, error) {
 	msgs, err := s.Store.Messages(ctx, t.ID)
 	if err != nil {
 		return nil, err

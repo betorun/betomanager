@@ -145,9 +145,9 @@ func TestE2E_SupportFlow(t *testing.T) {
 
 	// L'équipe répond : en attente du client, e-mail au créateur.
 	box.got = nil
-	v, err = s.AdminReply(ctx, id, staff, "Quel usage prévoyez-vous ?")
+	sv, err := s.AdminReply(ctx, id, staff, "Quel usage prévoyez-vous ?")
 	require.NoError(t, err)
-	assert.Equal(t, domain.StatusWaitingCustomer, v.Ticket.Status)
+	assert.Equal(t, domain.StatusWaitingCustomer, sv.Ticket.Status)
 	require.Len(t, box.got, 1)
 	assert.Equal(t, "client-"+client.String()[:8]+"@ex.sn", box.got[0].To)
 
@@ -188,13 +188,13 @@ func TestE2E_SupportFlow(t *testing.T) {
 
 	// Équipe : priorité, étiquettes, assignation ; journal.
 	high := "HIGH"
-	v, err = s.AdminUpdate(ctx, id, staff, service.UpdateInput{Priority: &high, Tags: []string{"port-25"}})
+	_, err = s.AdminUpdate(ctx, id, staff, service.UpdateInput{Priority: &high, Tags: []string{"port-25"}})
 	require.NoError(t, err)
-	v, err = s.Assign(ctx, id, staff, &agent)
+	sv, err = s.Assign(ctx, id, staff, &agent)
 	require.NoError(t, err)
-	assert.Equal(t, &agent, v.Ticket.AssignedToUserID)
+	assert.Equal(t, &agent, sv.Ticket.AssignedToUserID)
 	counts := map[domain.EventType]int{}
-	for _, e := range v.Events {
+	for _, e := range sv.Events {
 		counts[e.Type]++
 	}
 	assert.Equal(t, 1, counts[domain.EventTicketCreated])
@@ -206,19 +206,76 @@ func TestE2E_SupportFlow(t *testing.T) {
 	assert.Equal(t, 3, counts[domain.EventStatusChanged])
 
 	// File de l'équipe : à traiter d'abord, filtre par organisation.
-	all, err := s.AdminList(ctx, service.AdminListInput{OrganizationID: org.String()})
+	all, err := s.AdminList(ctx, service.AdminListInput{OrganizationID: org.String()}, nil)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, all.Total)
-	all, err = s.AdminList(ctx, service.AdminListInput{ListInput: service.ListInput{Priority: "URGENT", Limit: 100}})
+	all, err = s.AdminList(ctx, service.AdminListInput{ListInput: service.ListInput{Priority: "URGENT", Limit: 100}}, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, all.Items)
 	for _, it := range all.Items {
 		assert.Equal(t, domain.PriorityUrgent, it.Priority)
 	}
-	sum, err := s.Summary(ctx)
+	sum, err := s.Summary(ctx, nil)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, sum.WaitingCustomer, int64(1))
 	assert.GreaterOrEqual(t, sum.HighPriority, int64(1), "le ticket urgent de l'autre organisation")
+
+	// Back-office : l'agent fait partie du staff (rôle sur "platform").
+	s.Staff = store
+	require.NoError(t, db.Exec(`INSERT INTO iam_bindings (resource_name, role, principal) VALUES ('platform', 'roles/platform.support', ?)`,
+		"user:"+agent.String()).Error)
+	t.Cleanup(func() { db.Exec(`DELETE FROM iam_bindings WHERE principal = ?`, "user:"+agent.String()) })
+	isAgent, err := store.IsAgent(ctx, agent)
+	require.NoError(t, err)
+	assert.True(t, isAgent)
+	isAgent, err = store.IsAgent(ctx, client)
+	require.NoError(t, err)
+	assert.False(t, isAgent)
+	agents, err := s.Agents(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, agents, service.Agent{UserID: agent, Email: "agent-" + agent.String()[:8] + "@betorun.test"})
+	_, err = s.Assign(ctx, id, staff, &client)
+	assert.ErrorIs(t, err, domain.ErrInvalidAssignee, "seulement un membre de l'équipe")
+
+	// Note interne : dans la vue de l'équipe, jamais dans celle du client.
+	sv, err = s.AddNote(ctx, id, staff, "Vérifier l'historique d'envoi avant d'ouvrir.")
+	require.NoError(t, err)
+	assert.True(t, sv.Messages[len(sv.Messages)-1].Internal)
+	cv, err := s.Get(ctx, org, id)
+	require.NoError(t, err)
+	for _, m := range cv.Messages {
+		assert.False(t, m.Internal)
+	}
+	ok, err := store.MessageOnTicket(ctx, id, sv.Messages[len(sv.Messages)-1].ID)
+	require.NoError(t, err)
+	assert.False(t, ok, "pas de pièce jointe du client sur une note")
+
+	// File de l'équipe : organisation, agent, délais ; filtre « me ».
+	mine, err := s.AdminList(ctx, service.AdminListInput{Assigned: "me"}, &agent)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, mine.Total)
+	it := mine.Items[0]
+	assert.Equal(t, "e2e support", it.OrganizationName)
+	require.NotNil(t, it.AssignedTo)
+	assert.Equal(t, agent, it.AssignedTo.UserID)
+	require.NotNil(t, it.LastCustomerMessageAt)
+	require.NotNil(t, it.FirstResponseAt)
+	assert.True(t, it.FirstResponseAt.Before(*it.LastCustomerMessageAt), "le client a répondu après l'équipe")
+	sum, err = s.Summary(ctx, &agent)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, sum.Mine)
+
+	// Contexte : organisation, propriétaire, projet et son VPS, ressource, autres tickets.
+	tc, err := s.TicketContext(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "e2e support", tc.Organization.Name)
+	require.NotNil(t, tc.Organization.Owner)
+	assert.Equal(t, client, tc.Organization.Owner.UserID)
+	require.Len(t, tc.Projects, 1)
+	assert.EqualValues(t, 1, tc.Projects[0].VPS)
+	require.NotNil(t, tc.Resource)
+	assert.Equal(t, "running", tc.Resource.Status)
+	assert.Empty(t, tc.OtherTickets)
 
 	// Résolu par le client, rouvert, puis fermé par l'équipe : définitif.
 	v, err = s.Resolve(ctx, org, id, me)
@@ -231,9 +288,9 @@ func TestE2E_SupportFlow(t *testing.T) {
 	assert.Nil(t, v.Ticket.ClosedAt)
 	box.got = nil
 	closed := "CLOSED"
-	v, err = s.AdminUpdate(ctx, id, staff, service.UpdateInput{Status: &closed})
+	sv, err = s.AdminUpdate(ctx, id, staff, service.UpdateInput{Status: &closed})
 	require.NoError(t, err)
-	assert.Equal(t, domain.StatusClosed, v.Ticket.Status)
+	assert.Equal(t, domain.StatusClosed, sv.Ticket.Status)
 	assert.Len(t, box.got, 1, "demande traitée")
 	_, err = s.Reopen(ctx, org, id, me)
 	assert.ErrorIs(t, err, domain.ErrTicketClosed)

@@ -114,7 +114,7 @@ func (m *memStore) Attachment(_ context.Context, ticket, id uuid.UUID) (*domain.
 }
 func (m *memStore) MessageOnTicket(_ context.Context, ticket, id uuid.UUID) (bool, error) {
 	for _, x := range m.messages {
-		if x.ID == id && x.TicketID == ticket {
+		if x.ID == id && x.TicketID == ticket && !x.Internal {
 			return true, nil
 		}
 	}
@@ -144,7 +144,9 @@ func (m *memStore) UserExists(_ context.Context, id uuid.UUID) (bool, error) {
 	_, ok := m.contacts[id]
 	return ok, nil
 }
-func (m *memStore) Summary(context.Context) (domain.Summary, error)  { return domain.Summary{}, nil }
+func (m *memStore) Summary(context.Context, *uuid.UUID) (domain.Summary, error) {
+	return domain.Summary{}, nil
+}
 func (m *memStore) Macros(context.Context) ([]domain.Macro, error)   { return nil, nil }
 func (m *memStore) CreateMacro(context.Context, *domain.Macro) error { return nil }
 func (m *memStore) UpdateMacro(context.Context, *domain.Macro) error { return domain.ErrMacroNotFound }
@@ -246,10 +248,10 @@ func TestFlow_CustomerAndTeam(t *testing.T) {
 	_, err = s.Get(ctx, uuid.New(), id)
 	assert.ErrorIs(t, err, domain.ErrTicketNotFound)
 
-	v, err = s.AdminReply(ctx, id, staff, "Nous regardons, pouvez-vous envoyer la facture ?")
+	sv, err := s.AdminReply(ctx, id, staff, "Nous regardons, pouvez-vous envoyer la facture ?")
 	require.NoError(t, err)
-	assert.Equal(t, domain.StatusWaitingCustomer, v.Ticket.Status)
-	assert.Equal(t, domain.AuthorSupportAgent, v.Messages[0].AuthorRole)
+	assert.Equal(t, domain.StatusWaitingCustomer, sv.Ticket.Status)
+	assert.Equal(t, domain.AuthorSupportAgent, sv.Messages[0].AuthorRole)
 	require.Len(t, box.got, 1, "le client est prévenu")
 	assert.Equal(t, "awa@ex.sn", box.got[0].To)
 	assert.Contains(t, box.got[0].HTML, "pouvez-vous envoyer la facture")
@@ -271,13 +273,13 @@ func TestFlow_CustomerAndTeam(t *testing.T) {
 	box.got = nil
 	closed := string(domain.StatusClosed)
 	urgent := "URGENT"
-	v, err = s.AdminUpdate(ctx, id, staff, UpdateInput{Status: &closed, Priority: &urgent, Tags: []string{"doublon"}})
+	sv, err = s.AdminUpdate(ctx, id, staff, UpdateInput{Status: &closed, Priority: &urgent, Tags: []string{"doublon"}})
 	require.NoError(t, err)
-	assert.Equal(t, domain.StatusClosed, v.Ticket.Status)
-	assert.Equal(t, domain.PriorityUrgent, v.Ticket.Priority)
+	assert.Equal(t, domain.StatusClosed, sv.Ticket.Status)
+	assert.Equal(t, domain.PriorityUrgent, sv.Ticket.Priority)
 	assert.Len(t, box.got, 1, "demande traitée")
 	types := map[domain.EventType]int{}
-	for _, e := range v.Events {
+	for _, e := range sv.Events {
 		types[e.Type]++
 	}
 	assert.Equal(t, 1, types[domain.EventPriorityChanged])
@@ -297,10 +299,10 @@ func TestAssign(t *testing.T) {
 	unknown := uuid.New()
 	_, err = s.Assign(ctx, v.Ticket.ID, staff, &unknown)
 	assert.ErrorIs(t, err, domain.ErrInvalidAssignee)
-	v, err = s.Assign(ctx, v.Ticket.ID, staff, staff.UserID)
+	sv, err := s.Assign(ctx, v.Ticket.ID, staff, staff.UserID)
 	require.NoError(t, err)
-	assert.Equal(t, staff.UserID, v.Ticket.AssignedToUserID)
-	last := v.Events[len(v.Events)-1]
+	assert.Equal(t, staff.UserID, sv.Ticket.AssignedToUserID)
+	last := sv.Events[len(sv.Events)-1]
 	assert.Equal(t, domain.EventAssigned, last.Type)
 	assert.Equal(t, staff.UserID.String(), last.Payload["assigned_to"])
 }

@@ -79,6 +79,7 @@ type messageRow struct {
 	OrganizationID uuid.UUID
 	AuthorUserID   *uuid.UUID
 	AuthorRole     string
+	Internal       bool
 	Body           string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -175,7 +176,7 @@ func (s *GormStore) SaveTicket(ctx context.Context, t *domain.Ticket, msg *domai
 		}
 		if msg != nil {
 			m := messageRow{ID: msg.ID, TicketID: msg.TicketID, OrganizationID: msg.OrganizationID, AuthorUserID: msg.AuthorUserID,
-				AuthorRole: string(msg.AuthorRole), Body: msg.Body, CreatedAt: msg.CreatedAt, UpdatedAt: msg.UpdatedAt}
+				AuthorRole: string(msg.AuthorRole), Internal: msg.Internal, Body: msg.Body, CreatedAt: msg.CreatedAt, UpdatedAt: msg.UpdatedAt}
 			if err := tx.Create(&m).Error; err != nil {
 				return err
 			}
@@ -219,6 +220,12 @@ func (s *GormStore) ListTickets(ctx context.Context, f domain.Filter) ([]domain.
 	if f.Priority != "" {
 		q = q.Where("priority = ?", string(f.Priority))
 	}
+	if f.AssignedTo != nil {
+		q = q.Where("assigned_to_user_id = ?", *f.AssignedTo)
+	}
+	if f.Unassigned {
+		q = q.Where("assigned_to_user_id IS NULL")
+	}
 	if f.Search != "" {
 		like := "%" + likeEscape(f.Search) + "%"
 		q = q.Where("(subject ILIKE ? OR description ILIKE ? OR created_by_email ILIKE ?)", like, like, like)
@@ -253,7 +260,7 @@ func (s *GormStore) Messages(ctx context.Context, ticket uuid.UUID) ([]domain.Me
 	out := make([]domain.Message, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, domain.Message{ID: r.ID, TicketID: r.TicketID, OrganizationID: r.OrganizationID, AuthorUserID: r.AuthorUserID,
-			AuthorRole: domain.AuthorRole(r.AuthorRole), Body: r.Body, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
+			AuthorRole: domain.AuthorRole(r.AuthorRole), Internal: r.Internal, Body: r.Body, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt})
 	}
 	return out, nil
 }
@@ -328,7 +335,7 @@ func (s *GormStore) Attachment(ctx context.Context, ticket, id uuid.UUID) (*doma
 
 func (s *GormStore) MessageOnTicket(ctx context.Context, ticket, msg uuid.UUID) (bool, error) {
 	var n int64
-	err := s.DB.WithContext(ctx).Model(&messageRow{}).Where("id = ? AND ticket_id = ?", msg, ticket).Count(&n).Error
+	err := s.DB.WithContext(ctx).Model(&messageRow{}).Where("id = ? AND ticket_id = ? AND NOT internal", msg, ticket).Count(&n).Error
 	return n > 0, err
 }
 
@@ -389,14 +396,16 @@ func (s *GormStore) UserExists(ctx context.Context, user uuid.UUID) (bool, error
 	return n > 0, err
 }
 
-func (s *GormStore) Summary(ctx context.Context) (domain.Summary, error) {
+func (s *GormStore) Summary(ctx context.Context, me *uuid.UUID) (domain.Summary, error) {
 	var out domain.Summary
 	err := s.DB.WithContext(ctx).Raw(`SELECT
 		COUNT(*) FILTER (WHERE status = 'OPEN') AS open,
 		COUNT(*) FILTER (WHERE status = 'IN_PROGRESS') AS in_progress,
 		COUNT(*) FILTER (WHERE status = 'WAITING_CUSTOMER') AS waiting_customer,
-		COUNT(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS') AND priority IN ('HIGH','URGENT')) AS high_priority
-		FROM support_tickets WHERE status NOT IN ('RESOLVED','CLOSED')`).Scan(&out).Error
+		COUNT(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS') AND priority IN ('HIGH','URGENT')) AS high_priority,
+		COUNT(*) FILTER (WHERE ?::uuid IS NOT NULL AND assigned_to_user_id = ?::uuid) AS mine,
+		COUNT(*) FILTER (WHERE assigned_to_user_id IS NULL) AS unassigned
+		FROM support_tickets WHERE status NOT IN ('RESOLVED','CLOSED')`, me, me).Scan(&out).Error
 	return out, err
 }
 
