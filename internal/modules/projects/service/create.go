@@ -69,9 +69,11 @@ type ProjectService struct {
 	Deletion         repository.DeletionStore
 	Containers       ProjectContainers
 	ProjectDatabases ProjectDatabases
-	Notifier         DeletionNotifier
-	DeletionGrace    time.Duration
-	Now              func() time.Time
+	// Storage : buckets de stockage (clés désactivées pendant le délai de grâce).
+	Storage       ProjectStorage
+	Notifier      DeletionNotifier
+	DeletionGrace time.Duration
+	Now           func() time.Time
 }
 
 // Placer : choix du cluster d'un nouveau projet (registre des clusters).

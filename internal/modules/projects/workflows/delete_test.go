@@ -30,6 +30,18 @@ type fakeDeleteActs struct {
 	deleteWorkloadsAfter bool
 	deleteSitesCalls     int
 	dbDeletedBeforeSites bool
+
+	deleteBucketsErr       error
+	deleteBucketsCalls     int
+	dbDeletedBeforeBuckets bool
+}
+
+func (f *fakeDeleteActs) DeleteProjectBuckets(_ context.Context, _ string) error {
+	f.mu.Lock()
+	f.deleteBucketsCalls++
+	f.dbDeletedBeforeBuckets = f.deleteDBCalls > 0
+	f.mu.Unlock()
+	return f.deleteBucketsErr
 }
 
 func (f *fakeDeleteActs) DeleteProjectSiteObjects(_ context.Context, _ string) error {
@@ -71,6 +83,7 @@ func registerFakeDeleteActs(env *testsuite.TestWorkflowEnvironment, f *fakeDelet
 	env.RegisterActivity(f.DeleteProjectWorkloadsActivity)
 	env.RegisterActivity(f.DeleteProjectDBActivity)
 	env.RegisterActivity(f.DeleteProjectSiteObjects)
+	env.RegisterActivity(f.DeleteProjectBuckets)
 }
 
 func TestDeleteProjectWorkflow_HappyPath_OrderedCleanup(t *testing.T) {
@@ -91,6 +104,23 @@ func TestDeleteProjectWorkflow_HappyPath_OrderedCleanup(t *testing.T) {
 	assert.True(t, fake.deleteWorkloadsAfter, "DB cleanup must run AFTER namespace delete")
 	assert.Equal(t, 1, fake.deleteSitesCalls)
 	assert.False(t, fake.dbDeletedBeforeSites, "site files must be deleted BEFORE the project row")
+	assert.Equal(t, 1, fake.deleteBucketsCalls)
+	assert.False(t, fake.dbDeletedBeforeBuckets, "buckets must be deleted BEFORE the project row")
+}
+
+func TestDeleteProjectWorkflow_BucketCleanupFails_KeepsProjectRow(t *testing.T) {
+	var ts testsuite.WorkflowTestSuite
+	env := ts.NewTestWorkflowEnvironment()
+	env.SetTestTimeout(5 * time.Second)
+
+	fake := &fakeDeleteActs{deleteBucketsErr: errors.New("s3 down")}
+	registerFakeDeleteActs(env, fake)
+
+	env.ExecuteWorkflow(DeleteProjectWorkflow, "proj-uuid", "alpha")
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.Error(t, env.GetWorkflowError())
+	assert.Equal(t, 0, fake.deleteDBCalls, "project row must survive so the bucket cleanup can be retried")
 }
 
 func TestDeleteProjectWorkflow_SiteCleanupFails_KeepsProjectRow(t *testing.T) {

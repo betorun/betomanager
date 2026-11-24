@@ -59,6 +59,7 @@ func (c Catalog) InvoiceLines(totals []Total) []DocLine {
 		{"Minutes de build", []Meter{MeterBuildMinutes}},
 		{"Domaines de site", []Meter{MeterSiteDomain}},
 		{"IP de sortie dédiées", []Meter{MeterEgressIP}},
+		{"Stockage objet", []Meter{MeterStorage}},
 		{"Abonnement", []Meter{MeterPlan}},
 	}
 	sums := map[Meter]Milli{}

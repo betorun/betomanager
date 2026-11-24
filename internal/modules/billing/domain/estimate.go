@@ -220,12 +220,14 @@ type CatalogView struct {
 	BuildMinute     int64      `json:"build_minute"`
 	SiteDomain      int64      `json:"site_domain_monthly"`
 	EgressIP        int64      `json:"egress_ip_monthly"`
-	Free            FreeView   `json:"free_tier"`
-	TopupMin        int64      `json:"topup_min"`
-	TopupMax        int64      `json:"topup_max"`
-	TrialCredit     int64      `json:"trial_credit"`
-	TrialDays       int        `json:"trial_days"`
-	GraceDays       int        `json:"grace_days"`
+	// StorageGBMonthly : stockage objet, par Go et par mois.
+	StorageGBMonthly int64    `json:"storage_gb_monthly"`
+	Free             FreeView `json:"free_tier"`
+	TopupMin         int64    `json:"topup_min"`
+	TopupMax         int64    `json:"topup_max"`
+	TrialCredit      int64    `json:"trial_credit"`
+	TrialDays        int      `json:"trial_days"`
+	GraceDays        int      `json:"grace_days"`
 	// Postpayé : valeurs par défaut.
 	PostpaidCreditLimit  int64 `json:"postpaid_credit_limit"`
 	PostpaidTermsDays    int   `json:"postpaid_terms_days"`
@@ -254,8 +256,9 @@ type FreeView struct {
 func (c Catalog) View() CatalogView {
 	v := CatalogView{Version: c.Version, Currency: c.Currency, DatabaseMonthly: c.DatabaseMonthly.Units(),
 		DiskGiMonthly: c.DiskGiMonthly.Units(), BuildMinute: c.BuildMinute.Units(), SiteDomain: c.SiteDomain.Units(), EgressIP: c.EgressIP.Units(),
-		Free:     FreeView{Compute: c.Free.Compute.Units(), Database: c.Free.Database.Units(), BuildMinutes: c.Free.BuildMinutes},
-		TopupMin: c.TopupMin.Units(), TopupMax: c.TopupMax.Units(), TrialCredit: c.TrialCredit.Units(), TrialDays: c.TrialDays, GraceDays: c.GraceDays,
+		StorageGBMonthly: c.StorageGBMonthly.Units(),
+		Free:             FreeView{Compute: c.Free.Compute.Units(), Database: c.Free.Database.Units(), BuildMinutes: c.Free.BuildMinutes},
+		TopupMin:         c.TopupMin.Units(), TopupMax: c.TopupMax.Units(), TrialCredit: c.TrialCredit.Units(), TrialDays: c.TrialDays, GraceDays: c.GraceDays,
 		PostpaidCreditLimit: c.PostpaidCreditLimit.Units(), PostpaidTermsDays: c.PostpaidTermsDays,
 		PostpaidReminderDays: c.PostpaidReminderDays, PostpaidSuspendDays: c.PostpaidSuspendDays, PurgeDays: c.PurgeDays,
 		DomainMarginBP: c.DomainMarginBP, DomainRoundTo: c.DomainRoundTo, EURRateMilli: int64(c.EURRate)}

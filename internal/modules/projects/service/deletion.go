@@ -55,6 +55,14 @@ type ProjectDatabases interface {
 	Start(ctx context.Context, project, id uuid.UUID) error
 }
 
+// ProjectStorage : buckets d'un projet. Pendant le délai de grâce, leurs
+// clés sont désactivées et la lecture publique fermée, les données gardées
+// (ADR 0015) ; l'effacement se fait dans le workflow de suppression.
+type ProjectStorage interface {
+	SuspendProject(ctx context.Context, project uuid.UUID) error
+	ResumeProject(ctx context.Context, project uuid.UUID) error
+}
+
 // DeletionNotifier : prévient les propriétaires (e-mail, journal d'organisation).
 type DeletionNotifier interface {
 	ProjectDeletionScheduled(ctx context.Context, project uuid.UUID, name string, at time.Time, by string)
@@ -133,6 +141,11 @@ func (s *ProjectService) DeleteProject(ctx context.Context, projectID, actor str
 		}
 		stopped.Databases = ids
 	}
+	if s.Storage != nil {
+		if err := s.Storage.SuspendProject(ctx, project.ID); err != nil {
+			s.Logger.Warnw("project deletion: storage keys not all disabled", "project", project.ID, "error", err)
+		}
+	}
 	if err := s.Deletion.SetDeletionStopped(ctx, project.ID, stopped); err != nil {
 		s.Logger.Errorw("project deletion: stopped resources not recorded", "project", project.ID, "error", err)
 	}
@@ -179,6 +192,11 @@ func (s *ProjectService) RestoreProject(ctx context.Context, projectID, actor st
 					s.Logger.Warnw("project restore: container not restarted", "project", project.ID, "workload", id, "error", err)
 				}
 			}
+		}
+	}
+	if s.Storage != nil {
+		if err := s.Storage.ResumeProject(ctx, project.ID); err != nil {
+			s.Logger.Warnw("project restore: storage keys not all re-enabled", "project", project.ID, "error", err)
 		}
 	}
 	if s.Notifier != nil {

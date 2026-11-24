@@ -199,3 +199,31 @@ func TestDeleteProject_NotReady(t *testing.T) {
 	_, err := svc.DeleteProject(context.Background(), store.p.ID.String(), "user:awa")
 	assert.ErrorIs(t, err, ErrProjectNotDeletable)
 }
+
+type fakeStorage struct{ suspended, resumed []uuid.UUID }
+
+func (f *fakeStorage) SuspendProject(_ context.Context, p uuid.UUID) error {
+	f.suspended = append(f.suspended, p)
+	return nil
+}
+func (f *fakeStorage) ResumeProject(_ context.Context, p uuid.UUID) error {
+	f.resumed = append(f.resumed, p)
+	return nil
+}
+
+// Stockage : clés désactivées pendant le délai de grâce, réactivées à la
+// restauration ; les données ne sont jamais touchées avant la purge.
+func TestDeletionGrace_SuspendsAndResumesStorage(t *testing.T) {
+	svc, store, _, _, _, _, _ := graceFixture(t)
+	st := &fakeStorage{}
+	svc.Storage = st
+	id := store.p.ID.String()
+	_, err := svc.DeleteProject(context.Background(), id, "user:awa")
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{store.p.ID}, st.suspended)
+	assert.Empty(t, st.resumed)
+
+	_, err = svc.RestoreProject(context.Background(), id, "user:awa")
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{store.p.ID}, st.resumed)
+}

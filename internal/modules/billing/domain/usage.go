@@ -15,6 +15,7 @@ const (
 	KindBuild      ResourceKind = "build"
 	KindSiteDomain ResourceKind = "site_domain"
 	KindEgressIP   ResourceKind = "egress_ip"
+	KindBucket     ResourceKind = "bucket"
 )
 
 // Reservation : ce qu'une ressource réserve au moment du relevé (lu par
@@ -30,7 +31,8 @@ type Reservation struct {
 	CPUMilli int64
 	MemMi    int64
 	Replicas int
-	// DiskGi : disque réservé (conteneur ou base), arrondi au Go supérieur.
+	// DiskGi : disque réservé (conteneur ou base), arrondi au Go supérieur ;
+	// bucket : espace occupé au dernier relevé, arrondi au Go supérieur.
 	DiskGi int64
 	// BuildMinutes et FinishedAt : build terminé (minutes commencées).
 	BuildMinutes int64
@@ -96,6 +98,10 @@ func (c Catalog) Price(r Reservation, hour time.Time) []Usage {
 		out = append(out, line(MeterSiteDomain, "", 1, PerHour(c.SiteDomain), hour))
 	case KindEgressIP:
 		out = append(out, line(MeterEgressIP, "", 1, PerHour(c.EgressIP), hour))
+	case KindBucket:
+		if r.DiskGi > 0 {
+			out = append(out, line(MeterStorage, "", r.DiskGi, PerHour(c.StorageGBMonthly), hour))
+		}
 	case KindPlan:
 		if r.Monthly > 0 {
 			out = append(out, line(MeterPlan, r.Size, 1, PerHour(r.Monthly), hour))

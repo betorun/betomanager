@@ -7,6 +7,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/infrastructure/workers/queue"
 	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 	egressSvc "github.com/thekrauss/kubemanager/internal/modules/egress/service"
+	storageActivities "github.com/thekrauss/kubemanager/internal/modules/storages3/activities"
 	"net/http"
 	"os"
 	"os/signal"
@@ -150,6 +151,7 @@ func (a *App) RunServer(ctx context.Context) error {
 	a.startSuspensionPurge(ctx)
 	// Projets dont le délai de grâce est écoulé : effacement définitif.
 	a.startProjectPurge(ctx)
+	a.startStorageUsage(ctx)
 	<-ctx.Done()
 
 	a.Logger.Infow("server shutdown signal received")
@@ -191,6 +193,7 @@ func (a *App) RunWorker(ctx context.Context) error {
 		Builds:      a.buildActivities(),
 		Pull:        a.pullSecrets(),
 		Variables:   a.Variables,
+		Storage:     &storageActivities.StorageActivities{Purger: a.storagePurger()},
 	})
 
 	errCh, err := processor.Start()

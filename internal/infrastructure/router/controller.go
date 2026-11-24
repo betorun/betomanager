@@ -35,6 +35,7 @@ import (
 	sitesRepo "github.com/thekrauss/kubemanager/internal/modules/sites/repository"
 	sitesSvc "github.com/thekrauss/kubemanager/internal/modules/sites/service"
 	"github.com/thekrauss/kubemanager/internal/modules/status"
+	"github.com/thekrauss/kubemanager/internal/modules/storages3"
 	"github.com/thekrauss/kubemanager/internal/modules/support"
 	workload "github.com/thekrauss/kubemanager/internal/modules/workloads"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
@@ -78,8 +79,10 @@ type ControllerContainer struct {
 	Registries *registries.Controller
 	Copilot    *copilot.Controller
 	Databases  *databases.Controller
-	Network    *network.Controller
-	Egress     *egress.Controller
+	// StorageS3 : stockage objet des clients (ADR 0015).
+	StorageS3 *storages3.Controller
+	Network   *network.Controller
+	Egress    *egress.Controller
 	// Addons : services additionnels (Redis via Valkey…).
 	Addons *addons.Controller
 	// DiskUsage : usage réel des disques des projets.
@@ -121,6 +124,7 @@ func AddAllRoutes(a *App) {
 	addIAMRoutes(a)
 	addCopilotRoutes(a)
 	addDatabaseRoutes(a)
+	addStorageS3Routes(a)
 	addNetworkRoutes(a)
 	addEgressRoutes(a)
 	addAddonRoutes(a)

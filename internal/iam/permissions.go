@@ -91,6 +91,27 @@ const (
 	// DatabasesStop : arrêter et relancer une base (son disque est gardé).
 	DatabasesStop Permission = "databases.databases.stop"
 
+	// Stockage objet S3 (ADR 0015).
+	StorageBucketsList   Permission = "storage.buckets.list"
+	StorageBucketsGet    Permission = "storage.buckets.get"
+	StorageBucketsCreate Permission = "storage.buckets.create"
+	// StorageBucketsUpdate : changer le quota.
+	StorageBucketsUpdate Permission = "storage.buckets.update"
+	// StorageBucketsConnect : brancher sur un conteneur, créer et révoquer
+	// des clés (elles donnent accès au contenu).
+	StorageBucketsConnect Permission = "storage.buckets.connect"
+	// StorageBucketsDelete : supprimer un bucket (son contenu est perdu).
+	StorageBucketsDelete Permission = "storage.buckets.delete"
+	// StorageBucketsSetPublic : ouvrir ou fermer la lecture publique.
+	StorageBucketsSetPublic Permission = "storage.buckets.setPublic"
+	// Explorateur de fichiers de la console (par l'API, jamais de clé).
+	StorageObjectsList   Permission = "storage.objects.list"
+	StorageObjectsGet    Permission = "storage.objects.get"
+	StorageObjectsCreate Permission = "storage.objects.create"
+	StorageObjectsDelete Permission = "storage.objects.delete"
+	// StorageObjectsShare : lien de lecture à durée limitée, sans compte.
+	StorageObjectsShare Permission = "storage.objects.share"
+
 	// Services additionnels (ADR 0013 : Redis via Valkey…).
 	AddonsList   Permission = "addons.instances.list"
 	AddonsGet    Permission = "addons.instances.get"
@@ -258,35 +279,47 @@ var catalog = map[Permission]PermissionInfo{
 	RegistriesManage:        {Title: "Gérer les accès aux registres d'images externes", CustomRoles: true},
 	WorkloadMetrics:         {Title: "Voir les métriques d'un conteneur", CustomRoles: true},
 
-	SitesList:             {Title: "Lister les sites", CustomRoles: true},
-	SitesGet:              {Title: "Voir un site", CustomRoles: true},
-	SitesCreate:           {Title: "Créer un site", CustomRoles: true},
-	DatabasesList:         {Title: "Lister les bases de données", CustomRoles: true},
-	DatabasesGet:          {Title: "Voir une base de données", CustomRoles: true},
-	DatabasesCreate:       {Title: "Créer une base de données", CustomRoles: true},
-	DatabasesDelete:       {Title: "Supprimer une base de données (ses données sont perdues)", CustomRoles: true, Sensitive: true},
-	DatabasesConnect:      {Title: "Brancher une base de données sur un conteneur", CustomRoles: true},
-	DatabasesImport:       {Title: "Importer un dump dans une base de données (ses données peuvent être remplacées)", CustomRoles: true, Sensitive: true},
-	DatabasesReset:        {Title: "Vider une base de données (copie de sécurité gardée 24 h)", CustomRoles: true, Sensitive: true},
-	EgressAddressesGet:    {Title: "Voir l'IP de sortie dédiée du projet", CustomRoles: true},
-	EgressAddressesManage: {Title: "Demander ou rendre l'IP de sortie dédiée du projet (facturée)", CustomRoles: true},
-	DatabasesStop:         {Title: "Arrêter et relancer une base de données (ses données sont gardées)", CustomRoles: true},
-	AddonsList:            {Title: "Lister les services d'un projet", CustomRoles: true},
-	AddonsGet:             {Title: "Voir un service", CustomRoles: true},
-	AddonsCreate:          {Title: "Ajouter un service (Redis, MariaDB, Meilisearch…)", CustomRoles: true},
-	AddonsUpdate:          {Title: "Mettre à jour la version d'un service", CustomRoles: true},
-	AddonsDelete:          {Title: "Supprimer un service (ses données sont perdues)", CustomRoles: true, Sensitive: true},
-	AddonsRestore:         {Title: "Restaurer la sauvegarde d'un service (ses données actuelles sont remplacées)", CustomRoles: true, Sensitive: true},
-	AddonsConnect:         {Title: "Brancher un service sur un conteneur", CustomRoles: true},
-	SitesUpdate:           {Title: "Modifier un site", CustomRoles: true},
-	SitesDelete:           {Title: "Supprimer un site", CustomRoles: true},
-	SiteDeploymentsList:   {Title: "Voir les déploiements d'un site", CustomRoles: true},
-	SiteDeploymentsCreate: {Title: "Déployer un site", CustomRoles: true},
-	SiteDeploymentsActive: {Title: "Activer une version d'un site", CustomRoles: true},
-	SiteDomainsList:       {Title: "Voir les domaines d'un site", CustomRoles: true},
-	SiteDomainsCreate:     {Title: "Ajouter un domaine", CustomRoles: true},
-	SiteDomainsVerify:     {Title: "Vérifier un domaine", CustomRoles: true},
-	SiteDomainsDelete:     {Title: "Retirer un domaine", CustomRoles: true},
+	SitesList:               {Title: "Lister les sites", CustomRoles: true},
+	SitesGet:                {Title: "Voir un site", CustomRoles: true},
+	SitesCreate:             {Title: "Créer un site", CustomRoles: true},
+	DatabasesList:           {Title: "Lister les bases de données", CustomRoles: true},
+	DatabasesGet:            {Title: "Voir une base de données", CustomRoles: true},
+	DatabasesCreate:         {Title: "Créer une base de données", CustomRoles: true},
+	DatabasesDelete:         {Title: "Supprimer une base de données (ses données sont perdues)", CustomRoles: true, Sensitive: true},
+	DatabasesConnect:        {Title: "Brancher une base de données sur un conteneur", CustomRoles: true},
+	DatabasesImport:         {Title: "Importer un dump dans une base de données (ses données peuvent être remplacées)", CustomRoles: true, Sensitive: true},
+	DatabasesReset:          {Title: "Vider une base de données (copie de sécurité gardée 24 h)", CustomRoles: true, Sensitive: true},
+	EgressAddressesGet:      {Title: "Voir l'IP de sortie dédiée du projet", CustomRoles: true},
+	EgressAddressesManage:   {Title: "Demander ou rendre l'IP de sortie dédiée du projet (facturée)", CustomRoles: true},
+	DatabasesStop:           {Title: "Arrêter et relancer une base de données (ses données sont gardées)", CustomRoles: true},
+	StorageBucketsList:      {Title: "Lister les buckets de stockage", CustomRoles: true},
+	StorageBucketsGet:       {Title: "Voir un bucket de stockage", CustomRoles: true},
+	StorageBucketsCreate:    {Title: "Créer un bucket de stockage", CustomRoles: true},
+	StorageBucketsUpdate:    {Title: "Changer le quota d'un bucket de stockage", CustomRoles: true},
+	StorageBucketsConnect:   {Title: "Brancher un bucket sur un conteneur et gérer ses clés d'accès", CustomRoles: true},
+	StorageBucketsDelete:    {Title: "Supprimer un bucket de stockage (son contenu est perdu)", CustomRoles: true, Sensitive: true},
+	StorageBucketsSetPublic: {Title: "Ouvrir un bucket de stockage en lecture publique", CustomRoles: true, Sensitive: true},
+	StorageObjectsList:      {Title: "Parcourir les fichiers d'un bucket", CustomRoles: true},
+	StorageObjectsGet:       {Title: "Télécharger les fichiers d'un bucket", CustomRoles: true},
+	StorageObjectsCreate:    {Title: "Envoyer des fichiers dans un bucket", CustomRoles: true},
+	StorageObjectsDelete:    {Title: "Supprimer des fichiers d'un bucket", CustomRoles: true},
+	StorageObjectsShare:     {Title: "Partager un fichier d'un bucket par un lien à durée limitée", CustomRoles: true},
+	AddonsList:              {Title: "Lister les services d'un projet", CustomRoles: true},
+	AddonsGet:               {Title: "Voir un service", CustomRoles: true},
+	AddonsCreate:            {Title: "Ajouter un service (Redis, MariaDB, Meilisearch…)", CustomRoles: true},
+	AddonsUpdate:            {Title: "Mettre à jour la version d'un service", CustomRoles: true},
+	AddonsDelete:            {Title: "Supprimer un service (ses données sont perdues)", CustomRoles: true, Sensitive: true},
+	AddonsRestore:           {Title: "Restaurer la sauvegarde d'un service (ses données actuelles sont remplacées)", CustomRoles: true, Sensitive: true},
+	AddonsConnect:           {Title: "Brancher un service sur un conteneur", CustomRoles: true},
+	SitesUpdate:             {Title: "Modifier un site", CustomRoles: true},
+	SitesDelete:             {Title: "Supprimer un site", CustomRoles: true},
+	SiteDeploymentsList:     {Title: "Voir les déploiements d'un site", CustomRoles: true},
+	SiteDeploymentsCreate:   {Title: "Déployer un site", CustomRoles: true},
+	SiteDeploymentsActive:   {Title: "Activer une version d'un site", CustomRoles: true},
+	SiteDomainsList:         {Title: "Voir les domaines d'un site", CustomRoles: true},
+	SiteDomainsCreate:       {Title: "Ajouter un domaine", CustomRoles: true},
+	SiteDomainsVerify:       {Title: "Vérifier un domaine", CustomRoles: true},
+	SiteDomainsDelete:       {Title: "Retirer un domaine", CustomRoles: true},
 
 	ServiceAccountsList:      {Title: "Lister les comptes de service", CustomRoles: true},
 	ServiceAccountsGet:       {Title: "Voir un compte de service", CustomRoles: true},

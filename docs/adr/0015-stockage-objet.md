@@ -1,6 +1,6 @@
 # ADR 0015 — Stockage objet (S3) par projet
 
-Statut : accepté (2026-11-24).
+Statut : accepté (2026-11-24) ; lots 0 à 3 écrits le 2026-11-24 ([doc du module](../modules/storages3.md)).
 
 ## Contexte
 
@@ -24,13 +24,13 @@ Contraintes héritées : l'IAM doit être solide dès maintenant (voir [iam.md](
    Une clé se révoque seule, sans toucher aux autres. La rotation crée une nouvelle clé, redéploie le conteneur, puis supprime l'ancienne.
 
 3. **Le service parle à une interface, pas à SeaweedFS.** `service.Backend` : créer et supprimer un bucket, poser un quota, créer et supprimer une identité limitée à un bucket, lire l'espace utilisé, ouvrir ou fermer la lecture publique. L'implémentation SeaweedFS vit dans `repository` :
-   - identités et clés par l'**API IAM** (client IAM du SDK AWS), avec une identité d'administration dédiée au module (pas celle des sites) ;
-   - quotas, espace utilisé et accès anonyme par le gRPC du filer (les mêmes opérations que `weed shell`).
+   - identités et clés par l'**API IAM** (protocole AWS, signé SigV4), avec une identité d'administration dédiée au module (pas celle des sites) ;
+   - quota appliqué par la politique de chaque clé (le quota natif de la SeaweedFS n'est pas utilisé : l'état « quota dépassé » doit laisser supprimer) ; espace utilisé par la liste des objets ; lecture publique par une politique de bucket S3 standard (`s3:GetObject`, `Principal: *`).
    Un autre S3 (Ceph RGW, MinIO, un fournisseur externe) pourra s'y brancher sans toucher au reste. Chaque bucket garde son **emplacement** (`backend`, par défaut l'unique S3 de la plateforme) pour accueillir plus tard un S3 par région.
 
 4. **Le stockage des clients est séparé des données de la plateforme.** Les buckets clients et ceux de la plateforme (sites, sauvegardes) ne partagent aucune identité. L'identité d'administration du module ne peut gérer que les buckets `bt-*` et les identités qu'elle a créées. Les sauvegardes des bases de production restent sur un S3 **d'un autre fournisseur** (déjà prévu : `DATABASES_BACKUP_*`).
 
-5. **Quota et espace utilisé.** Chaque bucket reçoit un quota (taille maximale choisie à la création, modifiable) ; dépassé, le bucket passe en **lecture seule** (lecture et suppression restent possibles), et une alerte part aux propriétaires et éditeurs, comme pour les disques. L'espace utilisé est relevé toutes les 15 minutes et affiché (console, CLI `storage list`), à la manière de `diskusage`.
+5. **Quota et espace utilisé.** Chaque bucket reçoit un quota (taille maximale choisie à la création, modifiable) ; dépassé, ses clés en écriture ne peuvent plus que **lire et supprimer** (une clé en lecture seule le reste ; l'envoi depuis la console est refusé), et une alerte part aux propriétaires et éditeurs à 80 % puis au quota atteint, comme pour les disques. L'espace utilisé est relevé toutes les 15 minutes et affiché (console, CLI `storage list`), à la manière de `diskusage`.
 
 6. **Liens publics et privés.**
    - **Privé** (par défaut) : rien n'est lisible sans clé. L'application crée elle-même ses liens à durée limitée avec sa bibliothèque S3 (URL signée SigV4).
@@ -38,18 +38,20 @@ Contraintes héritées : l'IAM doit être solide dès maintenant (voir [iam.md](
 
 7. **IAM.** Nouvelles permissions :
    - `storage.buckets.list`, `storage.buckets.get` (lecteur) ;
-   - `storage.buckets.create`, `storage.buckets.update` (quota), `storage.buckets.connect` (brancher, clés), `storage.objects.list`, `storage.objects.delete` (éditeur) ;
-   - `storage.buckets.delete` et `storage.buckets.setPublic` (propriétaire, **sensibles**).
+   - `storage.objects.list` (lecteur) ; `storage.objects.get`, `storage.objects.create` (développeur) ;
+   - `storage.buckets.create`, `storage.buckets.update` (quota), `storage.buckets.connect` (brancher, clés, rotation), `storage.objects.delete`, `storage.objects.share` (liens signés) (éditeur) ;
+   - `storage.buckets.delete` et `storage.buckets.setPublic` (propriétaire, **sensibles**) ;
+   - rôles prédéfinis `roles/storage.admin` et `roles/storage.objectUser`.
    La console parcourt les fichiers **par l'API** (qui vérifie les droits du projet puis lit avec l'identité du module) ; aucune clé client n'arrive dans le navigateur.
 
 8. **Cycle de vie.**
    - Supprimer un bucket : il doit être vide, ou on confirme par son nom (double authentification) pour effacer aussi son contenu. Ses identités sont supprimées d'abord.
-   - Projet en délai de grâce (12 h) : les identités du projet sont **désactivées** (les applications ne lisent ni n'écrivent plus), les données sont gardées ; restauration : identités réactivées. Purge : contenu, buckets et identités effacés.
+   - Projet en délai de grâce (12 h) : les identités du projet sont **désactivées** (les applications ne lisent ni n'écrivent plus) et la lecture publique fermée, les données sont gardées ; restauration : tout revient. Purge : contenu, buckets et identités effacés par une activité du workflow de suppression, avant les lignes du projet. La purge d'une organisation suspendue (facturation) efface aussi ses buckets.
    - Rien n'est facturé pendant le délai de grâce (même règle que les conteneurs et les bases).
 
-9. **Facturation.** Compteur `storage` en Go·heure (espace relevé, arrondi au Mo), prix mensuel au Go dans la grille (`storage_gb_monthly`). Le trafic sortant n'est pas facturé en V1 ; il est mesuré pour décider plus tard.
+9. **Facturation.** Compteur `storage` en Go·heure (espace relevé, arrondi au Go supérieur comme les disques : la précision des montants ne permet pas le Mo), prix mensuel au Go dans la grille (`storage_gb_monthly`, 0 tant qu'il n'est pas fixé). Un bucket vide ne coûte rien. Le trafic sortant n'est pas facturé en V1 ; il est mesuré pour décider plus tard.
 
-10. **Ce que voit le client** : une page **Stockage** (dans Services, à côté des bases), une carte par bucket (nom, espace utilisé sur quota, public ou privé, conteneurs branchés, clés), un explorateur de fichiers simple (lister, télécharger, supprimer, envoyer un petit fichier), et la CLI `betorun storage …`. Le Copilot peut lister, créer un bucket et le brancher (les actions sensibles restent dans la console).
+10. **Ce que voit le client** : une section **Stockage** (dans Services, à côté des bases), une carte par bucket (nom, espace utilisé sur quota, public ou privé, conteneurs branchés, clés), un explorateur de fichiers (dossiers, envoi par glisser-déposer jusqu'à 100 Mo, téléchargement, suppression, nouveau dossier, lien de partage de 1 h à 7 jours, adresse publique), et la CLI `betorun storage …` (`ls`, `cp`, `rm`, `link`, `public`, `keys rotate`). Le Copilot peut lister, créer un bucket et le brancher (les actions sensibles restent dans la console).
 
 ## Découpage
 
@@ -71,7 +73,8 @@ Contraintes héritées : l'IAM doit être solide dès maintenant (voir [iam.md](
 
 ## Conséquences
 
-- SeaweedFS de production démarre avec l'IAM en écriture et une nouvelle identité d'administration (secret neuf, `S3_STORAGE_ADMIN_*`) ; `deploy/README.txt` à compléter.
+- SeaweedFS de production démarre avec l'IAM en écriture et une nouvelle identité d'administration (secret neuf `S3_STORAGE_SECRET_KEY`) ; Caddy ouvre `s3.<domaine>` aux seuls chemins des buckets clients (`deploy/README.txt`, section 7 quinquies).
+- La SeaweedFS n'accepte que des politiques `Allow` : une identité désactivée n'est autorisée que sur une ressource impossible.
 - Le volume `s3data` grandit avec les données des clients : il faut suivre le disque du serveur 1, et la sauvegarde de nuit (`deploy/backup.sh`, copie du volume vers un autre fournisseur) prend plus de temps et de place. Au-delà d'un seuil à fixer, le stockage client passe sur un disque ou un serveur à part.
 - Les conteneurs joignent le stockage par `https://s3.<domaine>` (serveur 1) : trafic entre les deux serveurs. Acceptable en V1 ; un S3 dans chaque cluster (« Plus tard ») le supprime.
 - Le module `storage` rejoint la purge des projets, la facturation, l'IAM (rôles, traductions des permissions) et le Copilot (une décision par route, test de couverture).

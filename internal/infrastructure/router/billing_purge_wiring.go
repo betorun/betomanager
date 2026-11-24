@@ -41,8 +41,8 @@ func (a *App) startSuspensionPurge(ctx context.Context) {
 	}
 }
 
-// orgPurger : supprime conteneurs (et disques), bases (copie finale d'abord)
-// et sites d'une organisation. Les suppressions passent par les services
+// orgPurger : supprime conteneurs (et disques), bases (copie finale d'abord),
+// sites et buckets d'une organisation. Les suppressions passent par les services
 // habituels (workflows Temporal) : « lancée » suffit.
 type orgPurger struct {
 	a         *App
@@ -73,6 +73,9 @@ const (
 		WHERE p.organization_id = ? AND d.status <> 'DELETING'`
 	purgeSitesSQL = `SELECT s.id, s.project_id FROM sites s JOIN projects p ON p.id = s.project_id
 		WHERE p.organization_id = ? AND s.status <> 'DELETING'`
+	// Projets qui ont des buckets de stockage (une purge par projet).
+	purgeBucketProjectsSQL = `SELECT DISTINCT b.project_id AS id, b.project_id FROM storage_buckets b JOIN projects p ON p.id = b.project_id
+		WHERE p.organization_id = ?`
 )
 
 func (p *orgPurger) PurgeOrganization(ctx context.Context, org uuid.UUID, archiveUntil time.Time) error {
@@ -118,6 +121,19 @@ func (p *orgPurger) PurgeOrganization(ctx context.Context, org uuid.UUID, archiv
 		for _, s := range ss {
 			if err := p.sites.DeleteSite(ctx, s.ProjectID, s.ID); err != nil {
 				log.Warnw("purge: site not deleted", "site", s.ID, "error", err)
+				failed++
+			}
+		}
+	}
+	// Stockage objet : identités, contenu et buckets.
+	if st := p.a.storageController(); st != nil && st.Service != nil {
+		ps, err := p.list(ctx, purgeBucketProjectsSQL, org)
+		if err != nil {
+			return err
+		}
+		for _, pr := range ps {
+			if err := st.Service.PurgeProject(ctx, pr.ProjectID); err != nil {
+				log.Warnw("purge: buckets not all deleted", "project", pr.ProjectID, "error", err)
 				failed++
 			}
 		}

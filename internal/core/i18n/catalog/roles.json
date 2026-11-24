@@ -610,5 +610,69 @@
  {
   "fr": "Voir les comptes GitHub reliés au projet, leurs dépôts et leurs branches",
   "en": "View the GitHub accounts linked to the project, their repositories and branches"
+ },
+ {
+  "fr": "Lister les buckets de stockage",
+  "en": "List storage buckets"
+ },
+ {
+  "fr": "Voir un bucket de stockage",
+  "en": "View a storage bucket"
+ },
+ {
+  "fr": "Créer un bucket de stockage",
+  "en": "Create a storage bucket"
+ },
+ {
+  "fr": "Changer le quota d'un bucket de stockage",
+  "en": "Change a storage bucket's quota"
+ },
+ {
+  "fr": "Brancher un bucket sur un conteneur et gérer ses clés d'accès",
+  "en": "Attach a bucket to a container and manage its access keys"
+ },
+ {
+  "fr": "Supprimer un bucket de stockage (son contenu est perdu)",
+  "en": "Delete a storage bucket (its content is lost)"
+ },
+ {
+  "fr": "Ouvrir un bucket de stockage en lecture publique",
+  "en": "Open a storage bucket to public read"
+ },
+ {
+  "fr": "Parcourir les fichiers d'un bucket",
+  "en": "Browse a bucket's files"
+ },
+ {
+  "fr": "Télécharger les fichiers d'un bucket",
+  "en": "Download a bucket's files"
+ },
+ {
+  "fr": "Envoyer des fichiers dans un bucket",
+  "en": "Upload files to a bucket"
+ },
+ {
+  "fr": "Supprimer des fichiers d'un bucket",
+  "en": "Delete a bucket's files"
+ },
+ {
+  "fr": "Partager un fichier d'un bucket par un lien à durée limitée",
+  "en": "Share a bucket file with a time-limited link"
+ },
+ {
+  "fr": "Administrateur stockage",
+  "en": "Storage admin"
+ },
+ {
+  "fr": "Gère entièrement les buckets de stockage, leurs clés, leur accès public et leurs fichiers.",
+  "en": "Fully manages storage buckets, their keys, their public access and their files."
+ },
+ {
+  "fr": "Utilisateur fichiers stockage",
+  "en": "Storage object user"
+ },
+ {
+  "fr": "Parcourt, télécharge, envoie, supprime et partage les fichiers des buckets, sans gérer les buckets ni les clés.",
+  "en": "Browses, downloads, uploads, deletes and shares bucket files, without managing buckets or keys."
  }
 ]

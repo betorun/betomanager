@@ -27,7 +27,7 @@ func New(db *gorm.DB) *Inventory { return &Inventory{DB: db} }
 func (i *Inventory) Reservations(ctx context.Context, since time.Time) ([]domain.Reservation, error) {
 	var out []domain.Reservation
 	for _, read := range []func(context.Context, time.Time) ([]domain.Reservation, error){
-		i.containers, i.databases, i.builds, i.siteDomains, i.egressIPs, i.plans,
+		i.containers, i.databases, i.builds, i.siteDomains, i.egressIPs, i.buckets, i.plans,
 	} {
 		rs, err := read(ctx, since)
 		if err != nil {
@@ -165,6 +165,38 @@ func (i *Inventory) egressIPs(ctx context.Context, _ time.Time) ([]domain.Reserv
 			ResourceID: r.ID, ResourceName: r.Hostname})
 	}
 	return out, nil
+}
+
+type bucketRow struct {
+	ID, ProjectID, OrganizationID uuid.UUID
+	Name                          string
+	UsedBytes                     int64
+}
+
+// buckets : espace occupé par les buckets de stockage au dernier relevé
+// (ADR 0015), arrondi au Go supérieur comme les disques. Un bucket vide ne
+// coûte rien ; projet en délai de grâce : rien n'est compté.
+func (i *Inventory) buckets(ctx context.Context, _ time.Time) ([]domain.Reservation, error) {
+	var rows []bucketRow
+	err := i.DB.WithContext(ctx).Raw(`
+		SELECT b.id, b.project_id, p.organization_id, b.name, b.used_bytes
+		FROM storage_buckets b JOIN projects p ON p.id = b.project_id AND p.deleted_at IS NULL AND p.status <> 'PENDING_DELETION'
+		WHERE b.used_bytes > 0 AND NOT b.suspended`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("billing inventory buckets: %w", err)
+	}
+	out := make([]domain.Reservation, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, domain.Reservation{Kind: domain.KindBucket, OrganizationID: r.OrganizationID, ProjectID: r.ProjectID,
+			ResourceID: r.ID, ResourceName: r.Name, DiskGi: ceilGB(r.UsedBytes)})
+	}
+	return out, nil
+}
+
+// ceilGB : octets → Go (2^30) commencés.
+func ceilGB(b int64) int64 {
+	const gb = int64(1) << 30
+	return (b + gb - 1) / gb
 }
 
 // ProjectNames : nom des projets (y compris supprimés : leur usage reste dû).

@@ -3,9 +3,13 @@ package workflows
 import (
 	"github.com/thekrauss/kubemanager/internal/modules/projects/activities"
 	siteActivities "github.com/thekrauss/kubemanager/internal/modules/sites/activities"
+	storageActivities "github.com/thekrauss/kubemanager/internal/modules/storages3/activities"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
+
+// storageBucketsChange : ajout de l'effacement des buckets (ADR 0015).
+const storageBucketsChange = "delete-project-storage-buckets"
 
 // namespace : espace Kubernetes du projet (Project.Namespace).
 func DeleteProjectWorkflow(ctx workflow.Context, projectID, namespace string) error {
@@ -44,6 +48,15 @@ func DeleteProjectWorkflow(ctx workflow.Context, projectID, namespace string) er
 	var siteActs *siteActivities.SiteActivities
 	if err := workflow.ExecuteActivity(ctx, siteActs.DeleteProjectSiteObjects, projectID).Get(ctx, nil); err != nil {
 		return err
+	}
+
+	// 3 bis. Buckets de stockage : même raison (données et identités S3).
+	//        Versionné : les suppressions déjà en cours rejouent sans cette étape.
+	if v := workflow.GetVersion(ctx, storageBucketsChange, workflow.DefaultVersion, 1); v >= 1 {
+		var storageActs *storageActivities.StorageActivities
+		if err := workflow.ExecuteActivity(ctx, storageActs.DeleteProjectBuckets, projectID).Get(ctx, nil); err != nil {
+			return err
+		}
 	}
 
 	// 4. DB : delete project + membres (CASCADE FK sur project_members et sites).

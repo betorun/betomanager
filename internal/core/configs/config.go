@@ -43,9 +43,11 @@ type GlobalConfig struct {
 	Audit        AuditConfig        `mapstructure:"audit"`
 	RateLimit    RateLimitConfig    `mapstructure:"rate_limit"`
 	ObjectStore  ObjectStoreConfig  `mapstructure:"object_store"`
-	Sites        SitesConfig        `mapstructure:"sites"`
-	Builds       BuildsConfig       `mapstructure:"builds"`
-	IAM          IAMConfig          `mapstructure:"iam"`
+	// StorageS3 : stockage objet des clients (ADR 0015). Vide : indisponible.
+	StorageS3 StorageS3Config `mapstructure:"storage_s3"`
+	Sites     SitesConfig     `mapstructure:"sites"`
+	Builds    BuildsConfig    `mapstructure:"builds"`
+	IAM       IAMConfig       `mapstructure:"iam"`
 	// GitHubApp : connexion GitHub des conteneurs (dépôts privés, déploiement
 	// à chaque push). Désactivée tant qu'elle est incomplète.
 	GitHubApp GitHubAppConfig `mapstructure:"github_app"`
@@ -304,6 +306,18 @@ type ObjectStoreConfig struct {
 	Bucket    string `mapstructure:"bucket"`
 	Region    string `mapstructure:"region"`
 	UseSSL    bool   `mapstructure:"use_ssl"`
+}
+
+// StorageS3Config : S3 des buckets clients et identité d'administration du
+// module (jamais celle des sites). Prod : KUBEMANAGER_STORAGE_S3_*.
+type StorageS3Config struct {
+	Endpoint  string `mapstructure:"endpoint"` // host:port vu par l'API, sans schéma
+	UseSSL    bool   `mapstructure:"use_ssl"`
+	Region    string `mapstructure:"region"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	// PublicEndpoint : URL donnée aux applications (ex. https://s3.<domaine>).
+	PublicEndpoint string `mapstructure:"public_endpoint"`
 }
 
 // SitesConfig : hébergement de sites statiques.

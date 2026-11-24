@@ -478,6 +478,57 @@ d) Chaque IP de sortie : l'acheter chez l'hébergeur (IP additionnelle OVH
    de l'ajouter à la réserve.
 
 
+7 QUINQUIES. STOCKAGE OBJET DES CLIENTS (ADR 0015)
+--------------------------------------------------
+
+Les buckets des clients vivent dans la même SeaweedFS que les sites (volume
+s3data), sous des noms générés bt-<12 caractères>. Le module a sa propre identité
+d'administration, « storage » (secret S3_STORAGE_SECRET_KEY), jamais celle des
+sites ; chaque clé client est une identité limitée à un seul bucket, créée par
+l'API IAM de la SeaweedFS (-s3.iam.readOnly=false, déjà dans le compose).
+
+Nouvelle installation : rien à faire, scripts/generate_prod_secrets.sh écrit le
+secret et l'identité.
+
+Installation existante (secrets générés avant le module) : ajouter le secret sans
+l'afficher, puis l'identité, puis redémarrer la SeaweedFS, l'API et le worker :
+
+    cd /opt/betorun/secrets
+    printf 'S3_STORAGE_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> .env.prod
+    python3 - <<'PY'
+    import json
+    env = dict(l.rstrip("\n").split("=", 1) for l in open(".env.prod") if "=" in l and not l.startswith("#"))
+    p = "seaweedfs/s3.json"
+    c = json.load(open(p))
+    if not any(i["name"] == "storage" for i in c["identities"]):
+        c["identities"].append({"name": "storage", "actions": ["Admin"],
+            "credentials": [{"accessKey": "betorun-storage", "secretKey": env["S3_STORAGE_SECRET_KEY"]}]})
+        json.dump(c, open(p, "w"), indent=2)
+    PY
+    chmod 600 .env.prod seaweedfs/s3.json
+    cd /opt/betorun/kubemanager
+    deploy/compose.sh up -d seaweedfs api worker caddy
+
+Adresse : https://s3.<domaine> (S3_PUBLIC_HOST, DNS vers <IP1>). Caddy n'y ouvre
+que les chemins /bt-… (tout le S3, depuis partout : conteneurs, outils, liens
+signés, buckets publics) ; la liste des buckets, l'API IAM (POST /) et les
+buckets de la plateforme restent refusés de l'extérieur, les sites gardent leur
+accès en lecture depuis le serveur 2.
+
+Vérification, depuis un poste quelconque (refus attendus, puis la console) :
+
+    curl -s -o /dev/null -w '%{http_code}\n' https://s3.<domaine>/             # 403
+    curl -s -o /dev/null -w '%{http_code}\n' -X POST https://s3.<domaine>/     # 403
+    # console : Services, Stockage, créer un bucket, envoyer un fichier, le
+    # télécharger, créer un lien de partage et l'ouvrir dans un navigateur privé.
+
+Prix : storage_gb_monthly dans la grille (back-office, Facturation, Grilles) ;
+0 tant qu'il n'est pas fixé (stockage gratuit).
+
+Le disque du serveur 1 grandit avec les données des clients : le suivre, et la
+sauvegarde de nuit du volume s3data prend plus de temps et de place (section 9).
+
+
 8. ADRESSE DES CLIENTS ET RATE LIMIT
 ------------------------------------
 
@@ -678,5 +729,8 @@ demande pg_dump et restauration.
   Postgres edge_ro reste dans la base ; le supprimer à la main (DROP ROLE edge_ro).
 - Le code retombe sur nginx si KUBEMANAGER_KUBERNETES_INGRESS_CLASS manque
   (activities/constants.go) ; le compose de production et la validation l'imposent.
+- Stockage objet : l'identité « storage » est administrateur de toute la SeaweedFS
+  (la configuration statique ne sait pas la limiter à bt-*) ; la limite est dans
+  le code de l'API. Les buckets des clients partagent le disque du serveur 1.
 - CLUSTER_ID reste vide tant que le watcher n'est pas enrôlé (section 7 bis) : l'identité
   des workloads est alors désactivée.

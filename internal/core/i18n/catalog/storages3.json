@@ -1,0 +1,98 @@
+[
+ {
+  "fr": "Un bucket de ce nom existe déjà dans le projet",
+  "en": "a bucket with this name already exists in the project"
+ },
+ {
+  "fr": "10 clés manuelles au plus par bucket",
+  "en": "at most 10 manual keys per bucket"
+ },
+ {
+  "fr": "5 buckets au plus par projet",
+  "en": "at most 5 buckets per project"
+ },
+ {
+  "fr": "Bucket introuvable",
+  "en": "bucket not found"
+ },
+ {
+  "fr": "Accès invalide : read_write ou read_only",
+  "en": "invalid access: read_write or read_only"
+ },
+ {
+  "fr": "Nom de bucket invalide : 3 à 30 lettres minuscules, chiffres et tirets, en commençant par une lettre",
+  "en": "invalid bucket name: 3 to 30 lowercase letters, digits and hyphens, starting with a letter"
+ },
+ {
+  "fr": "Nom de clé invalide : 1 à 40 lettres minuscules, chiffres et tirets, en commençant par une lettre",
+  "en": "invalid key name: 1 to 40 lowercase letters, digits and hyphens, starting with a letter"
+ },
+ {
+  "fr": "Quota invalide : 1, 5, 10, 25, 50 ou 100 Go",
+  "en": "invalid quota: 1, 5, 10, 25, 50 or 100 GB"
+ },
+ {
+  "fr": "Préfixe de variables invalide : majuscules, chiffres et tirets bas, en commençant par une lettre",
+  "en": "invalid variable prefix: uppercase letters, digits and underscores, starting with a letter"
+ },
+ {
+  "fr": "Clé introuvable",
+  "en": "key not found"
+ },
+ {
+  "fr": "Le stockage objet n'est pas disponible sur cette plateforme",
+  "en": "object storage is not available on this platform"
+ },
+ {
+  "fr": "Le projet n'est pas prêt",
+  "en": "project is not ready"
+ },
+ {
+  "fr": "Le bucket est en cours de suppression",
+  "en": "the bucket is being deleted"
+ },
+ {
+  "fr": "Le bucket n'est pas vide : confirmez avec son nom pour effacer aussi son contenu",
+  "en": "the bucket is not empty: confirm with its name to erase its content too"
+ },
+ {
+  "fr": "Ce bucket est déjà branché sur ce conteneur",
+  "en": "this bucket is already attached to this container"
+ },
+ {
+  "fr": "Fichier introuvable",
+  "en": "file not found"
+ },
+ {
+  "fr": "Fichier trop volumineux pour la console : 100 Mo au plus (au-delà, utilisez un outil S3)",
+  "en": "file too large for the console: at most 100 MB (use an S3 tool beyond)"
+ },
+ {
+  "fr": "Nom de fichier invalide : 1 à 1024 caractères, sans / au début ni segment « .. »",
+  "en": "invalid file name: 1 to 1024 characters, no leading slash, no \"..\" segment"
+ },
+ {
+  "fr": "Durée de lien invalide : d'une heure à 7 jours",
+  "en": "invalid link duration: 1 hour to 7 days"
+ },
+ {
+  "fr": "Champ « file » manquant (multipart)",
+  "en": "missing \"file\" field (multipart)"
+ },
+ {
+  "fr": "Le bucket a dépassé son quota : supprimez des fichiers ou augmentez le quota",
+  "en": "the bucket is over its quota: delete files or raise the quota"
+ },
+ {
+  "fr": "Le projet est en cours de suppression : ses buckets sont suspendus",
+  "en": "the project is being deleted: its buckets are suspended"
+ },
+ {
+  "fr": "Certains fichiers n'ont pas pu être supprimés",
+  "en": "some files could not be deleted"
+ },
+ {
+  "fr": "L'ancien secret n'a pas pu être révoqué, relancez la rotation",
+  "en": "the previous secret could not be revoked, retry the rotation"
+ }
+]
