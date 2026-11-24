@@ -93,6 +93,10 @@ L'Opérateur ajoute l'**adaptateur Anthropic natif** prévu par l'ADR 0008 (`llm
 - **Contenu non fiable** : un ticket, un log ou un message d'erreur sont des **données**, jamais des instructions. Une carte proposée juste après la lecture d'un contenu non fiable porte cette provenance (« proposée après lecture du ticket … »). Une instruction trouvée dans un ticket ne déclenche jamais d'action.
 - **Interdits** : aucun outil de commande libre. Ni shell, ni `kubectl exec`, ni SQL brut. Chaque action est une route typée, avec sa garde et son audit.
 
+### 3 bis. Un seul moteur de cartes, plusieurs fournisseurs
+
+Décision du 2026-11-24 : l'Opérateur vise **toutes** les actions d'exploitation (nœuds, clusters, ressources des clients, back-office), toujours par carte. Un seul moteur porte la vie d'une carte : proposée, validée ou refusée, exécutée ou en échec, expirée après 30 minutes. Chaque fournisseur déclare des **actions typées**, vérifie une proposition sur l'état réel (le risque vient de cet état, pas du modèle) et l'exécute après validation. Le moteur revérifie juste avant d'exécuter : si le risque a monté, rien n'est joué. Les fournisseurs : l'agent de nœud (ordre signé), l'API Kubernetes des clusters (identité de dépannage, verbes d'écriture bornés, activés explicitement), et l'API de la plateforme. Pour l'API, **la validation a lieu auprès de l'API elle-même**, avec la session de la personne (double authentification pour une carte sensible) : l'API fige la requête à la proposition, la joue à la validation, et l'Opérateur ne fait que relire l'issue. Son jeton reste en lecture : un Opérateur compromis ne peut rien écrire dans l'API. Ajouter une action, c'est ajouter une entrée au catalogue d'un fournisseur, jamais une commande libre.
+
 ### 4. Les outils : des routes `/admin`, déclarées une par une
 
 Comme pour le copilot, une route devient un outil par `ForOperator(...)`. Un fichier de décisions tranche chaque route `/admin` : outil, carte, carte sensible ou hors Opérateur. Un test échoue si une route n'a pas de décision. L'Opérateur ne voit donc rien qui n'existe déjà dans l'API, avec ses gardes.

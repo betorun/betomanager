@@ -96,6 +96,9 @@ func TestRescueFlow(t *testing.T) {
 	}
 
 	r, body = call(t, h, "GET", "/v1/journal", login.Token, "")
+	if !strings.Contains(body, `"kind":"investigation.opened"`) || !strings.Contains(body, `"uid":`) || strings.Contains(body, `"ID"`) {
+		t.Fatalf("format du journal : %s", body)
+	}
 	for _, kind := range []string{"investigation.opened", "investigation.question"} {
 		if !strings.Contains(body, kind) {
 			t.Fatalf("journal sans %s : %s", kind, body)

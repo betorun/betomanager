@@ -8,10 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/thekrauss/kubemanager/internal/agentkit"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm"
+	"github.com/thekrauss/kubemanager/internal/operator/action"
 )
 
 // APITools : le chemin normal (ADR 0016 §1) : les outils de lecture des
@@ -34,6 +36,7 @@ func (a *APITools) For(ctx context.Context, id Identity, reason string) (agentki
 			Description string          `json:"description"`
 			Parameters  json.RawMessage `json:"parameters"`
 		} `json:"items"`
+		Cards []apiCardTool `json:"cards"`
 	}
 	status, body, err := a.do(ctx, http.MethodGet, "/admin/operator/tools", id.Token, "", nil)
 	if err != nil {
@@ -45,7 +48,7 @@ func (a *APITools) For(ctx context.Context, id Identity, reason string) (agentki
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("%w (catalogue illisible)", ErrAPIUnavailable)
 	}
-	r := &apiRunner{api: a, token: id.Token, reason: reason}
+	r := &apiRunner{api: a, token: id.Token, reason: reason, cards: out.Cards}
 	for _, t := range out.Items {
 		r.defs = append(r.defs, llm.Tool{Name: t.Name, Description: t.Description, Parameters: t.Parameters})
 	}
@@ -75,7 +78,7 @@ func (a *APITools) do(ctx context.Context, method, path, token, reason string, p
 	}
 	client := a.HTTP
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = toolsClient
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -91,6 +94,16 @@ type apiRunner struct {
 	token  string
 	reason string
 	defs   []llm.Tool
+	cards  []apiCardTool
+}
+
+// CardActions : les actions de l'API proposables dans ce dossier ; nil sans
+// carte ouverte à la personne.
+func (r *apiRunner) CardActions(inv uuid.UUID) action.Provider {
+	if len(r.cards) == 0 {
+		return nil
+	}
+	return &apiActions{api: r.api, token: r.token, reason: r.reason, inv: &inv, cards: r.cards}
 }
 
 func (r *apiRunner) Definitions() []llm.Tool { return r.defs }

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm"
@@ -28,6 +29,11 @@ type Limits struct {
 	MaxToolCalls    int           // appels d'outils au total (défaut 12)
 	Timeout         time.Duration // durée totale du tour (défaut 120 s)
 	MaxOutputTokens int           // par appel au modèle (défaut 1500)
+	// ParallelTools : appels d'outils d'un même lot joués en même temps (au
+	// plus N) ; 0 ou 1 : l'un après l'autre. À n'activer que si le
+	// ToolRunner (et l'Emitter) tolèrent les appels concurrents. Les
+	// résultats sont rendus au modèle dans l'ordre des appels.
+	ParallelTools int
 }
 
 func (l Limits) withDefaults() Limits {
@@ -209,11 +215,10 @@ func (a *Agent) Run(ctx context.Context, turn Turn, runner ToolRunner, emit Emit
 		assistant := resp.Message
 		assistant.ToolCalls = calls
 		msgs = append(msgs, assistant)
-		for _, call := range calls {
-			emit.ToolStart(call.ID, call.Name)
-			r := runner.Run(ctx, call.Name, call.Arguments)
+		results := runTools(ctx, runner, emit, calls, lim.ParallelTools)
+		for i, call := range calls {
+			r := results[i]
 			res.ToolCalls++
-			emit.ToolEnd(call.ID, call.Name, !r.IsError)
 			msgs = append(msgs, llm.Message{Role: llm.RoleTool, ToolResult: &llm.ToolResult{
 				CallID: call.ID, Content: frame(call.Name, r), IsError: r.IsError,
 			}})
@@ -237,6 +242,52 @@ func (a *Agent) Run(ctx context.Context, turn Turn, runner ToolRunner, emit Emit
 			emit.Text("\n\n")
 		}
 	}
+}
+
+// runTools : un lot d'appels, séquentiel ou parallèle (au plus n à la fois) ;
+// résultats dans l'ordre des appels. En parallèle, les événements passent
+// par un verrou (un Emitter n'a pas à être sûr en concurrence).
+func runTools(ctx context.Context, runner ToolRunner, emit Emitter, calls []llm.ToolCall, n int) []ToolResult {
+	out := make([]ToolResult, len(calls))
+	if n <= 1 || len(calls) == 1 {
+		for i, call := range calls {
+			emit.ToolStart(call.ID, call.Name)
+			out[i] = runner.Run(ctx, call.Name, call.Arguments)
+			emit.ToolEnd(call.ID, call.Name, !out[i].IsError)
+		}
+		return out
+	}
+	em := &lockedEmitter{e: emit}
+	sem := make(chan struct{}, n)
+	var wg sync.WaitGroup
+	for i, call := range calls {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			em.ToolStart(call.ID, call.Name)
+			out[i] = runner.Run(ctx, call.Name, call.Arguments)
+			em.ToolEnd(call.ID, call.Name, !out[i].IsError)
+		})
+	}
+	wg.Wait()
+	return out
+}
+
+type lockedEmitter struct {
+	mu sync.Mutex
+	e  Emitter
+}
+
+func (l *lockedEmitter) Text(d string) { l.mu.Lock(); defer l.mu.Unlock(); l.e.Text(d) }
+func (l *lockedEmitter) ToolStart(id, name string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.e.ToolStart(id, name)
+}
+func (l *lockedEmitter) ToolEnd(id, name string, ok bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.e.ToolEnd(id, name, ok)
 }
 
 // stream : un appel au modèle, texte transmis au fil de l'eau.

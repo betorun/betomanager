@@ -12,15 +12,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/thekrauss/kubemanager/internal/agentkit"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm"
+	"github.com/thekrauss/kubemanager/internal/operator/action"
 	"github.com/thekrauss/kubemanager/internal/operator/store"
 )
 
 // Store : la base vue par les routes.
 type Store interface {
 	Dossiers
+	// Get : un dossier et toutes ses étapes (la console).
+	Get(ctx context.Context, id uuid.UUID) (store.Investigation, []store.Step, error)
 	Ping(ctx context.Context) error
 	Create(ctx context.Context, in store.Investigation) (store.Investigation, error)
 	List(ctx context.Context, limit int) ([]store.Investigation, error)
@@ -49,13 +53,34 @@ type Server struct {
 	// personnes qui en ont le droit (Capabilities.Infrastructure).
 	Infrastructure agentkit.ToolRunner
 	// API : outils du chemin normal (routes /admin), nil sans API.
-	API   ToolSource
+	API ToolSource
+	// Actions : catalogue des actions proposables (cartes) ; nil : aucune.
+	Actions *action.Registry
+	// Cards : cartes du dossier (la base) ; nil : aucune action.
+	Cards Cards
 	Model string
 	// Origins : origines de la console autorisées (CORS).
 	Origins []string
 	Logger  *slog.Logger
 
 	busy sync.Map // dossier → tour en cours (un seul à la fois)
+	// running : actions validées en cours d'exécution (attendues à l'arrêt).
+	running sync.WaitGroup
+	// syncing : relecture des cartes de l'API, une à la fois par dossier.
+	syncing singleflight.Group
+}
+
+// Drain : attend la fin des actions en cours (arrêt du service), au plus
+// jusqu'à ctx ; rend false si des actions tournaient encore.
+func (s *Server) Drain(ctx context.Context) bool {
+	done := make(chan struct{})
+	go func() { s.running.Wait(); close(done) }()
+	select {
+	case <-done:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 const maxBody = 64 << 10
@@ -70,6 +95,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/investigations/{id}", s.authed(s.get))
 	mux.Handle("POST /v1/investigations/{id}/messages", s.authed(s.ask))
 	mux.Handle("POST /v1/investigations/{id}/close", s.authed(s.close))
+	mux.Handle("POST /v1/investigations/{id}/cards/{card}/approve", s.authed(s.approve))
+	mux.Handle("POST /v1/investigations/{id}/cards/{card}/reject", s.authed(s.reject))
 	mux.HandleFunc("POST /v1/rescue/login", s.rescueLogin)
 	mux.Handle("POST /v1/rescue/logout", s.authed(s.rescueLogout))
 	mux.Handle("GET /v1/journal", s.authed(s.journal))
@@ -215,7 +242,22 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, _ Identity) {
 		s.internal(w, "journal", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	views := make([]JournalView, len(items))
+	for i, e := range items {
+		views[i] = JournalView{UID: e.UID, At: e.At, Actor: e.Actor, Kind: e.Kind, InvestigationID: e.InvestigationID, Detail: e.Detail}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": views})
+}
+
+// JournalView : une entrée du journal telle que la console la montre (sans
+// l'identifiant interne).
+type JournalView struct {
+	UID             uuid.UUID      `json:"uid"`
+	At              time.Time      `json:"at"`
+	Actor           string         `json:"actor"`
+	Kind            string         `json:"kind"`
+	InvestigationID *uuid.UUID     `json:"investigation_id"`
+	Detail          map[string]any `json:"detail"`
 }
 
 // InvestigationView : un dossier tel que la console le montre.
@@ -319,17 +361,35 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) (store.Investigati
 	return inv, steps, true
 }
 
-func (s *Server) get(w http.ResponseWriter, r *http.Request, _ Identity) {
+func (s *Server) get(w http.ResponseWriter, r *http.Request, id Identity) {
 	inv, steps, ok := s.load(w, r)
 	if !ok {
 		return
+	}
+	// Une carte de l'API décidée dans la console entre dans le dossier.
+	if s.Cards != nil && inv.Status == store.StatusOpen {
+		s.syncCards(r.Context(), id, inv.ID)
+		if _, fresh, err := s.Store.Get(r.Context(), inv.ID); err == nil {
+			steps = fresh
+		}
 	}
 	out := make([]StepView, len(steps))
 	for i, st := range steps {
 		out[i] = StepView{Seq: st.Seq, Kind: string(st.Kind), Tool: st.Tool, Input: st.Input, Digest: st.Digest,
 			Result: st.Result, IsError: st.IsError, DurationMs: st.DurationMs, CreatedAt: st.CreatedAt}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"investigation": view(inv), "steps": out})
+	cards := []CardView{}
+	if s.Cards != nil {
+		list, err := s.Cards.Cards(r.Context(), inv.ID)
+		if err != nil {
+			s.internal(w, "cards", err)
+			return
+		}
+		for _, c := range list {
+			cards = append(cards, cardView(c))
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"investigation": view(inv), "steps": out, "cards": cards})
 }
 
 // owner : seule la personne qui a ouvert le dossier le fait avancer (le
@@ -351,7 +411,7 @@ type askInput struct {
 }
 
 // ask : une question ; la réponse arrive en flux (text/event-stream) :
-// text, tool_start, tool_end, puis done ou error.
+// text, tool_start, tool_end, card (action proposée), puis done ou error.
 func (s *Server) ask(w http.ResponseWriter, r *http.Request, id Identity) {
 	if s.Investigator == nil {
 		writeError(w, http.StatusServiceUnavailable, "AGENT_UNAVAILABLE", "L'agent n'est pas configuré : les outils restent utilisables à la main.")
@@ -376,9 +436,11 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request, id Identity) {
 	}
 	defer s.busy.Delete(inv.ID)
 
-	tools := s.toolsFor(r.Context(), id, inv.Reason)
 	s.note(r.Context(), id, "investigation.question", &inv.ID, nil)
+	s.syncCards(r.Context(), id, inv.ID)
 	ev := newEvents(w)
+	defer ev.heartbeat(heartbeatEvery)()
+	tools := s.toolsFor(r.Context(), id, inv.Reason, inv.ID, func(c CardView) { ev.send("card", c) })
 	res, err := s.Investigator.Ask(r.Context(), inv.ID, in.Message, tools, ev)
 	if err != nil {
 		s.Logger.Warn("operator turn failed", "investigation", inv.ID, "error", err)
@@ -397,8 +459,11 @@ type ToolSource interface {
 // toolsFor : outils ouverts à la personne : ceux de l'API (selon ses droits,
 // avec le motif du dossier), plus le chemin de secours si elle y a droit.
 // Une API injoignable n'empêche pas l'enquête sur l'infrastructure.
-func (s *Server) toolsFor(ctx context.Context, id Identity, reason string) agentkit.ToolRunner {
+// Les actions proposables (cartes) : le catalogue fixe (nœuds, clusters),
+// plus les actions de l'API ouvertes à la personne.
+func (s *Server) toolsFor(ctx context.Context, id Identity, reason string, inv uuid.UUID, notify func(CardView)) agentkit.ToolRunner {
 	var runners []agentkit.ToolRunner
+	reg := s.Actions
 	// Session de secours : jamais l'API (pas de jeton, pas de données des
 	// clients).
 	if s.API != nil && !id.Rescue {
@@ -407,10 +472,24 @@ func (s *Server) toolsFor(ctx context.Context, id Identity, reason string) agent
 			s.Logger.Warn("operator API tools unavailable", "error", err)
 		} else {
 			runners = append(runners, api)
+			if src, ok := api.(interface {
+				CardActions(uuid.UUID) action.Provider
+			}); ok {
+				if p := src.CardActions(inv); p != nil {
+					if withAPI, err := reg.With(p); err != nil {
+						s.Logger.Error("operator api actions", "error", err)
+					} else {
+						reg = withAPI
+					}
+				}
+			}
 		}
 	}
 	if id.Capabilities.Infrastructure && s.Infrastructure != nil {
 		runners = append(runners, s.Infrastructure)
+	}
+	if p := s.proposerFor(ctx, id, inv, reg, notify); p != nil {
+		runners = append(runners, p)
 	}
 	set, err := Combine(runners...)
 	if err != nil {
@@ -490,6 +569,52 @@ type events struct {
 	mu sync.Mutex
 	w  http.ResponseWriter
 	f  http.Flusher
+	// done : flux fermé (handler rendu) : plus aucune écriture.
+	done bool
+}
+
+// heartbeatEvery : commentaire SSE envoyé pendant un silence (un outil lent,
+// la réflexion du modèle) : les proxys et le navigateur ne coupent pas le
+// flux pour inactivité.
+var heartbeatEvery = 15 * time.Second
+
+// heartbeat : « : ping » à intervalle, jusqu'à l'appel de la fonction rendue
+// (qui ferme aussi le flux aux écritures tardives).
+func (e *events) heartbeat(every time.Duration) func() {
+	stop := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				e.write(": ping\n\n")
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		<-finished
+		e.mu.Lock()
+		e.done = true
+		e.mu.Unlock()
+	}
+}
+
+func (e *events) write(raw string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.done {
+		return
+	}
+	_, _ = e.w.Write([]byte(raw))
+	if e.f != nil {
+		e.f.Flush()
+	}
 }
 
 func newEvents(w http.ResponseWriter) *events {
@@ -503,12 +628,7 @@ func newEvents(w http.ResponseWriter) *events {
 
 func (e *events) send(kind string, data any) {
 	b, _ := json.Marshal(data)
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	_, _ = e.w.Write([]byte("event: " + kind + "\ndata: " + string(b) + "\n\n"))
-	if e.f != nil {
-		e.f.Flush()
-	}
+	e.write("event: " + kind + "\ndata: " + string(b) + "\n\n")
 }
 
 func (e *events) Text(delta string) { e.send("text", map[string]string{"delta": delta}) }

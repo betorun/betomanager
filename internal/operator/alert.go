@@ -57,3 +57,12 @@ send:
 		a.Logger.Error("operator alert not delivered", "status", status)
 	}
 }
+
+// LogAlerter : développement seulement (OPERATOR_ALERT_LOG_ONLY) ; l'alerte
+// va dans le journal du processus.
+type LogAlerter struct{ Logger *slog.Logger }
+
+// Alert : rescue.Alerter.
+func (a LogAlerter) Alert(_ context.Context, text string) {
+	a.Logger.Warn("operator alert (log only, development)", "text", text)
+}

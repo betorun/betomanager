@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 )
 
 // Capabilities : domaines ouverts à la personne (calculés par l'API).
@@ -66,6 +67,9 @@ type APIAuth struct {
 
 	mu    sync.Mutex
 	cache map[[32]byte]cached
+	// group : une seule question à l'API par jeton à la fois (la console
+	// ouvre plusieurs requêtes en même temps au chargement d'une page).
+	group singleflight.Group
 }
 
 type cached struct {
@@ -90,10 +94,15 @@ func (a *APIAuth) Identify(ctx context.Context, token string) (Identity, error) 
 	}
 	a.mu.Unlock()
 
-	id, err := a.fetch(ctx, token)
+	// Partagée entre appelants : détachée de chacun (un appelant parti
+	// n'annule pas la réponse des autres), bornée par le délai du client.
+	v, err, _ := a.group.Do(string(key[:]), func() (any, error) {
+		return a.fetch(context.WithoutCancel(ctx), token)
+	})
 	if err != nil {
 		return Identity{}, err
 	}
+	id := v.(Identity)
 	a.mu.Lock()
 	if a.cache == nil || len(a.cache) >= maxCached {
 		a.cache = map[[32]byte]cached{}
@@ -119,7 +128,7 @@ func (a *APIAuth) fetch(ctx context.Context, token string) (Identity, error) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	client := a.HTTP
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = authClient
 	}
 	resp, err := client.Do(req)
 	if err != nil {

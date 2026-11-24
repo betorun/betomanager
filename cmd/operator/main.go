@@ -9,9 +9,11 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,7 +23,9 @@ import (
 	"github.com/thekrauss/kubemanager/internal/agentkit"
 	"github.com/thekrauss/kubemanager/internal/core/opjournal"
 	"github.com/thekrauss/kubemanager/internal/operator"
+	"github.com/thekrauss/kubemanager/internal/operator/action"
 	"github.com/thekrauss/kubemanager/internal/operator/kube"
+	"github.com/thekrauss/kubemanager/internal/operator/nodes"
 	"github.com/thekrauss/kubemanager/internal/operator/prom"
 	"github.com/thekrauss/kubemanager/internal/operator/rescue"
 	"github.com/thekrauss/kubemanager/internal/operator/store"
@@ -29,8 +33,8 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	if len(os.Args) > 1 && os.Args[1] == "journal-key" {
-		if err := journalKeyCLI(os.Args[2:]); err != nil {
+	if len(os.Args) > 1 && (os.Args[1] == "journal-key" || os.Args[1] == "order-key") {
+		if err := keyCLI(os.Args[1], os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "erreur :", err)
 			os.Exit(1)
 		}
@@ -72,7 +76,12 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		r.Alert = &operator.WebhookAlerter{URL: cfg.AlertWebhook, Logger: logger}
+		if cfg.AlertWebhook != "" {
+			r.Alert = &operator.WebhookAlerter{URL: cfg.AlertWebhook, Logger: logger}
+		} else {
+			logger.Warn("OPERATOR_ALERT_LOG_ONLY: rescue alerts only go to this log (development)")
+			r.Alert = operator.LogAlerter{Logger: logger}
+		}
 		rescueAuth = r
 	} else {
 		logger.Warn("OPERATOR_RESCUE_KEY_FILE not set: rescue access disabled")
@@ -88,9 +97,31 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	infrastructure, err := operator.Combine(clusters, metrics)
+	var orderKey ed25519.PrivateKey
+	if cfg.OrderKey != "" {
+		orderKey, _ = opjournal.ParsePrivateKey(cfg.OrderKey) // vérifiée par LoadConfig
+	}
+	machines, err := nodes.Parse(cfg.Nodes, nodes.TLSFiles{Cert: cfg.NodeCert, Key: cfg.NodeKey, CA: cfg.NodeCA}, orderKey)
 	if err != nil {
 		return err
+	}
+	infrastructure, err := operator.Combine(clusters, metrics, machines)
+	if err != nil {
+		return err
+	}
+	// Actions proposables (cartes) : nœuds si une clé d'ordres est posée,
+	// clusters si OPERATOR_KUBE_ACTIONS.
+	var providers []action.Provider
+	if cfg.KubeActions {
+		providers = append(providers, clusters)
+	}
+	providers = append(providers, machines)
+	actions, err := action.NewRegistry(providers...)
+	if err != nil {
+		return err
+	}
+	for _, s := range actions.Specs() {
+		logger.Info("operator action available", "kind", s.Kind)
 	}
 	var investigator *operator.Investigator
 	if model != nil {
@@ -116,25 +147,43 @@ func run(logger *slog.Logger) error {
 		go sync.Run(purgeCtx, time.Minute)
 	}
 
+	api := &operator.Server{Store: db, Rescue: rescueAuth, Auth: &operator.APIAuth{BaseURL: cfg.APIURL},
+		Investigator: investigator, Infrastructure: infrastructure, Actions: actions, Cards: db, API: &operator.APITools{BaseURL: cfg.APIURL},
+		Model: cfg.Model, Origins: cfg.ConsoleOrigins, Logger: logger}
+	go api.RunReaper(purgeCtx)
+	// Requêtes annulées à l'arrêt (flux d'un tour, lectures) ; les actions
+	// validées, elles, ont un contexte détaché et sont attendues (Drain).
+	baseCtx, cancelRequests := context.WithCancel(context.Background())
+	defer cancelRequests()
 	srv := &http.Server{
-		Addr: cfg.Listen,
-		Handler: (&operator.Server{Store: db, Rescue: rescueAuth, Auth: &operator.APIAuth{BaseURL: cfg.APIURL},
-			Investigator: investigator, Infrastructure: infrastructure, API: &operator.APITools{BaseURL: cfg.APIURL}, Model: cfg.Model, Origins: cfg.ConsoleOrigins, Logger: logger}).Handler(),
+		Addr:              cfg.Listen,
+		Handler:           api.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	logger.Info("operator started", "listen", cfg.Listen, "agent", model != nil, "model", cfg.Model, "clusters", clusters.Names(), "prometheus", metrics.Names())
+	logger.Info("operator started", "listen", cfg.Listen, "agent", model != nil, "model", cfg.Model, "clusters", clusters.Names(), "prometheus", metrics.Names(), "nodes", machines.Names(), "orders", orderKey != nil)
 
 	select {
 	case err := <-errc:
 		return err
 	case <-ctx.Done():
 	}
+	logger.Info("operator stopping")
+	cancelRequests()
 	shutdown, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+		logger.Warn("operator http shutdown", "error", err)
+	}
+	// Une action lancée va au bout (ou à son délai) avant la fermeture de la
+	// base : son issue est inscrite. Sinon le ramasseur la clôt au redémarrage.
+	drain, cancelDrain := context.WithTimeout(context.Background(), operator.ExecTimeout+10*time.Second)
+	defer cancelDrain()
+	if !api.Drain(drain) {
+		logger.Error("operator stopped with actions still running")
 	}
 	return nil
 }
