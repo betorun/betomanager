@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,6 +78,14 @@ type fakeClusters struct {
 	createEr error
 	// hibernations : appels à Hibernate (true : arrêt).
 	hibernations []bool
+	// enabled : appels à EnableBackups ; enableEr : leur erreur.
+	enabled  []ClusterSpec
+	enableEr error
+	// restarting : réponse d'EnableBackups ; firstReady : FirstBackup réussit.
+	restarting bool
+	firstReady atomic.Bool
+	firstCalls atomic.Int32
+	firstDone  chan struct{}
 }
 
 func (f *fakeClusters) Create(_ context.Context, _ string, s ClusterSpec) error {
@@ -100,6 +109,23 @@ func (f *fakeClusters) Hibernate(_ context.Context, _, _ string, on bool) error 
 		f.state.ReadyInstance = false
 	}
 	return nil
+}
+
+func (f *fakeClusters) EnableBackups(_ context.Context, _ string, s ClusterSpec) (bool, error) {
+	f.enabled = append(f.enabled, s)
+	return f.restarting, f.enableEr
+}
+
+func (f *fakeClusters) FirstBackup(context.Context, string, string) (bool, error) {
+	f.firstCalls.Add(1)
+	if !f.firstReady.Load() {
+		return false, nil
+	}
+	if f.firstDone != nil {
+		close(f.firstDone)
+		f.firstDone = nil
+	}
+	return true, nil
 }
 
 func (f *fakeClusters) Delete(_ context.Context, _, name string) error {
@@ -375,6 +401,62 @@ func TestStopAndStart(t *testing.T) {
 		t.Fatalf("après relance : %s", got.Status)
 	}
 	if _, err := s.Stop(ctx, uuid.New(), id); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("autre projet : %v", err)
+	}
+}
+
+func TestEnableBackups(t *testing.T) {
+	ctx, p := context.Background(), uuid.New()
+	fc := &fakeClusters{}
+	s, _ := svc(fc)
+	s.Workloads = &fakeWorkloads{project: p, set: map[string]string{}}
+	v, _ := s.Create(ctx, p, domain.CreateDatabaseRequest{Name: "main"}, "u")
+	id := uuid.MustParse(v.ID)
+	// Cluster absent : rien à équiper.
+	if _, err := s.EnableBackups(ctx, p, id); !errors.Is(err, domain.ErrNotReady) {
+		t.Fatalf("sans cluster : %v", err)
+	}
+	// Arrêtée : la première sauvegarde ne pourrait pas partir.
+	fc.state = ClusterState{Exists: true, Hibernated: true}
+	if _, err := s.EnableBackups(ctx, p, id); !errors.Is(err, domain.ErrStopped) {
+		t.Fatalf("base arrêtée : %v", err)
+	}
+	fc.state = ClusterState{Exists: true, ReadyInstance: true}
+	out, err := s.EnableBackups(ctx, p, id)
+	if err != nil || !out.Backups.Enabled || len(fc.enabled) != 1 {
+		t.Fatalf("activation : %v %+v %v", err, out, fc.enabled)
+	}
+	if got := fc.enabled[0]; got.Name != "db-main" || got.DatabaseID != v.ID || got.ProjectID != p.String() {
+		t.Fatalf("spec : %+v", got)
+	}
+	if fc.firstCalls.Load() != 0 {
+		t.Fatal("première sauvegarde lancée alors que l'instance ne redémarre pas")
+	}
+	// Plugin ajouté : l'instance redémarre ; la première sauvegarde part
+	// quand elle est revenue (pas avant).
+	firstBackupEvery = time.Millisecond
+	t.Cleanup(func() { firstBackupEvery = 15 * time.Second })
+	done := make(chan struct{})
+	fc.restarting, fc.firstDone = true, done
+	if _, err := s.EnableBackups(ctx, p, id); err != nil {
+		t.Fatal(err)
+	}
+	for fc.firstCalls.Load() < 3 {
+		time.Sleep(time.Millisecond)
+	}
+	fc.firstReady.Store(true)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("première sauvegarde jamais lancée")
+	}
+	fc.restarting = false
+	// Plateforme sans stockage : message clair, pas d'erreur interne.
+	fc.enableEr = domain.ErrBackupsDisabled
+	if _, err := s.EnableBackups(ctx, p, id); !errors.Is(err, domain.ErrBackupsUnavailable) {
+		t.Fatalf("sans stockage : %v", err)
+	}
+	if _, err := s.EnableBackups(ctx, uuid.New(), id); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("autre projet : %v", err)
 	}
 }

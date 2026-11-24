@@ -2822,5 +2822,13 @@
  {
   "fr": "Restaurer un projet dont la suppression est programmée (avant l'effacement)",
   "en": "Restore a project scheduled for deletion (before it is erased)"
+ },
+ {
+  "fr": "Activer les sauvegardes d'une base créée sans elles (l'instance redémarre, une minute environ)",
+  "en": "Turn on backups for a database created without them (the instance restarts, about a minute)"
+ },
+ {
+  "fr": "Activer les sauvegardes d'une base créée sans elles",
+  "en": "Turn on backups for a database created without them"
  }
 ]

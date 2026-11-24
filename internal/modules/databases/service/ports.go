@@ -34,6 +34,13 @@ type Clusters interface {
 	Delete(ctx context.Context, ns, name string) error
 	// Hibernate : arrête (on) ou relance (off) l'instance ; le disque reste.
 	Hibernate(ctx context.Context, ns, name string, on bool) error
+	// EnableBackups : sauvegardes d'une base créée sans elles ; restarting :
+	// l'instance redémarre, la première sauvegarde attend FirstBackup. Sans
+	// effet si elles sont déjà en place.
+	EnableBackups(ctx context.Context, ns string, spec ClusterSpec) (restarting bool, err error)
+	// FirstBackup : sauvegarde complète si l'instance est prête avec le
+	// conteneur de sauvegarde (started=false : pas encore, réessayer).
+	FirstBackup(ctx context.Context, ns, cluster string) (started bool, err error)
 	// AppURI : URI de connexion de l'utilisateur « app » (secret <cluster>-app
 	// créé par CloudNativePG). Mot de passe compris : ne jamais la renvoyer.
 	AppURI(ctx context.Context, ns, name string) (string, error)

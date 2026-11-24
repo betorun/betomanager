@@ -275,6 +275,115 @@ func (c *CNPG) Create(ctx context.Context, ns string, spec service.ClusterSpec) 
 	return nil
 }
 
+// EnableBackups : sauvegardes d'une base créée sans elles (plateforme
+// configurée après coup). Même destination qu'à la création ; le plugin
+// ajouté au Cluster fait redémarrer l'instance (quelques minutes). Sans
+// effet si tout est déjà en place. restarting : le plugin vient d'être
+// ajouté ; la première sauvegarde attend alors FirstBackup (une sauvegarde
+// immédiate partirait avant le conteneur du plugin, et échouerait).
+func (c *CNPG) EnableBackups(ctx context.Context, ns string, spec service.ClusterSpec) (restarting bool, err error) {
+	if c.Backup == nil {
+		return false, domain.ErrBackupsDisabled
+	}
+	c, err = c.on(ctx, ns)
+	if err != nil {
+		return false, err
+	}
+	secret, store, sched := c.backupObjects(ns, spec)
+	if _, err := c.Kube.CoreV1().Secrets(ns).Create(ctx, secret, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return false, fmt.Errorf("backup secret: %w", err)
+	}
+	_, err = c.Dynamic.Resource(ObjectStoreGVR).Namespace(ns).Create(ctx, store, metav1.CreateOptions{})
+	if apierrors.IsNotFound(err) {
+		return false, domain.ErrBackupPluginMissing
+	}
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return false, fmt.Errorf("object store: %w", err)
+	}
+	obj, err := c.Dynamic.Resource(ClusterGVR).Namespace(ns).Get(ctx, spec.Name, metav1.GetOptions{})
+	if err != nil {
+		return false, fmt.Errorf("cluster: %w", err)
+	}
+	plugins, _, _ := unstructured.NestedSlice(obj.Object, "spec", "plugins")
+	present := false
+	for _, p := range plugins {
+		if m, ok := p.(map[string]any); ok && m["name"] == barmanPlugin {
+			present = true
+		}
+	}
+	if !present {
+		// Liste entière (fusion JSON : une liste est remplacée, pas complétée).
+		plugins = append(plugins, map[string]any{
+			"name": barmanPlugin, "isWALArchiver": true,
+			"parameters": map[string]any{"barmanObjectName": storeName(spec.Name)},
+		})
+		patch, err := json.Marshal(map[string]any{"spec": map[string]any{"plugins": plugins}})
+		if err != nil {
+			return false, err
+		}
+		if _, err := c.Dynamic.Resource(ClusterGVR).Namespace(ns).Patch(ctx, spec.Name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+			return false, fmt.Errorf("cluster: %w", err)
+		}
+	}
+	if !present {
+		_ = unstructured.SetNestedField(sched.Object, false, "spec", "immediate")
+	}
+	if _, err := c.Dynamic.Resource(ScheduledBackupGVR).Namespace(ns).Create(ctx, sched, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return false, fmt.Errorf("scheduled backup: %w", err)
+	}
+	return !present, nil
+}
+
+// pluginContainer : conteneur du plugin injecté dans le pod de l'instance.
+const pluginContainer = "plugin-barman-cloud"
+
+// FirstBackup : lance une sauvegarde complète si l'instance principale est
+// prête avec le conteneur du plugin ; sinon started=false (réessayer).
+func (c *CNPG) FirstBackup(ctx context.Context, ns, cluster string) (started bool, err error) {
+	c, err = c.on(ctx, ns)
+	if err != nil {
+		return false, err
+	}
+	pods, err := c.Kube.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{LabelSelector: "cnpg.io/cluster=" + cluster + ",cnpg.io/instanceRole=primary"})
+	if err != nil {
+		return false, err
+	}
+	ready := false
+	for _, p := range pods.Items {
+		if p.DeletionTimestamp != nil {
+			continue
+		}
+		pg, plugin := false, false
+		for _, cs := range append(p.Status.ContainerStatuses, p.Status.InitContainerStatuses...) {
+			switch cs.Name {
+			case "postgres":
+				pg = cs.Ready
+			case pluginContainer:
+				plugin = cs.Ready
+			}
+		}
+		ready = ready || (pg && plugin)
+	}
+	if !ready {
+		return false, nil
+	}
+	b := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "postgresql.cnpg.io/v1",
+		"kind":       "Backup",
+		"metadata": map[string]any{"name": cluster + "-first", "namespace": ns,
+			"labels": map[string]any{"app.kubernetes.io/managed-by": "betorun", "cnpg.io/cluster": cluster}},
+		"spec": map[string]any{
+			"cluster":             map[string]any{"name": cluster},
+			"method":              "plugin",
+			"pluginConfiguration": map[string]any{"name": barmanPlugin},
+		},
+	}}
+	if _, err := c.Dynamic.Resource(BackupGVR).Namespace(ns).Create(ctx, b, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		return false, fmt.Errorf("first backup: %w", err)
+	}
+	return true, nil
+}
+
 func (c *CNPG) State(ctx context.Context, ns, name string) (service.ClusterState, error) {
 	c, err := c.on(ctx, ns)
 	if err != nil {
@@ -307,13 +416,18 @@ func (c *CNPG) State(ctx context.Context, ns, name string) (service.ClusterState
 // lastBackup : la sauvegarde complète la plus récente (au mieux : une erreur
 // de lecture ne fait pas échouer l'état de la base).
 func (c *CNPG) lastBackup(ctx context.Context, ns, cluster string) *service.BackupState {
-	list, err := c.Dynamic.Resource(BackupGVR).Namespace(ns).List(ctx, metav1.ListOptions{LabelSelector: "cnpg.io/cluster=" + cluster})
+	// Filtre sur spec.cluster.name : une sauvegarde lancée à la main (ou par
+	// FirstBackup) n'a pas toujours l'étiquette cnpg.io/cluster.
+	list, err := c.Dynamic.Resource(BackupGVR).Namespace(ns).List(ctx, metav1.ListOptions{})
 	if err != nil || len(list.Items) == 0 {
 		return nil
 	}
 	var best *service.BackupState
 	var bestAt time.Time
 	for _, item := range list.Items {
+		if name, _, _ := unstructured.NestedString(item.Object, "spec", "cluster", "name"); name != cluster {
+			continue
+		}
 		phase, _, _ := unstructured.NestedString(item.Object, "status", "phase")
 		stopped, _, _ := unstructured.NestedString(item.Object, "status", "stoppedAt")
 		msg, _, _ := unstructured.NestedString(item.Object, "status", "error")

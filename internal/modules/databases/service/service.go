@@ -366,6 +366,82 @@ func (s *Service) hibernate(ctx context.Context, projectID, id uuid.UUID, on boo
 	return &v, nil
 }
 
+// EnableBackups : met en place les sauvegardes d'une base créée avant que la
+// plateforme ne les propose. L'instance redémarre (une minute environ), puis
+// une première sauvegarde complète part aussitôt.
+func (s *Service) EnableBackups(ctx context.Context, projectID, id uuid.UUID) (*domain.DatabaseView, error) {
+	if err := s.available(); err != nil {
+		return nil, err
+	}
+	d, err := s.Repo.Get(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	ns, err := s.namespace(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	st, err := s.Clusters.State(ctx, ns, d.ClusterName())
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case d.Status == domain.StatusDeleting || !st.Exists:
+		return nil, domain.ErrNotReady
+	case st.Hibernated:
+		return nil, domain.ErrStopped
+	}
+	spec := ClusterSpec{Name: d.ClusterName(), DatabaseID: d.ID.String(), ProjectID: projectID.String(), Storage: d.StorageSize}
+	restarting, err := s.Clusters.EnableBackups(ctx, ns, spec)
+	if err != nil {
+		if errors.Is(err, domain.ErrBackupsDisabled) || errors.Is(err, domain.ErrBackupPluginMissing) {
+			return nil, domain.ErrBackupsUnavailable
+		}
+		return nil, fmt.Errorf("backups could not be enabled: %w", err)
+	}
+	if restarting {
+		go s.firstBackup(context.WithoutCancel(ctx), ns, d.ID, d.ClusterName())
+	}
+	st.BackupsEnabled = true
+	v := view(*d, ns, st)
+	s.enrich(ctx, &v, d.ID)
+	return &v, nil
+}
+
+// Attente de la première sauvegarde après EnableBackups : l'instance
+// redémarre (quelques minutes). Délai dépassé (ou API relancée entre-temps) :
+// la sauvegarde de la nuit prend le relais.
+var (
+	firstBackupEvery   = 15 * time.Second
+	firstBackupTimeout = 20 * time.Minute
+)
+
+// firstBackup : lance la première sauvegarde complète dès que l'instance est
+// revenue avec le conteneur de sauvegarde.
+func (s *Service) firstBackup(ctx context.Context, ns string, id uuid.UUID, cluster string) {
+	ctx, cancel := context.WithTimeout(ctx, firstBackupTimeout)
+	defer cancel()
+	t := time.NewTicker(firstBackupEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			s.Logger.Warnw("database: first backup not started (the nightly one will run)", "database", id)
+			return
+		case <-t.C:
+		}
+		started, err := s.Clusters.FirstBackup(ctx, ns, cluster)
+		if err != nil {
+			s.Logger.Warnw("database: first backup", "database", id, "error", err)
+			continue
+		}
+		if started {
+			s.Logger.Infow("database: first backup started", "database", id)
+			return
+		}
+	}
+}
+
 // Attach : pose l'URI de connexion de la base dans une variable SECRÈTE du
 // conteneur (redéployé). Le conteneur doit être du même projet ; l'URI ne
 // sort jamais de l'API. Les droits (connect sur la base, variables du

@@ -146,5 +146,9 @@
  {
   "fr": "La base est arrêtée : relancez-la d'abord",
   "en": "the database is stopped: start it first"
+ },
+ {
+  "fr": "Les sauvegardes ne sont pas encore disponibles sur la plateforme",
+  "en": "backups are not available on this platform yet"
  }
 ]
