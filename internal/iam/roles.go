@@ -107,6 +107,7 @@ var (
 		PlatformComputeGet, PlatformComputeManage,
 		PlatformSupportManage,
 		PlatformLegalManage, PlatformStatusManage,
+		PlatformOperatorUse, PlatformSupportGet, PlatformStatusGet,
 	}
 )
 
@@ -182,7 +183,7 @@ var predefinedRoles = []Role{
 		Permissions: platformAdminPerms, PlatformOnly: true},
 	{Name: RolePlatformSupport, Title: "Support plateforme",
 		Description: "Staff betorun : consulte la flotte et traite les tickets de support.",
-		Permissions: []Permission{PlatformClustersList, PlatformClusterKeysList, PlatformSupportManage}, PlatformOnly: true},
+		Permissions: []Permission{PlatformClustersList, PlatformClusterKeysList, PlatformSupportManage, PlatformSupportGet, PlatformStatusGet, PlatformOperatorUse}, PlatformOnly: true},
 	// Attribué par la plateforme au compte de service système d'un cluster,
 	// jamais à une personne (iam.md §7.4).
 	{Name: RoleClusterAgent, Title: "Agent de cluster",

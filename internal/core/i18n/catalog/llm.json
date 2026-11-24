@@ -32,8 +32,16 @@
   "en": "llm: ledger without Redis"
  },
  {
-  "fr": "llm: llm.primary.base_url est obligatoire",
-  "en": "llm: llm.primary.base_url is required"
+  "fr": "llm: llm.primary.base_url (ou kind) est obligatoire",
+  "en": "llm: llm.primary.base_url (or kind) is required"
+ },
+ {
+  "fr": "llm.%s : max_tokens_field et extra_body_json ne s'appliquent pas à l'API Claude",
+  "en": "llm.%s: max_tokens_field and extra_body_json do not apply to the Claude API"
+ },
+ {
+  "fr": "llm.%s.effort ne s'applique qu'à l'API Claude",
+  "en": "llm.%s.effort only applies to the Claude API"
  },
  {
   "fr": "llm: plafond journalier invalide (%d)",

@@ -54,7 +54,7 @@ Un agent qui tourne sur la machine en panne ne la répare pas. L'Opérateur tour
 **Connexion de l'équipe :**
 
 - **En temps normal**, par l'IAM de la plateforme, comme le back-office. L'Opérateur obtient un jeton délégué de la personne (voir §3).
-- **Si l'annuaire ou l'API ne répondent plus**, par un **accès de secours** propre au serveur de gestion : comptes locaux nominatifs de l'équipe, clé de sécurité ou TOTP obligatoire, et accès réservé au tunnel SSH. Les actions faites ainsi restent limitées au chemin de secours (infrastructure, jamais les données des clients) et entrent dans le journal du serveur de gestion. Ce journal est recopié dans l'audit de la plateforme au retour de l'API.
+- **Si l'annuaire ou l'API ne répondent plus**, par un **accès de secours** propre au serveur de gestion : comptes locaux nominatifs de l'équipe, mot de passe et TOTP obligatoires, et accès réservé au tunnel SSH, ouvert par des **clés SSH adossées à une clé physique** (`ed25519-sk`). La clé physique est sur SSH et non dans l'Opérateur (WebAuthn) : une cérémonie WebAuthn dépend d'une page web, qui peut être tombée pendant la panne. L'accès reste ouvert même quand l'API répond (une panne partielle ne se détecte pas de façon fiable), mais comme un accès d'urgence : **motif obligatoire**, **alerte immédiate de toute l'équipe** par un webhook hors du serveur 1, session de 2 heures. Les actions faites ainsi restent limitées au chemin de secours (infrastructure, jamais les données des clients) et entrent dans le journal du serveur de gestion. Ce journal est recopié dans l'audit de la plateforme au retour de l'API : lots signés par une clé Ed25519 propre à l'Opérateur (l'API ne garde que la clé publique), chaque entrée importée une seule fois.
 
 **Le serveur de gestion se surveille lui-même** : une sonde externe sur la page d'état prévient l'équipe s'il ne répond plus.
 
@@ -79,7 +79,7 @@ Par rapport au copilot :
 
 L'Opérateur ajoute l'**adaptateur Anthropic natif** prévu par l'ADR 0008 (`llm/anthropic`) : appels d'outils, réponses en flux et mise en cache du prompt. Le cache compte ici : le prompt système, les outils et les runbooks sont longs et identiques d'un tour à l'autre.
 
-- **Modèle** : `claude-opus-5-5` pour les investigations, par config (`llm.operator.model`). Un modèle plus léger (`claude-haiku-5-5`) sert aux tâches simples : résumé d'un ticket, tri de la file.
+- **Modèle** : `claude-opus-5-5` pour les investigations, par la variable `OPERATOR_MODEL` (l'Opérateur ne lit pas la configuration de l'API). Un modèle plus léger (`claude-haiku-5-5`) sert aux tâches simples : résumé d'un ticket, tri de la file.
 - **Pile** : la même que le copilot (disjoncteur, secours, budget), avec un **budget d'équipe** journalier distinct de celui des clients.
 - **Clé** : un compte Anthropic à part, dont la clé n'est que sur le serveur de gestion. Si le fournisseur du modèle ne répond plus, la console de l'Opérateur reste utilisable à la main : outils, cartes et runbooks, sans agent.
 

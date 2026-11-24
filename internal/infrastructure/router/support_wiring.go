@@ -105,21 +105,24 @@ func addSupportRoutes(app *App) {
 	manage := g.Perm(iam.PlatformSupportManage, security.PlatformResource)
 	// Un ticket précis d'un client : motif exigé, accès visible dans son journal d'audit.
 	onTicket := g.Perm(iam.PlatformSupportManage, security.PlatformResource).Staff(staffTicket(r))
-	admin.AddRoute("/summary", http.MethodGet, "Compteurs du menu : ouverts, en cours, en attente du client, prioritaires", manage, tonic.Handler(r.Summary, http.StatusOK))
-	admin.AddRoute("/tickets", http.MethodGet, "Tickets de tous les clients, à traiter d'abord", manage, tonic.Handler(r.AdminList, http.StatusOK))
-	admin.AddRoute("/agents", http.MethodGet, "Membres de l'équipe, pour l'assignation", manage, tonic.Handler(r.Agents, http.StatusOK))
+	// Lectures : permission de lecture (un jeton délégué en lecture y suffit).
+	read := g.Perm(iam.PlatformSupportGet, security.PlatformResource)
+	readTicket := g.Perm(iam.PlatformSupportGet, security.PlatformResource).Staff(staffTicket(r))
+	admin.AddRoute("/summary", http.MethodGet, "Compteurs du menu : ouverts, en cours, en attente du client, prioritaires", read, tonic.Handler(r.Summary, http.StatusOK))
+	admin.AddRoute("/tickets", http.MethodGet, "Tickets de tous les clients, à traiter d'abord", read, tonic.Handler(r.AdminList, http.StatusOK))
+	admin.AddRoute("/agents", http.MethodGet, "Membres de l'équipe, pour l'assignation", read, tonic.Handler(r.Agents, http.StatusOK))
 	// Action groupée : un motif commun ; chaque changement est inscrit dans le
 	// journal de son ticket, comme une action unitaire.
 	admin.AddRoute("/tickets/bulk", http.MethodPost, "Même changement (statut, priorité, agent) sur 50 tickets au plus",
 		manage.Staff(staffPlatform), tonic.Handler(r.Bulk, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID", http.MethodGet, "Un ticket, avec ses messages, notes internes, pièces jointes et événements", onTicket, tonic.Handler(r.AdminGet, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID", http.MethodGet, "Un ticket, avec ses messages, notes internes, pièces jointes et événements", readTicket, tonic.Handler(r.AdminGet, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/context", http.MethodGet, "Le client derrière un ticket : organisation, porte-monnaie, projets, ressource, autres tickets",
-		onTicket, tonic.Handler(r.TicketContext, http.StatusOK))
+		readTicket, tonic.Handler(r.TicketContext, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/notes", http.MethodPost, "Note interne de l'équipe (jamais montrée au client, aucun e-mail)", onTicket, tonic.Handler(r.AddNote, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID", http.MethodPatch, "Changer le statut, la priorité, la catégorie ou les étiquettes", onTicket, tonic.Handler(r.AdminUpdate, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/assign", http.MethodPost, "Assigner un ticket à un agent", onTicket, tonic.Handler(r.Assign, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/messages", http.MethodPost, "Répondre au client (le ticket attend le client, prévenu par e-mail)", onTicket, tonic.Handler(r.AdminReply, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID/attachments/:attachmentID", http.MethodGet, "Télécharger une pièce jointe", onTicket, wrapRawHandler(r.AdminDownload))
+	admin.AddRoute("/tickets/:ticketID/attachments/:attachmentID", http.MethodGet, "Télécharger une pièce jointe", readTicket, wrapRawHandler(r.AdminDownload))
 	// En direct (canal support:ticket:<ticket>) : le back-office n'a pas les
 	// routes /realtime ; le jeton d'un ticket porte la même garde que sa lecture.
 	if rt, ok := app.Controllers.Realtime.(*realtimeCtrl.Controller); ok && rt != nil {
@@ -134,7 +137,7 @@ func addSupportRoutes(app *App) {
 			return t.OrganizationID, nil
 		}
 	}
-	admin.AddRoute("/macros", http.MethodGet, "Réponses types", manage, tonic.Handler(r.Macros, http.StatusOK))
+	admin.AddRoute("/macros", http.MethodGet, "Réponses types", read, tonic.Handler(r.Macros, http.StatusOK))
 	admin.AddRoute("/macros", http.MethodPost, "Créer une réponse type", manage, tonic.Handler(r.CreateMacro, http.StatusCreated))
 	admin.AddRoute("/macros/:macroID", http.MethodPatch, "Modifier une réponse type", manage, tonic.Handler(r.UpdateMacro, http.StatusOK))
 	admin.AddRoute("/macros/:macroID", http.MethodDelete, "Supprimer une réponse type", manage, tonic.Handler(r.DeleteMacro, http.StatusNoContent))

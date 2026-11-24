@@ -222,9 +222,17 @@ const (
 	PlatformLegalManage Permission = "platform.legal.manage"
 	// PlatformStatusManage : incidents et maintenances de la page de statut.
 	PlatformStatusManage Permission = "platform.status.manage"
+	// PlatformStatusGet : état des composants et incidents, en lecture.
+	PlatformStatusGet Permission = "platform.status.get"
 	// PlatformSupportManage : tickets de tous les clients, réponses de
 	// l'équipe, réponses types.
 	PlatformSupportManage Permission = "platform.support.manage"
+	// PlatformSupportGet : tickets de tous les clients, en lecture (ouverte à
+	// un jeton délégué en lecture, comme celui de l'Opérateur).
+	PlatformSupportGet Permission = "platform.support.get"
+	// PlatformOperatorUse : utiliser l'Opérateur, l'agent d'exploitation de
+	// l'équipe (ADR 0016). Il agit avec les droits de la personne, jamais plus.
+	PlatformOperatorUse Permission = "platform.operator.use"
 )
 
 // PermissionInfo : métadonnées d'une permission (doc, UI, rôles personnalisés).
@@ -384,6 +392,9 @@ var catalog = map[Permission]PermissionInfo{
 	PlatformLegalManage:            {Title: "Rédiger et publier les conditions de vente et la politique d'usage", PlatformOnly: true},
 	PlatformStatusManage:           {Title: "Annoncer les incidents et les maintenances sur la page de statut", PlatformOnly: true},
 	PlatformSupportManage:          {Title: "Traiter les tickets de support de tous les clients", PlatformOnly: true},
+	PlatformSupportGet:             {Title: "Lire les tickets de support de tous les clients", PlatformOnly: true},
+	PlatformStatusGet:              {Title: "Voir l'état des composants et les incidents", PlatformOnly: true},
+	PlatformOperatorUse:            {Title: "Utiliser l'Opérateur, l'agent d'exploitation de l'équipe", PlatformOnly: true},
 }
 
 // Known : la permission figure au catalogue.

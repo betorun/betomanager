@@ -30,6 +30,8 @@ import (
 const (
 	// ActorCopilot : le Copilot de betorun.
 	ActorCopilot = "betorun:copilot"
+	// ActorOperator : l'Opérateur, agent d'exploitation de l'équipe (ADR 0016).
+	ActorOperator = "betorun:operator"
 
 	// ScopeRead : permissions de lecture seulement (iam.Permission.ReadOnly).
 	ScopeRead = "read"
@@ -41,7 +43,7 @@ const (
 	MaxDelegatedTTL = 15 * time.Minute
 )
 
-var knownActors = map[string]bool{ActorCopilot: true}
+var knownActors = map[string]bool{ActorCopilot: true, ActorOperator: true}
 
 // Delegation : demande de jeton délégué.
 type Delegation struct {

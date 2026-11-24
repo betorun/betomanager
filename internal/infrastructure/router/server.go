@@ -195,6 +195,12 @@ func (a *App) startHTTPServer(mode Mode) {
 	RegisterRoutesFor(f, mode)
 	// Routes déclarées Public() : seules exemptées d'authentification.
 	a.Security.Middleware.SetPublicRoutes(PublicRoutes())
+	// Opérateur : outils construits depuis les routes /admin (back-office).
+	if mode == ModePlatform || mode == "" {
+		if err := a.bindOperator(f, engine); err != nil {
+			a.Logger.Errorw("operator tools disabled", "error", err)
+		}
+	}
 	// Copilot : outils construits depuis les routes des clients (absent du back-office).
 	if mode != ModePlatform {
 		if err := a.bindCopilot(f, engine); err != nil {

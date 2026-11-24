@@ -203,7 +203,8 @@ type DatabaseBackupConfig struct {
 // par l'environnement, et viper ne lie pas les listes).
 type LLMConfig struct {
 	Enabled bool `mapstructure:"enabled"`
-	// Primary est obligatoire si Enabled ; Fallback est facultatif (BaseURL vide = absent).
+	// Primary est obligatoire si Enabled ; Fallback est facultatif (BaseURL
+	// et Kind vides = absent).
 	Primary  LLMProviderConfig `mapstructure:"primary"`
 	Fallback LLMProviderConfig `mapstructure:"fallback"`
 	// DailyBudgetMicroUSD : plafond de dépense par organisation et par jour
@@ -215,10 +216,13 @@ type LLMConfig struct {
 }
 
 // LLMProviderConfig : un fournisseur compatible OpenAI (OpenAI, vLLM, Groq,
-// Gemini, Mistral…).
+// Gemini, Mistral…), ou l'API Claude native (Kind "anthropic").
 type LLMProviderConfig struct {
 	// Name : nom court et stable (labels de métriques), ex. "qwen", "groq".
-	Name    string `mapstructure:"name"`
+	Name string `mapstructure:"name"`
+	// Kind : "openai" (défaut, API compatible) ou "anthropic" (API Claude,
+	// SDK officiel ; BaseURL facultative).
+	Kind    string `mapstructure:"kind"`
 	BaseURL string `mapstructure:"base_url"`
 	// APIKey : secret. Prod : KUBEMANAGER_LLM_PRIMARY_API_KEY.
 	APIKey  string        `mapstructure:"api_key"`
@@ -229,6 +233,9 @@ type LLMProviderConfig struct {
 	// ExtraBodyJSON : objet JSON fusionné dans chaque requête, ex.
 	// {"chat_template_kwargs":{"enable_thinking":false}} pour Qwen sur vLLM.
 	ExtraBodyJSON string `mapstructure:"extra_body_json"`
+	// Effort : anthropic seulement ; "low", "medium", "high", "xhigh" ou
+	// "max" (vide = défaut de l'API).
+	Effort string `mapstructure:"effort"`
 	// Prix en micro-dollars par million de jetons (budget). Un modèle
 	// auto-hébergé reçoit un prix interne, sinon rien n'est plafonné.
 	InputMicroUSDPerMTok  int64 `mapstructure:"input_micro_usd_per_mtok"`
@@ -288,6 +295,11 @@ type IAMConfig struct {
 	// clés de signature du STS stockées en base. Secret (env
 	// KUBEMANAGER_IAM_STS_KEY_ENCRYPTION_KEY en prod), remplaçable par un KMS.
 	STSKeyEncryptionKey string `mapstructure:"sts_key_encryption_key"`
+	// OperatorJournalKeys : clés publiques Ed25519 (32 octets en base64) de
+	// l'Opérateur, qui signe la recopie de son journal dans l'audit (ADR
+	// 0016). Deux pour une rotation. Vide : route fermée (404). Env
+	// KUBEMANAGER_IAM_OPERATOR_JOURNAL_KEYS, séparées par des espaces.
+	OperatorJournalKeys []string `mapstructure:"operator_journal_keys"`
 	// MFAACRValues : valeurs du claim acr (Keycloak, mapping ACR → niveau
 	// d'authentification du realm) qui attestent une double authentification,
 	// ex. ["gold"]. Vide : MFA non configuré (pas de step-up, organisation

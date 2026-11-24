@@ -39,6 +39,8 @@ type Route struct {
 	// CopilotGuide : route connue du Copilot, faite dans la console
 	// (copilot_decisions.go), nil sinon.
 	CopilotGuide *CopilotGuide
+	// Operator : outil de lecture de l'Opérateur (operator_decisions.go).
+	Operator *OperatorTool
 }
 
 type RouteGroup struct {
