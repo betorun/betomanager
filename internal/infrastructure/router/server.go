@@ -127,14 +127,7 @@ func (a *App) startHTTPServer(mode Mode) {
 	if len(origins) == 0 {
 		origins = []string{"http://localhost:3000"}
 	}
-	engine.Use(cors.New(cors.Config{
-		AllowOrigins:     origins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key", "Idempotency-Key", "X-Request-ID"},
-		ExposeHeaders:    []string{"Idempotency-Status", "Retry-After", "X-Request-ID", "X-Next-Cursor"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+	engine.Use(cors.New(corsConfig(origins)))
 
 	engine.Use(gin.Recovery())
 	engine.Use(middleware.SecureHeaders())
@@ -261,4 +254,19 @@ func trustedProxies(cfg []string) []string {
 		return defaultTrustedProxies
 	}
 	return cfg
+}
+
+// corsConfig : origines de la console. Le back-office (console sur le poste
+// de l'équipe, autre origine que l'API plateforme) envoie le motif staff :
+// sans lui dans AllowHeaders, la pré-vérification bloque toute route staff.
+func corsConfig(origins []string) cors.Config {
+	return cors.Config{
+		AllowOrigins: origins,
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key", "Idempotency-Key", "X-Request-ID",
+			security.HeaderJustification},
+		ExposeHeaders:    []string{"Idempotency-Status", "Retry-After", "X-Request-ID", "X-Next-Cursor"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}
 }
