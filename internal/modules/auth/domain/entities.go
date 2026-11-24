@@ -35,9 +35,22 @@ type Project struct {
 	// (marque blanche : l'identifiant peut nommer le fournisseur).
 	ClusterID *string `gorm:"column:cluster_id;type:varchar(100)" json:"-"`
 
+	// Suppression programmée (migration 000073) : effacement définitif à
+	// DeletionScheduledAt, restaurable d'ici là (statut PENDING_DELETION).
+	DeletionScheduledAt *time.Time
+	DeletionRequestedBy string
+	DeletionStopped     *DeletionStopped `gorm:"serializer:json;type:jsonb"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+// DeletionStopped : ce que la demande de suppression a arrêté, à relancer si
+// le projet est restauré.
+type DeletionStopped struct {
+	Workloads []uuid.UUID `json:"workloads,omitempty"`
+	Databases []uuid.UUID `json:"databases,omitempty"`
 }
 
 type User struct {

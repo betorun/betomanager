@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -21,7 +22,11 @@ import (
 
 type IProjectService interface {
 	CreateProject(ctx context.Context, req typesproject.CreateProjectRequest, ownerID string) (*typesproject.ProjectResponse, error)
-	DeleteProject(ctx context.Context, projectID string) (*typesproject.ProjectResponse, error)
+	// DeleteProject : suppression programmée (délai de grâce) ; actor : principal.
+	DeleteProject(ctx context.Context, projectID, actor string) (*typesproject.ProjectResponse, error)
+	RestoreProject(ctx context.Context, projectID, actor string) (*typesproject.ProjectDetail, error)
+	PurgeDue(ctx context.Context)
+	PendingDeletion(ctx context.Context, project uuid.UUID) (bool, error)
 	GetProjectStatus(ctx context.Context, projectID string) (*typesproject.ProjectStatusResponse, error)
 	GetMetrics(ctx context.Context, projectID string) (*typesproject.NamespaceMetrics, error)
 	// ListProjects : projets accessibles, donnés par l'IAM (organisations et
@@ -58,6 +63,15 @@ type ProjectService struct {
 	// Placer : cluster d'un nouveau projet (région puis capacité) ; nil :
 	// cluster par défaut.
 	Placer Placer
+
+	// Suppression programmée (deletion.go) ; Deletion nil : effacement
+	// immédiat, comme avant.
+	Deletion         repository.DeletionStore
+	Containers       ProjectContainers
+	ProjectDatabases ProjectDatabases
+	Notifier         DeletionNotifier
+	DeletionGrace    time.Duration
+	Now              func() time.Time
 }
 
 // Placer : choix du cluster d'un nouveau projet (registre des clusters).
@@ -178,33 +192,5 @@ func (s *ProjectService) CreateProject(ctx context.Context, req typesproject.Cre
 		WorkflowID: handle.WorkflowID,
 		Status:     utils.ProjectStatusProvisioning,
 		Message:    "the project is currently being created on the cluster.",
-	}, nil
-}
-
-func (s *ProjectService) DeleteProject(ctx context.Context, projectID string) (*typesproject.ProjectResponse, error) {
-	project, err := s.Repos.GetProjectByID(ctx, projectID)
-	if err != nil {
-		s.Logger.Errorw("Project not found for deletion", "projectID", projectID, "error", err)
-		return nil, err
-	}
-
-	handle, err := s.Distributor.ExecuteWorkflow(ctx,
-		temporal.ExecuteOptions{WorkflowID: workflows.WorkflowIDDeletePrefix + projectID},
-		workflows.DeleteProjectWorkflowName, projectID, project.Namespace,
-	)
-	if temporal.IsAlreadyStarted(err) {
-		// Deuxième demande : la suppression est déjà en cours.
-		handle, err = temporal.WorkflowHandle{WorkflowID: workflows.WorkflowIDDeletePrefix + projectID}, nil
-	}
-	if err != nil {
-		s.Logger.Errorw("Failed to start delete workflow", "error", err)
-		return nil, err
-	}
-
-	return &typesproject.ProjectResponse{
-		ProjectID:  projectID,
-		WorkflowID: handle.WorkflowID,
-		Status:     utils.ProjectStatusDeleting,
-		Message:    "The project deletion and cleanup has been initiated.",
 	}, nil
 }

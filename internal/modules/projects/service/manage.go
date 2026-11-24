@@ -50,6 +50,8 @@ func summary(p *authdomain.Project) typesproject.ProjectSummary {
 		Status:         p.Status,
 		OrganizationID: p.OrganizationID.String(),
 		CreatedAt:      p.CreatedAt,
+
+		DeletionScheduledAt: p.DeletionScheduledAt,
 	}
 }
 

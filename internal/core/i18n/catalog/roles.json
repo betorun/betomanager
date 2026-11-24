@@ -602,5 +602,13 @@
  {
   "fr": "Demander ou rendre l'IP de sortie dédiée du projet (facturée)",
   "en": "Request or release the project's dedicated egress IP (billed)"
+ },
+ {
+  "fr": "Restaurer un projet dont la suppression est programmée",
+  "en": "Restore a project scheduled for deletion"
+ },
+ {
+  "fr": "Voir les comptes GitHub reliés au projet, leurs dépôts et leurs branches",
+  "en": "View the GitHub accounts linked to the project, their repositories and branches"
  }
 ]

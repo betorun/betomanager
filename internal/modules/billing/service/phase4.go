@@ -216,6 +216,12 @@ func (s *Service) CanRun(ctx context.Context, project uuid.UUID) error {
 	if acc.Charging && acc.SuspendedAt != nil {
 		return domain.ErrAccountSuspended
 	}
+	// Suppression programmée : tout reste arrêté jusqu'à la restauration.
+	if pending, err := s.Inventory.ProjectPendingDeletion(ctx, project); err != nil {
+		return unavailable(err)
+	} else if pending {
+		return domain.ErrProjectPendingDeletion
+	}
 	b, err := s.Phase4.Budget(ctx, project)
 	if err != nil {
 		return unavailable(err)

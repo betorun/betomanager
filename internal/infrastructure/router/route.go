@@ -290,8 +290,10 @@ func addProjectRoutes(app *App) {
 		g.Perm(iam.ProjectsGet, project), tonic.Handler(r.GetProject, http.StatusOK))
 	ProjectGroup.AddRoute("/:id", http.MethodPatch, "Renommer un projet ou changer sa description",
 		g.Perm(iam.ProjectsUpdate, project), tonic.Handler(r.UpdateProject, http.StatusOK))
-	ProjectGroup.AddRoute("/:id", http.MethodDelete, "Supprimer un projet",
+	ProjectGroup.AddRoute("/:id", http.MethodDelete, "Supprimer un projet : tout est arrêté, effacement définitif après 12 h (restaurable d'ici là)",
 		g.Perm(iam.ProjectsDelete, project), tonic.Handler(r.DeleteProject, http.StatusAccepted))
+	ProjectGroup.AddRoute("/:id/restore", http.MethodPost, "Restaurer un projet dont la suppression est programmée (avant l'effacement)",
+		g.Perm(iam.ProjectsUndelete, project), tonic.Handler(r.RestoreProject, http.StatusOK))
 }
 
 func addWorkloadRoutes(app *App) {

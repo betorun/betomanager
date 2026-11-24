@@ -8,7 +8,8 @@
 - Plusieurs projets par organisation, dans la limite `organizations.max_projects` (3 par défaut, réglable par le staff).
 - Limites de ressources : posées par défaut à la création, modifiées seulement par le staff (`PATCH /admin/projects/:id/limits`).
 - Saga Temporal `CreateProjectWorkflow` : DB → namespace K8s → quota → owner.
-- Saga Temporal `DeleteProjectWorkflow` : namespace → workloads DB → objets des sites → project DB (cascade : bases, membres, builds, sites…).
+- Suppression programmée (délai de grâce de 12 h, migration 000073) : la demande passe le projet en `PENDING_DELETION`, arrête ses conteneurs et met ses bases en veille (mémorisés dans `deletion_stopped`), prévient propriétaires et éditeurs par e-mail. Pendant le délai, les écritures sous le projet sont refusées (409 `PROJECT_PENDING_DELETION`, garde IAM et `CanRun` de la facturation) et rien n'est facturé. `POST /projects/:id/restore` relance ce qui avait été arrêté. La purge (`project-purge`, toutes les 5 min, processus API) lance l'effacement à l'échéance. Refus si le projet a encore des VPS (409 `PROJECT_HAS_VPS`).
+- Saga Temporal `DeleteProjectWorkflow` (à l'échéance) : namespace → workloads DB → objets des sites → project DB (cascade : bases, membres, builds, sites…).
 - Lecture des metrics via le Metrics Server K8s (CPU/RAM/Storage par namespace).
 
 ## Endpoints HTTP
@@ -23,7 +24,8 @@ Sous `/kmanager/v1`. Voir `addProjectRoutes` dans [route.go](../../internal/infr
 | `PATCH` | `/projects/:id` | `resourcemanager.projects.update` | Renommer / changer la description (`{name?, description?}`) ; l'espace Kubernetes ne change pas |
 | `GET` | `/projects/:id/status` | `resourcemanager.projects.get` | Statut DB + état K8s |
 | `GET` | `/projects/:id/metrics` | `resourcemanager.projects.get` | Consommation live (Metrics Server), réservé, limites, images |
-| `DELETE` | `/projects/:id` | `resourcemanager.projects.delete` (sensible) | Supprimer (déclenche `DeleteProjectWorkflow`) ; la console le propose sur la page Projet, nom à retaper |
+| `DELETE` | `/projects/:id` | `resourcemanager.projects.delete` (sensible) | Programmer la suppression (effacement après 12 h) ; idempotent ; la console le propose sur la page Projet, la CLI avec `betorun projects delete`, nom à retaper |
+| `POST` | `/projects/:id/restore` | `resourcemanager.projects.undelete` | Annuler une suppression programmée ; bandeau de la console, `betorun projects restore` |
 | `PATCH` | `/admin/projects/:id/limits` | `platform.projects.setLimits` (staff, sensible) | Nouvelles limites `{cpu_limit, memory_limit, storage_limit}` ; un champ vide garde la valeur |
 | `PATCH` | `/admin/organizations/:id/limits` | `platform.projects.setLimits` (staff, sensible) | Nombre de projets autorisés `{max_projects}` (1 à 1000) |
 
@@ -88,7 +90,7 @@ Ordre **namespace first, DB second** — même logique que le delete workload. E
 ## Pitfalls
 
 - **Namespace orphelin** — si le workflow plante entre `CreateNamespace` et `ReconcileProjectResources`, le namespace existe sans quota. La saga n'auto-répare pas ça — un admin doit retry. À suivre dans Grafana "Projects in PROVISIONING state".
-- **Delete race** — `DeleteProject` ne passe pas le projet en `DELETING` en base (seule la réponse 202 le dit). Un workload créé pendant la suppression peut l'être après celle du namespace → erreur à l'InstallChart. Effet de bord connu : `GET /identity/bootstrap-status` garde le projet jusqu'à la dernière étape ; la console attend donc la fin (écran « Suppression du projet en cours »).
+- **Delete race** — la demande passe le projet en `PENDING_DELETION` avant d'arrêter quoi que ce soit, et la purge en `DELETING` avant de lancer `DeleteProjectWorkflow` : toute écriture est refusée entre-temps. Restauration et purge passent par des mises à jour conditionnelles sur le statut : une seule des deux réussit.
 - **Name collision** — unique par organisation (`uq_projects_org_name`), 409 `ErrNameTaken`. Le namespace étant tiré de l'ID, recréer un projet du même nom juste après une suppression ne heurte pas l'ancien namespace.
 - **Renommer** ne touche ni le namespace ni les adresses : seul l'affichage change.
 

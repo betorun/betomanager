@@ -359,6 +359,9 @@ func (m *MiddlewareManager) RequireFor(permFor func(iam.ResourceName) (iam.Permi
 		if !m.checkMFA(c, perm, resource) {
 			return
 		}
+		if !m.checkProjectState(c, perm, resource) {
+			return
+		}
 		// Pas de c.Next() : gin passe seul au handler suivant. L'appeler ici
 		// exécuterait le handler avant les contrôles suivants d'une garde
 		// composée (PermAll, StaffAccess).

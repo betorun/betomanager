@@ -148,6 +148,8 @@ func (a *App) RunServer(ctx context.Context) error {
 	defer stop()
 	// Données des organisations suspendues trop longtemps (ADR 0012).
 	a.startSuspensionPurge(ctx)
+	// Projets dont le délai de grâce est écoulé : effacement définitif.
+	a.startProjectPurge(ctx)
 	<-ctx.Done()
 
 	a.Logger.Infow("server shutdown signal received")

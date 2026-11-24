@@ -180,7 +180,7 @@ func TestDeleteProject_NotFound_ReturnsError(t *testing.T) {
 	repo := &fakeProjectRepo{getErr: errors.New("not found")}
 	svc := newProjectServiceForTest(dist, repo)
 
-	resp, err := svc.DeleteProject(context.Background(), uuid.NewString())
+	resp, err := svc.DeleteProject(context.Background(), uuid.NewString(), "")
 
 	require.Error(t, err)
 	assert.Nil(t, resp)
@@ -197,7 +197,7 @@ func TestDeleteProject_HappyPath_StartsDeleteWorkflow(t *testing.T) {
 	}}
 	svc := newProjectServiceForTest(dist, repo)
 
-	resp, err := svc.DeleteProject(context.Background(), projectID)
+	resp, err := svc.DeleteProject(context.Background(), projectID, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -233,7 +233,7 @@ func TestDeleteProject_AlreadyRunning(t *testing.T) {
 	projectID := uuid.NewString()
 	dist := &fakeDistributor{err: fmt.Errorf("execute workflow: %w", serviceerror.NewWorkflowExecutionAlreadyStarted("started", "", "run"))}
 	repo := &fakeProjectRepo{project: &authdomain.Project{ID: uuid.MustParse(projectID), Name: "alpha"}}
-	resp, err := newProjectServiceForTest(dist, repo).DeleteProject(context.Background(), projectID)
+	resp, err := newProjectServiceForTest(dist, repo).DeleteProject(context.Background(), projectID, "")
 	require.NoError(t, err)
 	assert.Equal(t, workflows.WorkflowIDDeletePrefix+projectID, resp.WorkflowID)
 }

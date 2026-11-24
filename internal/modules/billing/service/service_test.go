@@ -113,8 +113,13 @@ func (m *memStore) Currency(context.Context, uuid.UUID) (string, error) {
 }
 
 type fakeInventory struct {
-	res    []domain.Reservation
-	orgErr error // erreur de ProjectOrg (nil : organisation nulle)
+	res     []domain.Reservation
+	orgErr  error // erreur de ProjectOrg (nil : organisation nulle)
+	pending bool  // projet en suppression programmée
+}
+
+func (f *fakeInventory) ProjectPendingDeletion(context.Context, uuid.UUID) (bool, error) {
+	return f.pending, nil
 }
 
 func (f *fakeInventory) Reservations(context.Context, time.Time) ([]domain.Reservation, error) {
