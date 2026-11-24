@@ -39,7 +39,8 @@ type Store interface {
 	// une personne retirée ne reçoit plus le contenu des tickets.
 	MemberContacts(ctx context.Context, org uuid.UUID, users []uuid.UUID) ([]Contact, error)
 	UserExists(ctx context.Context, user uuid.UUID) (bool, error)
-	Summary(ctx context.Context) (domain.Summary, error)
+	// Summary : compteurs de la file ; me : agent qui demande (compteur « mine »).
+	Summary(ctx context.Context, me *uuid.UUID) (domain.Summary, error)
 
 	Macros(ctx context.Context) ([]domain.Macro, error)
 	CreateMacro(ctx context.Context, m *domain.Macro) error

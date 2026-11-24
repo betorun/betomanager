@@ -79,6 +79,8 @@ func PlatformRules() []rbacv1.PolicyRule {
 		{APIGroups: []string{"postgresql.cnpg.io"}, Resources: []string{"clusters", "scheduledbackups", "backups"}, Verbs: crud},
 		{APIGroups: []string{"barmancloud.cnpg.io"}, Resources: []string{"objectstores"}, Verbs: crud},
 		{APIGroups: []string{"cilium.io"}, Resources: []string{"ciliumegressgatewaypolicies"}, Verbs: crud},
+		// État des certificats HTTPS des domaines (lecture seule).
+		{APIGroups: []string{"cert-manager.io"}, Resources: []string{"certificates"}, Verbs: []string{"get", "list"}},
 	}
 }
 

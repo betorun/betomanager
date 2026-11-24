@@ -65,6 +65,8 @@ const (
 	EventTagAdded        EventType = "TAG_ADDED"
 	EventTagRemoved      EventType = "TAG_REMOVED"
 	EventCommentAdded    EventType = "COMMENT_ADDED"
+	// EventNoteAdded : note interne de l'équipe (jamais montrée au client).
+	EventNoteAdded EventType = "NOTE_ADDED"
 )
 
 // Bornes des textes et des fichiers.
@@ -115,9 +117,12 @@ type Message struct {
 	OrganizationID uuid.UUID  `json:"organization_id"`
 	AuthorUserID   *uuid.UUID `json:"author_user_id,omitempty"`
 	AuthorRole     AuthorRole `json:"author_role"`
-	Body           string     `json:"body"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	// Internal : note de l'équipe, jamais rendue au client ni publiée sur
+	// son canal.
+	Internal  bool      `json:"internal,omitempty"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Attachment : fichier joint, téléchargé par l'API (URL relative à la racine
@@ -163,6 +168,10 @@ type Summary struct {
 	WaitingCustomer int64 `json:"waiting_customer"`
 	// HighPriority : tickets à traiter (OPEN, IN_PROGRESS) en HIGH ou URGENT.
 	HighPriority int64 `json:"high_priority"`
+	// Mine / Unassigned : tickets en cours (non résolus) assignés à l'agent
+	// qui demande / à personne.
+	Mine       int64 `json:"mine"`
+	Unassigned int64 `json:"unassigned"`
 }
 
 // Filter : liste des tickets. OrganizationID nil : toutes (équipe).
@@ -172,6 +181,9 @@ type Filter struct {
 	Category       Category
 	Priority       Priority
 	Search         string
+	// AssignedTo : assignés à cet agent ; Unassigned : à personne.
+	AssignedTo *uuid.UUID
+	Unassigned bool
 	// StaffOrder : à traiter d'abord, puis priorité, plus ancienne activité d'abord.
 	StaffOrder bool
 	Limit      int

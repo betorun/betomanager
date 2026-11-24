@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
+	"github.com/thekrauss/kubemanager/internal/core/certstatus"
 )
 
 // MaxDomainsPerWorkload : domaines d'un conteneur.

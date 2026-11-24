@@ -13,8 +13,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/thekrauss/kubemanager/internal/auth"
+	"github.com/thekrauss/kubemanager/internal/core/certstatus"
 	"github.com/thekrauss/kubemanager/internal/core/configs"
-	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/certread"
 	registriesDomain "github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -209,7 +210,7 @@ func (s *WorkloadService) certificates(ctx context.Context, w *domain.Workload, 
 	if err != nil || kube == nil || kube.Dynamic == nil {
 		return nil
 	}
-	certs, err := certstatus.List(ctx, kube.Dynamic, w.Namespace)
+	certs, err := certread.List(ctx, kube.Dynamic, w.Namespace)
 	if err != nil {
 		return nil
 	}

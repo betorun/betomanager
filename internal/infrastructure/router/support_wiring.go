@@ -26,7 +26,17 @@ func (a *App) newSupportController() *support.Controller {
 		return nil
 	}
 	store := &supportRepo.GormStore{DB: a.DB}
-	s := &supportSvc.Service{Store: store, Logger: a.Logger.With("component", "support")}
+	s := &supportSvc.Service{Store: store, Staff: store, Logger: a.Logger.With("component", "support")}
+	if billing := a.billingService(); billing != nil {
+		// Contexte d'un ticket : solde et état du porte-monnaie du client.
+		s.Wallet = func(ctx context.Context, org uuid.UUID) (*supportSvc.BillingContext, error) {
+			w, err := billing.Wallet(ctx, org)
+			if err != nil {
+				return nil, err
+			}
+			return &supportSvc.BillingContext{Balance: w.Balance, Currency: w.Currency, Status: w.Status}, nil
+		}
+	}
 	if a.Publisher != nil {
 		s.Live = a.Publisher // support:ticket:<ticket>, après chaque changement
 	}
@@ -84,7 +94,15 @@ func addSupportRoutes(app *App) {
 	onTicket := g.Perm(iam.PlatformSupportManage, security.PlatformResource).Staff(staffTicket(r))
 	admin.AddRoute("/summary", http.MethodGet, "Compteurs du menu : ouverts, en cours, en attente du client, prioritaires", manage, tonic.Handler(r.Summary, http.StatusOK))
 	admin.AddRoute("/tickets", http.MethodGet, "Tickets de tous les clients, à traiter d'abord", manage, tonic.Handler(r.AdminList, http.StatusOK))
-	admin.AddRoute("/tickets/:ticketID", http.MethodGet, "Un ticket, avec ses messages, pièces jointes et événements", onTicket, tonic.Handler(r.AdminGet, http.StatusOK))
+	admin.AddRoute("/agents", http.MethodGet, "Membres de l'équipe, pour l'assignation", manage, tonic.Handler(r.Agents, http.StatusOK))
+	// Action groupée : un motif commun ; chaque changement est inscrit dans le
+	// journal de son ticket, comme une action unitaire.
+	admin.AddRoute("/tickets/bulk", http.MethodPost, "Même changement (statut, priorité, agent) sur 50 tickets au plus",
+		manage.Staff(staffPlatform), tonic.Handler(r.Bulk, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID", http.MethodGet, "Un ticket, avec ses messages, notes internes, pièces jointes et événements", onTicket, tonic.Handler(r.AdminGet, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID/context", http.MethodGet, "Le client derrière un ticket : organisation, porte-monnaie, projets, ressource, autres tickets",
+		onTicket, tonic.Handler(r.TicketContext, http.StatusOK))
+	admin.AddRoute("/tickets/:ticketID/notes", http.MethodPost, "Note interne de l'équipe (jamais montrée au client, aucun e-mail)", onTicket, tonic.Handler(r.AddNote, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID", http.MethodPatch, "Changer le statut, la priorité, la catégorie ou les étiquettes", onTicket, tonic.Handler(r.AdminUpdate, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/assign", http.MethodPost, "Assigner un ticket à un agent", onTicket, tonic.Handler(r.Assign, http.StatusOK))
 	admin.AddRoute("/tickets/:ticketID/messages", http.MethodPost, "Répondre au client (le ticket attend le client, prévenu par e-mail)", onTicket, tonic.Handler(r.AdminReply, http.StatusOK))
@@ -106,6 +124,12 @@ func addSupportRoutes(app *App) {
 	admin.AddRoute("/macros", http.MethodPost, "Créer une réponse type", manage, tonic.Handler(r.CreateMacro, http.StatusCreated))
 	admin.AddRoute("/macros/:macroID", http.MethodPatch, "Modifier une réponse type", manage, tonic.Handler(r.UpdateMacro, http.StatusOK))
 	admin.AddRoute("/macros/:macroID", http.MethodDelete, "Supprimer une réponse type", manage, tonic.Handler(r.DeleteMacro, http.StatusNoContent))
+}
+
+// staffPlatform : action du staff sur plusieurs clients à la fois (motif
+// exigé, accès inscrit au journal de la plateforme).
+func staffPlatform(*gin.Context) (iam.ResourceName, uuid.UUID, error) {
+	return iam.Platform, uuid.Nil, nil
 }
 
 // staffTicket : organisation du ticket visé par une route du staff.

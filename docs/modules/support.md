@@ -76,7 +76,35 @@ puis priorité, plus ancienne activité d'abord), `GET|PATCH /tickets/:ticketID`
 `GET /tickets/:ticketID/attachments/:attachmentID`, `GET|POST /macros`,
 `PATCH|DELETE /macros/:macroID`.
 
-Réponses : `{ticket, messages, attachments, events}` pour un ticket,
+Back-office (migration 000076) :
+
+- `GET /summary` compte aussi `mine` (tickets ouverts de l'agent) et
+  `unassigned`.
+- `GET /tickets?assigned=me|none|<agent>` ; chaque ticket de la file porte
+  `organization_name`, `assigned_to {user_id, email, full_name}`,
+  `last_customer_message_at` (création à défaut) et `first_response_at`
+  (première réponse de l'équipe, notes exclues).
+- `GET /agents` : comptes ayant un rôle sur `platform` (directement ou par un
+  groupe). L'assignation n'accepte qu'un de ces comptes.
+- `GET /tickets/:ticketID/context` : organisation et propriétaire,
+  porte-monnaie (solde, devise, état), projets avec leur nombre de
+  conteneurs, sites, VPS et bases, ressource rattachée, dix autres tickets de
+  l'organisation.
+- `POST /tickets/:ticketID/notes` `{body}` : note interne (`internal: true`,
+  événement `NOTE_ADDED`). Ni e-mail, ni statut changé, ni publication en
+  direct ; jamais dans la vue du client, et aucune pièce jointe du client ne
+  peut s'y rattacher.
+- `POST /tickets/bulk` `{ids, status?, priority?, assign_to?}` (50 tickets au
+  plus, `assign_to` : `me`, `none` ou un agent) : chaque ticket est traité
+  seul, `{results: [{id, ok, error?}]}` dans l'ordre demandé. Un motif commun
+  (`X-Betorun-Justification`), inscrit au journal de la plateforme ; chaque
+  changement entre dans le journal de son ticket.
+
+Les routes d'un ticket précis exigent le motif et sont visibles dans le
+journal d'audit du client.
+
+Réponses : `{ticket, messages, attachments, events}` pour un ticket (côté
+équipe, le ticket est enrichi comme dans la file et les notes sont incluses),
 `{items, total}` pour une liste (`limit` 20 par défaut, 100 au plus),
 `{macro}` / `{items}` pour les réponses types.
 

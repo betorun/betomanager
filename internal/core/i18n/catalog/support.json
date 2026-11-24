@@ -19,5 +19,11 @@
  {"fr": "Ce ticket a déjà 20 pièces jointes", "en": "this ticket already has 20 attachments"},
  {"fr": "Champ « file » manquant", "en": "missing \"file\" field"},
  {"fr": "Les pièces jointes ne sont pas disponibles pour le moment", "en": "attachments are not available for now"},
- {"fr": "Ce message n'appartient pas au ticket", "en": "this message does not belong to the ticket"}
+ {"fr": "Ce message n'appartient pas au ticket", "en": "this message does not belong to the ticket"},
+ {"fr": "« assign_to=me » demande une personne, pas un compte de service", "en": "assign_to=me needs a person"},
+ {"fr": "« assigned » vaut me, none ou l'identifiant d'un agent", "en": "assigned must be me, none or an agent id"},
+ {"fr": "« assigned=me » demande une personne, pas un compte de service", "en": "assigned=me needs a person"},
+ {"fr": "Une action groupée vise de 1 à 50 tickets", "en": "ids must hold 1 to 50 tickets"},
+ {"fr": "Aucun changement demandé", "en": "nothing to change"},
+ {"fr": "Le back-office du support n'est pas disponible", "en": "support back-office is not available"}
 ]

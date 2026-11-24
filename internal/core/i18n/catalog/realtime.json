@@ -18,5 +18,17 @@
  {
   "fr": "Vous n'avez pas le droit de suivre ce canal",
   "en": "not allowed to follow this channel"
+ },
+ {
+  "fr": "Le canal doit être « support:ticket:<ticketID> »",
+  "en": "channel must be 'support:ticket:<ticketID>'"
+ },
+ {
+  "fr": "Identifiant de ticket invalide",
+  "en": "invalid ticket id"
+ },
+ {
+  "fr": "Identifiant de ticket invalide dans le canal",
+  "en": "invalid ticketID in channel"
  }
 ]

@@ -34,6 +34,11 @@ type Controller struct {
 
 type TicketResponse = service.TicketView
 type ListTicketsResponse = service.TicketList
+type StaffTicketResponse = service.StaffTicketView
+type StaffTicketsResponse = service.StaffTicketList
+
+// me : personne derrière la requête (nil pour un compte de service).
+func me(c *gin.Context) *uuid.UUID { return actor(c).UserID }
 
 func actor(c *gin.Context) service.Actor {
 	p, _ := security.PrincipalFromContext(c)
@@ -220,11 +225,11 @@ type AdminListInput struct {
 	service.AdminListInput
 }
 
-func (h *Controller) AdminList(c *gin.Context, in *AdminListInput) (*ListTicketsResponse, error) {
-	return h.Service.AdminList(c.Request.Context(), in.AdminListInput)
+func (h *Controller) AdminList(c *gin.Context, in *AdminListInput) (*StaffTicketsResponse, error) {
+	return h.Service.AdminList(c.Request.Context(), in.AdminListInput, me(c))
 }
 
-func (h *Controller) AdminGet(c *gin.Context, in *AdminTicketPath) (*TicketResponse, error) {
+func (h *Controller) AdminGet(c *gin.Context, in *AdminTicketPath) (*StaffTicketResponse, error) {
 	id, err := in.id()
 	if err != nil {
 		return nil, err
@@ -237,7 +242,7 @@ type AdminReplyInput struct {
 	MessageBody
 }
 
-func (h *Controller) AdminReply(c *gin.Context, in *AdminReplyInput) (*TicketResponse, error) {
+func (h *Controller) AdminReply(c *gin.Context, in *AdminReplyInput) (*StaffTicketResponse, error) {
 	id, err := in.id()
 	if err != nil {
 		return nil, err
@@ -250,7 +255,7 @@ type AdminUpdateInput struct {
 	service.UpdateInput
 }
 
-func (h *Controller) AdminUpdate(c *gin.Context, in *AdminUpdateInput) (*TicketResponse, error) {
+func (h *Controller) AdminUpdate(c *gin.Context, in *AdminUpdateInput) (*StaffTicketResponse, error) {
 	id, err := in.id()
 	if err != nil {
 		return nil, err
@@ -263,7 +268,7 @@ type AssignInput struct {
 	service.AssignInput
 }
 
-func (h *Controller) Assign(c *gin.Context, in *AssignInput) (*TicketResponse, error) {
+func (h *Controller) Assign(c *gin.Context, in *AssignInput) (*StaffTicketResponse, error) {
 	id, err := in.id()
 	if err != nil {
 		return nil, err
@@ -286,11 +291,48 @@ func (h *Controller) AdminDownload(c *gin.Context, in *AdminAttachmentPath) {
 }
 
 func (h *Controller) Summary(c *gin.Context) (*domain.Summary, error) {
-	s, err := h.Service.Summary(c.Request.Context())
+	s, err := h.Service.Summary(c.Request.Context(), me(c))
 	if err != nil {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// TicketContext : le client derrière un ticket.
+func (h *Controller) TicketContext(c *gin.Context, in *AdminTicketPath) (*service.TicketContext, error) {
+	id, err := in.id()
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.TicketContext(c.Request.Context(), id)
+}
+
+type AgentsResponse struct {
+	Items []service.Agent `json:"items"`
+}
+
+func (h *Controller) Agents(c *gin.Context) (*AgentsResponse, error) {
+	list, err := h.Service.Agents(c.Request.Context())
+	if err != nil {
+		return nil, err
+	}
+	return &AgentsResponse{Items: list}, nil
+}
+
+func (h *Controller) AddNote(c *gin.Context, in *AdminReplyInput) (*StaffTicketResponse, error) {
+	id, err := in.id()
+	if err != nil {
+		return nil, err
+	}
+	return h.Service.AddNote(c.Request.Context(), id, actor(c), in.Body)
+}
+
+type BulkInput struct {
+	service.BulkInput
+}
+
+func (h *Controller) Bulk(c *gin.Context, in *BulkInput) (*service.BulkResponse, error) {
+	return h.Service.Bulk(c.Request.Context(), actor(c), in.BulkInput)
 }
 
 type MacroResponse struct {

@@ -9,7 +9,7 @@ import (
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/engine"
 
-	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
+	"github.com/thekrauss/kubemanager/internal/core/certstatus"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/helm/charts"
 	"github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 )

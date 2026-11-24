@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
+import "github.com/thekrauss/kubemanager/internal/core/certstatus"
 
 // Toutes les routes sont imbriquées sous /projects/:id/sites (":id" = projet,
 // imposé par les routes /projects/:id existantes) pour que
