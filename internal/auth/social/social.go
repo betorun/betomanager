@@ -40,8 +40,11 @@ type Profile struct {
 	Subject       string // identifiant stable chez le fournisseur
 	Email         string
 	EmailVerified bool
-	Name          string
-	AvatarURL     string
+	// OtherEmails : autres adresses vérifiées chez le fournisseur (GitHub) ;
+	// servent à retrouver un compte existant, jamais à en créer un.
+	OtherEmails []string
+	Name        string
+	AvatarURL   string
 }
 
 // Provider : un fournisseur d'identité.
@@ -269,8 +272,12 @@ func (h *github) Exchange(ctx context.Context, code, verifier, _ string, redirec
 	}
 	p := &Profile{Provider: GitHub, Subject: fmt.Sprint(user.ID), Name: firstNonEmpty(user.Name, user.Login), AvatarURL: user.AvatarURL}
 	for _, e := range emails {
-		if e.Primary {
-			p.Email, p.EmailVerified = strings.ToLower(e.Email), e.Verified
+		addr := strings.ToLower(strings.TrimSpace(e.Email))
+		switch {
+		case e.Primary:
+			p.Email, p.EmailVerified = addr, e.Verified
+		case e.Verified && addr != "" && !strings.HasSuffix(addr, "@users.noreply.github.com"):
+			p.OtherEmails = append(p.OtherEmails, addr)
 		}
 	}
 	return p, nil

@@ -137,7 +137,7 @@ func (s *service) resolveSocialUser(ctx context.Context, p *social.Profile) (uui
 		return id, user.KeycloakUserID, nil
 	}
 
-	kcUser, err := s.keycloak.FindUserByEmail(ctx, p.Email)
+	kcUser, email, err := s.socialAccount(ctx, p)
 	// existing : compte déjà là, confirmé ; le titulaire est prévenu du lien.
 	existing := err == nil && kcUser.EmailVerified
 	switch {
@@ -171,23 +171,49 @@ func (s *service) resolveSocialUser(ctx context.Context, p *social.Profile) (uui
 	default:
 		return uuid.Nil, "", err
 	}
-	user, err := s.localUser(ctx, kcUser.ID, p.Email, p.Name)
+	user, err := s.localUser(ctx, kcUser.ID, email, p.Name)
 	if err != nil {
 		return uuid.Nil, "", err
 	}
 	if !kcUser.EmailVerified {
 		_ = s.sessions.RevokeAll(ctx, user.ID, uuid.Nil, "account_secured")
 	}
-	if err := s.identities.Link(ctx, user.ID, p.Provider, p.Subject, p.Email); err != nil {
+	if err := s.identities.Link(ctx, user.ID, p.Provider, p.Subject, email); err != nil {
 		return uuid.Nil, "", err
 	}
 	audit.Annotate(ctx, "social", "linked")
 	if existing {
 		// Compte existant : un nouveau moyen de connexion s'y ajoute.
 		s.securityMail(ctx, user.ID, emailIdentityLinked, s.consoleLink(pageSecurity, ""),
-			map[string]string{"Provider": providerTitle(p.Provider), "Email": p.Email})
+			map[string]string{"Provider": providerTitle(p.Provider), "Email": email})
 	}
 	return user.ID, kcUser.ID, nil
+}
+
+// socialAccount : compte de l'adresse principale (confirmé ou non) ; à défaut,
+// compte CONFIRMÉ et actif d'une autre adresse vérifiée chez le fournisseur
+// (une personne qui a plusieurs adresses sur GitHub retrouve son compte au
+// lieu d'en créer un second). Rien : ErrUserNotFound, avec l'adresse
+// principale pour le nouveau compte.
+func (s *service) socialAccount(ctx context.Context, p *social.Profile) (*keycloakadmin.UserProfile, string, error) {
+	u, err := s.keycloak.FindUserByEmail(ctx, p.Email)
+	if !errors.Is(err, keycloakadmin.ErrUserNotFound) {
+		return u, p.Email, err
+	}
+	for _, other := range p.OtherEmails {
+		if other == p.Email {
+			continue
+		}
+		o, oerr := s.keycloak.FindUserByEmail(ctx, other)
+		switch {
+		case oerr == nil && o.Enabled && o.EmailVerified:
+			audit.Annotate(ctx, "social", "matched_other_email")
+			return o, other, nil
+		case oerr != nil && !errors.Is(oerr, keycloakadmin.ErrUserNotFound):
+			return nil, p.Email, oerr
+		}
+	}
+	return nil, p.Email, err
 }
 
 // completeLogin : session ouverte, ou second facteur demandé s'il est actif.
