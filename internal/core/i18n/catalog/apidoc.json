@@ -2830,5 +2830,201 @@
  {
   "fr": "Activer les sauvegardes d'une base créée sans elles",
   "en": "Turn on backups for a database created without them"
+ },
+ {
+  "fr": "Stockage objet",
+  "en": "Object storage"
+ },
+ {
+  "fr": "Buckets S3 du projet : fichiers des applications, joignables avec les bibliothèques S3 habituelles.",
+  "en": "The project's S3 buckets: application files, reachable with the usual S3 libraries."
+ },
+ {
+  "fr": "Lister les buckets du projet (espace utilisé, clés)",
+  "en": "List the project's buckets (space used, keys)"
+ },
+ {
+  "fr": "Lister les buckets du projet",
+  "en": "List the project's buckets"
+ },
+ {
+  "fr": "Créer un bucket (nom S3 généré, quota en Go)",
+  "en": "Create a bucket (generated S3 name, quota in GB)"
+ },
+ {
+  "fr": "Créer un bucket",
+  "en": "Create a bucket"
+ },
+ {
+  "fr": "Détails d'un bucket (jamais de secret)",
+  "en": "Bucket details (never a secret)"
+ },
+ {
+  "fr": "Détails d'un bucket",
+  "en": "Bucket details"
+ },
+ {
+  "fr": "Changer le quota d'un bucket",
+  "en": "Change a bucket's quota"
+ },
+ {
+  "fr": "Brancher le bucket sur un conteneur (clé propre au conteneur, variables posées, conteneur redéployé)",
+  "en": "Attach the bucket to a container (key for this container only, variables set, container redeployed)"
+ },
+ {
+  "fr": "Brancher le bucket sur un conteneur",
+  "en": "Attach the bucket to a container"
+ },
+ {
+  "fr": "Créer une clé d'accès (son secret n'est montré qu'une fois)",
+  "en": "Create an access key (its secret is shown only once)"
+ },
+ {
+  "fr": "Créer une clé d'accès",
+  "en": "Create an access key"
+ },
+ {
+  "fr": "Révoquer une clé (branchement : variables retirées du conteneur)",
+  "en": "Revoke a key (attachment: variables removed from the container)"
+ },
+ {
+  "fr": "Révoquer une clé",
+  "en": "Revoke a key"
+ },
+ {
+  "fr": "Supprimer un bucket (vide, ou confirmé par son nom : son contenu est effacé)",
+  "en": "Delete a bucket (empty, or confirmed by its name: its content is erased)"
+ },
+ {
+  "fr": "Supprimer un bucket",
+  "en": "Delete a bucket"
+ },
+ {
+  "fr": "ID du bucket",
+  "en": "Bucket ID"
+ },
+ {
+  "fr": "ID de la clé",
+  "en": "Key ID"
+ },
+ {
+  "fr": "ID du conteneur qui utilisera le bucket",
+  "en": "ID of the container that will use the bucket"
+ },
+ {
+  "fr": "Nom de la clé (ex. ci, laptop)",
+  "en": "Key name (e.g. ci, laptop)"
+ },
+ {
+  "fr": "Nom du bucket : efface aussi son contenu s'il n'est pas vide",
+  "en": "Bucket name: also erases its content if it is not empty"
+ },
+ {
+  "fr": "Nom du bucket, unique dans le projet (le nom S3 réel est généré)",
+  "en": "Bucket name, unique in the project (the real S3 name is generated)"
+ },
+ {
+  "fr": "Nouvelle taille maximale en Go : 1, 5, 10, 25, 50 ou 100",
+  "en": "New maximum size in GB: 1, 5, 10, 25, 50 or 100"
+ },
+ {
+  "fr": "Taille maximale en Go : 1, 5 (défaut), 10, 25, 50 ou 100",
+  "en": "Maximum size in GB: 1, 5 (default), 10, 25, 50 or 100"
+ },
+ {
+  "fr": "Préfixe des variables (défaut : S3 → S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID…)",
+  "en": "Variable prefix (default: S3 → S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID…)"
+ },
+ {
+  "fr": "read_write (défaut) ou read_only",
+  "en": "read_write (default) or read_only"
+ },
+ {
+  "fr": "Fichiers à supprimer ; un nom terminé par / supprime tout le dossier",
+  "en": "Files to delete; a name ending with / deletes the whole folder"
+ },
+ {
+  "fr": "Durée de validité en heures : 1 à 168 (24 par défaut)",
+  "en": "Validity in hours: 1 to 168 (24 by default)"
+ },
+ {
+  "fr": "Nom complet du fichier partagé",
+  "en": "Full name of the shared file"
+ },
+ {
+  "fr": "true : chaque fichier est lisible par tous à son adresse (lister reste refusé) ; false : privé",
+  "en": "true: every file can be read by anyone at its address (listing stays denied); false: private"
+ },
+ {
+  "fr": "Faire tourner le secret d'une clé (branchement : posé dans le conteneur, redéployé ; clé manuelle : montré une fois)",
+  "en": "Rotate a key's secret (attachment: set in the container, redeployed; manual key: shown once)"
+ },
+ {
+  "fr": "Faire tourner le secret d'une clé",
+  "en": "Rotate a key's secret"
+ },
+ {
+  "fr": "Supprimer des fichiers (un nom terminé par / supprime tout le dossier)",
+  "en": "Delete files (a name ending with / deletes the whole folder)"
+ },
+ {
+  "fr": "Supprimer des fichiers",
+  "en": "Delete files"
+ },
+ {
+  "fr": "Télécharger un fichier",
+  "en": "Download a file"
+ },
+ {
+  "fr": "Nom complet du fichier (ex. images/logo.png)",
+  "en": "Full file name (e.g. images/logo.png)"
+ },
+ {
+  "fr": "Lister un dossier du bucket (dossiers d'abord, par pages)",
+  "en": "List a bucket folder (folders first, paginated)"
+ },
+ {
+  "fr": "Lister un dossier du bucket",
+  "en": "List a bucket folder"
+ },
+ {
+  "fr": "Dossier parcouru (vide : racine ; sinon terminé par /)",
+  "en": "Folder to browse (empty: root; otherwise ending with /)"
+ },
+ {
+  "fr": "Objets par page (200 par défaut, 1000 au plus)",
+  "en": "Objects per page (200 by default, 1000 at most)"
+ },
+ {
+  "fr": "Reprise après ce nom (champ next de la page précédente)",
+  "en": "Resume after this name (next field of the previous page)"
+ },
+ {
+  "fr": "Lien de lecture d'un fichier, valable 1 h à 7 jours, sans compte",
+  "en": "Read link to a file, valid 1 hour to 7 days, no account needed"
+ },
+ {
+  "fr": "Envoyer un fichier (multipart, champ file, 100 Mo au plus ; nom terminé par / et sans fichier : nouveau dossier)",
+  "en": "Upload a file (multipart, file field, 100 MB at most; a name ending with / and no file: new folder)"
+ },
+ {
+  "fr": "Envoyer un fichier",
+  "en": "Upload a file"
+ },
+ {
+  "fr": "Nom complet du fichier à écrire (un fichier existant est remplacé)",
+  "en": "Full name of the file to write (an existing file is replaced)"
+ },
+ {
+  "fr": "Contenu du fichier",
+  "en": "File content"
+ },
+ {
+  "fr": "Ouvrir ou fermer la lecture publique (lire un fichier par son adresse ; lister reste refusé)",
+  "en": "Open or close public read (read a file at its address; listing stays denied)"
+ },
+ {
+  "fr": "Ouvrir ou fermer la lecture publique",
+  "en": "Open or close public read"
  }
 ]

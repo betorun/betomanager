@@ -223,6 +223,7 @@ func (a *App) initDomainLayers() error {
 		IAM:         a.newIAMController(policies),
 		Copilot:     copilot.NewController(copilotService),
 		Databases:   a.newDatabasesController(),
+		StorageS3:   a.newStorageS3Controller(),
 		Network:     a.newNetworkController(),
 		Egress:      a.newEgressController(),
 		Addons:      a.newAddonsController(),

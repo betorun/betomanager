@@ -72,12 +72,23 @@
 	}
 }
 
-# Stockage des sites, pour static-edge qui tourne dans le cluster (serveur 2).
-# Les conteneurs des clients sortent par la même adresse : la vraie barrière
-# est l'identité « edge » (lecture seule, bucket des sites). Lectures seules
-# ici aussi, pour qu'aucune autre clé ne puisse écrire par ce nom.
+# Stockage objet.
+#  - Buckets des clients (bt- + 12 caractères, ADR 0015) : tout le S3, depuis
+#    partout (conteneurs, outils, CI, liens signés, lecture publique). La
+#    barrière est la clé, limitée à un seul bucket, ou la lecture publique
+#    ouverte par le propriétaire. Adresses en style chemin : <hôte>/<bucket>/…
+#  - Stockage des sites, pour static-edge qui tourne dans le cluster (serveur
+#    2) : lectures seules depuis le serveur 2, identité « edge ».
+#  - Tout le reste (liste des buckets, API IAM sur POST /, buckets de la
+#    plateforme) : refusé depuis l'extérieur.
 {$S3_PUBLIC_HOST} {
 	import hsts
+	@clients path_regexp ^/bt-[a-z0-9]{12}(/.*)?$
+	handle @clients {
+		reverse_proxy seaweedfs:8333 {
+			flush_interval -1
+		}
+	}
 	@cluster {
 		remote_ip {$SERVER2_IP}
 		method GET HEAD

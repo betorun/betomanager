@@ -38,6 +38,7 @@ Chaque page décrit un module avec la même structure : rôle, endpoints, DB, ac
 - [clusters](modules/clusters.md) — watcher protocol + enrollment
 - [realtime](modules/realtime.md) — Centrifugo (WebSocket events)
 - [sites](modules/sites.md) — sites statiques (upload .zip, S3, binaire static-edge, domaines perso)
+- [storages3](modules/storages3.md) — stockage objet S3 : buckets, clés par usage, quota, lecture publique, liens signés, explorateur
 - [databases](modules/databases.md) — Postgres gérées (CloudNativePG) : branchement, import, contenu, remise à zéro
 - [network](modules/network.md) — réseau privé d'un projet : membres, liens, règles (modèle indépendant de Kubernetes)
 - [addons](modules/addons.md) — services additionnels (Redis via Valkey) : catalogue, branchement, mise à jour, « Me prévenir »

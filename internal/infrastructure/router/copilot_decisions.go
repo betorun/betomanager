@@ -247,6 +247,17 @@ var copilotDecisions = map[string]copilotDecision{
 	"POST /projects/:id/databases/:databaseID/reset":            asStrong("reset_database", "get_database", true, "Empties the database (a copy is kept 24 h)."),
 	"POST /projects/:id/databases/:databaseID/reset/undo":       asStrong("undo_database_reset", "get_database", false),
 	"DELETE /projects/:id/databases/:databaseID":                asStrong("delete_database", "get_database", true, "Its data is lost."),
+	// Stockage objet (ADR 0015) : le secret d'une clé ne passe jamais par le Copilot.
+	"POST /projects/:id/storage/buckets/:bucketID/keys":          asGuide("/services", "clé d'accès dont le secret n'est montré qu'une fois"),
+	"DELETE /projects/:id/storage/buckets/:bucketID/keys/:keyID": asStrong("revoke_bucket_key", "get_bucket", false, "Applications using this key lose access; an attached container has its S3_* variables removed and is redeployed."),
+	"DELETE /projects/:id/storage/buckets/:bucketID":             asStrong("delete_bucket", "get_bucket", true, "Its content is lost."),
+	// Fichiers : le Copilot liste ; le contenu ne passe pas par lui.
+	"GET /projects/:id/storage/buckets/:bucketID/objects/download":    asGuide("/services", "téléchargement d'un fichier, depuis l'explorateur du bucket"),
+	"POST /projects/:id/storage/buckets/:bucketID/objects":            asGuide("/services", "envoi d'un fichier, depuis l'explorateur du bucket"),
+	"POST /projects/:id/storage/buckets/:bucketID/objects/link":       asGuide("/services", "lien de partage d'un fichier, depuis l'explorateur du bucket"),
+	"POST /projects/:id/storage/buckets/:bucketID/objects/delete":     asStrong("delete_bucket_files", "list_bucket_files", true, "The files are lost; a name ending with / deletes the whole folder."),
+	"POST /projects/:id/storage/buckets/:bucketID/keys/:keyID/rotate": asGuide("/services", "rotation d'une clé (le nouveau secret n'est montré qu'une fois)"),
+	"PUT /projects/:id/storage/buckets/:bucketID/public":              asGuide("/services", "lecture publique d'un bucket, action sensible (double authentification)"),
 
 	// ── Réseau ─────────────────────────────────────────────────────────
 	"POST /projects/:id/network/egress": asTool(CopilotTool{Name: "request_egress_ip", Write: true, Risk: tools.RiskMedium,

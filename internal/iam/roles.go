@@ -32,6 +32,7 @@ var (
 		WorkloadsList, WorkloadsGet, WorkloadLogsRead, WorkloadMetrics, WorkloadVariablesList, WorkloadDomainsList, BuildsList, BuildsGet,
 		SitesList, SitesGet, SiteDeploymentsList, SiteDomainsList,
 		DatabasesList, DatabasesGet,
+		StorageBucketsList, StorageBucketsGet, StorageObjectsList,
 		EgressAddressesGet,
 		AddonsList, AddonsGet,
 		VPSList, VPSGet,
@@ -49,6 +50,8 @@ var (
 		WorkloadsRestart, WorkloadsRollback, WorkloadVariablesUpdate, WorkloadDomainsUpdate, BuildsCreate, BuildsCancel,
 		RegistriesList,
 		DatabasesConnect, AddonsConnect,
+		// Lire et envoyer des fichiers, comme une application le ferait.
+		StorageObjectsGet, StorageObjectsCreate,
 		SitesCreate, SitesUpdate, SiteDeploymentsCreate, SiteDeploymentsActive,
 		SiteDomainsCreate, SiteDomainsVerify,
 		VPSStart, VPSStop, VPSReboot, VPSSnapshot, VPSNetwork,
@@ -66,6 +69,9 @@ var (
 		DatabasesCreate, DatabasesDelete, DatabasesImport, DatabasesReset, DatabasesStop,
 		// Un service occupe des ressources et sa suppression perd des données : éditeur.
 		AddonsCreate, AddonsUpdate, AddonsDelete, AddonsRestore,
+		// Un bucket occupe de l'espace facturé ; une clé ouvre son contenu : éditeur.
+		StorageBucketsCreate, StorageBucketsUpdate, StorageBucketsConnect,
+		StorageObjectsDelete, StorageObjectsShare,
 		// Une IP dédiée est facturée au mois : éditeur.
 		EgressAddressesManage,
 		// Réinstaller efface le disque du VPS : éditeur.
@@ -82,6 +88,10 @@ var (
 	ownerPerms = concat(editorPerms, []Permission{
 		OrganizationsUpdate, OrganizationsSetIamPolicy,
 		ProjectsCreate, ProjectsDelete, ProjectsUndelete, ProjectsSetIamPolicy,
+		// Supprimer un bucket efface son contenu (ADR 0015) : propriétaire.
+		StorageBucketsDelete,
+		// Ouvrir un bucket à tous expose son contenu : propriétaire.
+		StorageBucketsSetPublic,
 		RolesCreate, RolesUpdate, RolesDelete,
 		GroupsCreate, GroupsUpdate, GroupsDelete,
 		DenyPoliciesUpdate,
@@ -131,6 +141,15 @@ var predefinedRoles = []Role{
 	{Name: "roles/sites.deployer", Title: "Déployeur sites",
 		Description: "Publie de nouvelles versions des sites (idéal pour la CI).",
 		Permissions: []Permission{SitesList, SitesGet, SiteDeploymentsList, SiteDeploymentsCreate, SiteDeploymentsActive}},
+	{Name: "roles/storage.admin", Title: "Administrateur stockage",
+		Description: "Gère entièrement les buckets de stockage, leurs clés, leur accès public et leurs fichiers.",
+		Permissions: []Permission{ProjectsGet, StorageBucketsList, StorageBucketsGet, StorageBucketsCreate, StorageBucketsUpdate,
+			StorageBucketsConnect, StorageBucketsDelete, StorageBucketsSetPublic,
+			StorageObjectsList, StorageObjectsGet, StorageObjectsCreate, StorageObjectsDelete, StorageObjectsShare}},
+	{Name: "roles/storage.objectUser", Title: "Utilisateur fichiers stockage",
+		Description: "Parcourt, télécharge, envoie, supprime et partage les fichiers des buckets, sans gérer les buckets ni les clés.",
+		Permissions: []Permission{ProjectsGet, StorageBucketsList, StorageBucketsGet,
+			StorageObjectsList, StorageObjectsGet, StorageObjectsCreate, StorageObjectsDelete, StorageObjectsShare}},
 	{Name: "roles/iam.serviceAccountUser", Title: "Utilisateur de compte de service",
 		Description: "Peut exécuter des ressources en tant que le compte de service.",
 		Permissions: []Permission{ServiceAccountsList, ServiceAccountsGet, ServiceAccountsActAs}},

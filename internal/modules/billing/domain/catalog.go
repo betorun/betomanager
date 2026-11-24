@@ -14,6 +14,7 @@ const (
 	MeterBuildMinutes Meter = "build_minutes" // minutes de build
 	MeterSiteDomain   Meter = "site_domain"   // domaine personnalisé d'un site
 	MeterEgressIP     Meter = "egress_ip"     // IP de sortie dédiée d'un projet
+	MeterStorage      Meter = "storage"       // espace d'un bucket de stockage, en Go
 )
 
 // Hourly : le compteur est-il facturé à l'heure (plafonné au mois) ? Les
@@ -57,7 +58,10 @@ type Catalog struct {
 	SiteDomain      Milli
 	// EgressIP : prix mensuel d'une IP de sortie dédiée.
 	EgressIP Milli
-	Free     FreeTier
+	// StorageGBMonthly : prix mensuel d'un Go de stockage objet (buckets ;
+	// 0 : gratuit tant que la grille ne le fixe pas).
+	StorageGBMonthly Milli
+	Free             FreeTier
 	// TopupMin / TopupMax : montant d'une recharge (0 : recharges fermées).
 	TopupMin, TopupMax Milli
 	// TrialCredit : crédit d'essai offert à l'activation de la facturation

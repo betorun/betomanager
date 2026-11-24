@@ -61,6 +61,11 @@ cat > "$out/seaweedfs/s3.json" <<JSON
       "name": "edge",
       "credentials": [{ "accessKey": "edge", "secretKey": "$(value S3_EDGE_SECRET_KEY)" }],
       "actions": ["Read:betorun-sites"]
+    },
+    {
+      "name": "storage",
+      "credentials": [{ "accessKey": "betorun-storage", "secretKey": "$(value S3_STORAGE_SECRET_KEY)" }],
+      "actions": ["Admin"]
     }
   ]
 }

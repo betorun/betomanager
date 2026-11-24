@@ -47,6 +47,7 @@ type CatalogUpdate struct {
 	BuildMinute          int64      `json:"build_minute" description:"Prix d'une minute de build au-delà de l'offre gratuite"`
 	SiteDomain           int64      `json:"site_domain_monthly" description:"Prix mensuel d'un domaine personnalisé de site (0 : gratuit)"`
 	EgressIP             int64      `json:"egress_ip_monthly" description:"Prix mensuel d'une IP de sortie dédiée d'un projet (0 : gratuite)"`
+	StorageGBMonthly     int64      `json:"storage_gb_monthly" description:"Prix mensuel d'un Go de stockage objet (buckets ; 0 : gratuit)"`
 	Free                 FreeView   `json:"free_tier" description:"Offre gratuite par organisation et par mois"`
 	TopupMin             int64      `json:"topup_min" description:"Recharge minimale (0 avec topup_max : recharges fermées)"`
 	TopupMax             int64      `json:"topup_max" description:"Recharge maximale"`
@@ -97,7 +98,7 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 	}
 	for name, v := range map[string]int64{
 		"database_monthly": u.DatabaseMonthly, "disk_gi_monthly": u.DiskGiMonthly, "build_minute": u.BuildMinute,
-		"site_domain_monthly": u.SiteDomain, "egress_ip_monthly": u.EgressIP, "free_tier.compute": u.Free.Compute, "free_tier.database": u.Free.Database,
+		"site_domain_monthly": u.SiteDomain, "egress_ip_monthly": u.EgressIP, "storage_gb_monthly": u.StorageGBMonthly, "free_tier.compute": u.Free.Compute, "free_tier.database": u.Free.Database,
 		"free_tier.build_minutes": u.Free.BuildMinutes, "topup_min": u.TopupMin, "topup_max": u.TopupMax,
 		"trial_credit": u.TrialCredit, "trial_days": int64(u.TrialDays), "grace_days": int64(u.GraceDays),
 		"postpaid_credit_limit": u.PostpaidCreditLimit, "postpaid_terms_days": int64(u.PostpaidTermsDays),
@@ -111,7 +112,7 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 	}
 	c.DatabaseMonthly, c.DiskGiMonthly = FromUnits(u.DatabaseMonthly), FromUnits(u.DiskGiMonthly)
 	c.BuildMinute, c.SiteDomain = FromUnits(u.BuildMinute), FromUnits(u.SiteDomain)
-	c.EgressIP = FromUnits(u.EgressIP)
+	c.EgressIP, c.StorageGBMonthly = FromUnits(u.EgressIP), FromUnits(u.StorageGBMonthly)
 	c.Free = FreeTier{Compute: FromUnits(u.Free.Compute), Database: FromUnits(u.Free.Database), BuildMinutes: u.Free.BuildMinutes}
 	if u.TopupMax > 0 && (u.TopupMin <= 0 || u.TopupMin > u.TopupMax) {
 		return Catalog{}, invalid("topup_min must be positive and at most topup_max")
@@ -142,7 +143,7 @@ func CatalogFromUpdate(u CatalogUpdate) (Catalog, error) {
 func (c Catalog) Update() CatalogUpdate {
 	v := c.View()
 	return CatalogUpdate{Currency: c.Currency, Sizes: v.Sizes, DatabaseMonthly: v.DatabaseMonthly,
-		DiskGiMonthly: v.DiskGiMonthly, BuildMinute: v.BuildMinute, SiteDomain: v.SiteDomain, EgressIP: v.EgressIP, Free: v.Free,
+		DiskGiMonthly: v.DiskGiMonthly, BuildMinute: v.BuildMinute, SiteDomain: v.SiteDomain, EgressIP: v.EgressIP, StorageGBMonthly: v.StorageGBMonthly, Free: v.Free,
 		TopupMin: v.TopupMin, TopupMax: v.TopupMax, TrialCredit: v.TrialCredit, TrialDays: v.TrialDays, GraceDays: v.GraceDays,
 		PostpaidCreditLimit: v.PostpaidCreditLimit, PostpaidTermsDays: v.PostpaidTermsDays,
 		PostpaidReminderDays: v.PostpaidReminderDays, PostpaidSuspendDays: v.PostpaidSuspendDays, PurgeDays: v.PurgeDays,

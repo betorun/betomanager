@@ -9,6 +9,11 @@
       "name": "edge",
       "credentials": [{ "accessKey": "edge", "secretKey": "edge-dev-secret" }],
       "actions": ["Read:betorun-sites"]
+    },
+    {
+      "name": "storage",
+      "credentials": [{ "accessKey": "betorun-storage-dev", "secretKey": "storage-dev-secret" }],
+      "actions": ["Admin"]
     }
   ]
 }

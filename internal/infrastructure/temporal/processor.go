@@ -25,6 +25,7 @@ import (
 	siteActivities "github.com/thekrauss/kubemanager/internal/modules/sites/activities"
 	siteRepository "github.com/thekrauss/kubemanager/internal/modules/sites/repository"
 	siteWorkflows "github.com/thekrauss/kubemanager/internal/modules/sites/workflows"
+	storageActivities "github.com/thekrauss/kubemanager/internal/modules/storages3/activities"
 	workloadActivities "github.com/thekrauss/kubemanager/internal/modules/workloads/activities"
 	workloadRepository "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadWorkflows "github.com/thekrauss/kubemanager/internal/modules/workloads/workflows"
@@ -46,6 +47,9 @@ type WorkerConfig struct {
 	Builds      *buildActivities.Activities // nil si builds désactivés
 	Pull        *pull.Secrets               // nil sans cluster
 	Variables   workloadRepository.VariableStore
+	// Storage : effacement des buckets d'un projet supprimé (Purger nil :
+	// stockage non configuré).
+	Storage *storageActivities.StorageActivities
 }
 
 type TemporalProcessor struct {
@@ -135,6 +139,13 @@ func (p *TemporalProcessor) Start() (<-chan error, error) {
 			Logger: p.cfg.Logger,
 		})
 	}
+
+	// Toujours enregistrée : DeleteProjectWorkflow l'appelle.
+	storage := p.cfg.Storage
+	if storage == nil {
+		storage = &storageActivities.StorageActivities{}
+	}
+	p.registerActivities(w, storage)
 
 	if p.cfg.Builds != nil {
 		w.RegisterWorkflow(buildWorkflows.BuildImageWorkflow)

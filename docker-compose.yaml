@@ -347,7 +347,10 @@ services:
   # l'API/worker, "edge" en lecture seule pour static-edge.
   seaweedfs:
     image: chrislusf/seaweedfs:4.50
-    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json"]
+    # IAM en écriture (module storages3 : identités des clients, ADR 0015) ;
+    # selfServiceRequiresGrant : une clé client ne gère pas ses propres clés.
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json",
+              "-s3.iam.readOnly=false", "-s3.iam.selfServiceRequiresGrant=true"]
     ports:
       - "127.0.0.1:8333:8333"   # API S3
     volumes:

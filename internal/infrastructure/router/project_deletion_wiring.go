@@ -38,6 +38,9 @@ func (a *App) wireProjectDeletion() {
 	if a.Controllers != nil && a.Controllers.Databases != nil && a.Controllers.Databases.Service != nil {
 		ps.ProjectDatabases = &projectDatabases{svc: a.Controllers.Databases.Service}
 	}
+	if a.Controllers != nil && a.Controllers.StorageS3 != nil && a.Controllers.StorageS3.Service != nil {
+		ps.Storage = a.Controllers.StorageS3.Service
+	}
 	if n := a.alertNotifier(); n != nil { // pas d'interface non nulle autour d'un nil
 		ps.Notifier = n
 	}
