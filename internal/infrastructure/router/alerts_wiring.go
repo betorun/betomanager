@@ -55,7 +55,14 @@ func (a *App) alertWebhooks() *alertsSvc.WebhookService {
 	if err != nil {
 		return nil
 	}
-	return &alertsSvc.WebhookService{DB: a.DB, Sealer: sealer, Client: alertsSvc.PublicHTTPClient()}
+	w := &alertsSvc.WebhookService{DB: a.DB, Sealer: sealer, Client: alertsSvc.PublicHTTPClient(),
+		Key: a.unsubscribeKey(), ConsoleURL: a.Config.Frontend.BaseURL, APIURL: a.Config.Builds.PublicAPIURL,
+		ProjectName: alertsRepo.NewStore(a.DB).ProjectName}
+	// Sorte « email » : seulement avec un envoi d'e-mails configuré.
+	if sender, err := a.mailSender(); err == nil && sender != nil {
+		w.Mail = sender
+	}
+	return w
 }
 
 // unsubscribeKey : clé des liens de désabonnement, dérivée du poivre des clés
@@ -87,17 +94,23 @@ func addAlertPreferenceRoutes(app *App) {
 		Authenticated(), tonic.Handler(r.UpdatePreferences, http.StatusOK))
 	g := RootGroup.NewGroup("/alerts", "Alertes").
 		Named("Alertes", "Désabonnement des alertes e-mail par le lien reçu.")
+	g.AddRoute("/email/confirm", http.MethodPost, "Confirmer une adresse e-mail ajoutée aux alertes d'un projet (jeton du lien reçu)",
+		Public(), r.ConfirmEmail)
+	g.AddRoute("/email/remove", http.MethodPost, "Retirer une adresse e-mail des alertes d'un projet (jeton du lien reçu ; retrait en un clic)",
+		Public(), r.RemoveEmail)
 	g.AddRoute("/unsubscribe", http.MethodPost, "Ne plus recevoir une catégorie d'alertes (jeton du lien reçu ; désabonnement en un clic)",
 		Public(), r.Unsubscribe)
 
 	guards := newGuards(app)
 	project := security.ProjectParam("id")
 	w := RootGroup.NewGroup("/projects/:id/alert-webhooks", "Webhooks d'alertes").
-		Named("Webhooks d'alertes", "Alertes du projet envoyées aussi vers Slack ou vers votre service (JSON signé).")
+		Named("Webhooks d'alertes", "Alertes du projet envoyées aussi vers Slack, Telegram, une adresse e-mail ou votre service (JSON signé).")
 	w.AddRoute("", http.MethodGet, "Webhooks d'alertes du projet (adresse masquée, dernier envoi)",
 		guards.Perm(iam.ProjectsGet, project), tonic.Handler(r.ListWebhooks, http.StatusOK))
-	w.AddRoute("", http.MethodPost, "Ajouter un webhook d'alertes (Slack ou JSON signé ; secret de signature montré une fois)",
+	w.AddRoute("", http.MethodPost, "Ajouter un webhook d'alertes (Slack, Telegram, e-mail confirmé ou JSON signé ; secret de signature montré une fois)",
 		guards.Perm(iam.ProjectsUpdate, project), tonic.Handler(r.CreateWebhook, http.StatusCreated))
+	w.AddRoute("/telegram/chats", http.MethodPost, "Discussions Telegram où le bot a été ajouté (jeton du bot ; rien n'est enregistré)",
+		guards.Perm(iam.ProjectsUpdate, project), tonic.Handler(r.TelegramChats, http.StatusOK))
 	w.AddRoute("/:webhookID/test", http.MethodPost, "Envoyer un message d'essai au webhook",
 		guards.Perm(iam.ProjectsUpdate, project), tonic.Handler(r.TestWebhook, http.StatusOK))
 	w.AddRoute("/:webhookID", http.MethodDelete, "Supprimer un webhook d'alertes",

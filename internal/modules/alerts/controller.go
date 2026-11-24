@@ -115,8 +115,13 @@ type CreateWebhookInput struct {
 
 func webhookError(err error) error {
 	switch {
-	case errors.Is(err, service.ErrWebhookURL), errors.Is(err, service.ErrWebhookKind), errors.Is(err, service.ErrWebhookName):
+	case errors.Is(err, service.ErrWebhookURL), errors.Is(err, service.ErrWebhookKind), errors.Is(err, service.ErrWebhookName),
+		errors.Is(err, service.ErrTelegramToken), errors.Is(err, service.ErrTelegramChat), errors.Is(err, service.ErrTelegramHooked):
 		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
+	case errors.Is(err, service.ErrEmailAddress), errors.Is(err, service.ErrEmailLink):
+		return betoerrors.New(betoerrors.CodeInvalidInput, err.Error())
+	case errors.Is(err, service.ErrTelegramFailure), errors.Is(err, service.ErrEmailUnavailable):
+		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	case errors.Is(err, service.ErrWebhookLimit):
 		return betoerrors.New(betoerrors.CodeUnprocessable, err.Error())
 	case errors.Is(err, service.ErrWebhookNotFound):
@@ -203,4 +208,64 @@ func (c *Controller) DeleteWebhook(ctx *gin.Context, in *WebhookPath) error {
 		return err
 	}
 	return webhookError(c.Webhooks.Delete(ctx.Request.Context(), p, w))
+}
+
+// TelegramChatsInput : projet et jeton du bot.
+type TelegramChatsInput struct {
+	WebhookProjectPath
+	service.TelegramChatsRequest
+}
+
+// TelegramChats : POST /projects/:id/alert-webhooks/telegram/chats. Nom du bot
+// et discussions où il a été ajouté ; rien n'est enregistré.
+func (c *Controller) TelegramChats(ctx *gin.Context, in *TelegramChatsInput) (*service.TelegramChats, error) {
+	if err := c.webhooksReady(); err != nil {
+		return nil, err
+	}
+	if _, _, err := parseIDs(in.ProjectID, ""); err != nil {
+		return nil, err
+	}
+	out, err := c.Webhooks.TelegramChats(ctx.Request.Context(), in.BotToken)
+	return out, webhookError(err)
+}
+
+// emailLinkToken : jeton dans l'URL (retrait « un clic » des messageries) ou
+// dans le corps JSON (page de la console).
+func emailLinkToken(ctx *gin.Context) string {
+	if t := ctx.Query("token"); t != "" {
+		return t
+	}
+	var in service.EmailLinkRequest
+	if strings.HasPrefix(ctx.ContentType(), "application/json") {
+		_ = ctx.ShouldBindJSON(&in)
+	} else {
+		_ = ctx.ShouldBind(&in)
+	}
+	return in.Token
+}
+
+func (c *Controller) emailLink(ctx *gin.Context, run func(context.Context, string) (*service.EmailLinkResult, error)) {
+	err := c.webhooksReady()
+	var out *service.EmailLinkResult
+	if err == nil {
+		out, err = run(ctx.Request.Context(), emailLinkToken(ctx))
+	}
+	if err != nil {
+		status, body := tonic.GetErrorHook()(ctx, webhookError(err))
+		ctx.JSON(status, body)
+		return
+	}
+	ctx.JSON(http.StatusOK, out)
+}
+
+// ConfirmEmail : POST /alerts/email/confirm. Lien reçu par l'adresse ajoutée
+// aux alertes d'un projet ; sans session.
+func (c *Controller) ConfirmEmail(ctx *gin.Context) {
+	c.emailLink(ctx, func(ctx context.Context, t string) (*service.EmailLinkResult, error) { return c.Webhooks.ConfirmEmail(ctx, t) })
+}
+
+// RemoveEmail : POST /alerts/email/remove. Lien « ne plus recevoir » d'une
+// alerte ; sans session, rejouable.
+func (c *Controller) RemoveEmail(ctx *gin.Context) {
+	c.emailLink(ctx, func(ctx context.Context, t string) (*service.EmailLinkResult, error) { return c.Webhooks.RemoveEmail(ctx, t) })
 }
