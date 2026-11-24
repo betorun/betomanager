@@ -46,9 +46,25 @@ func (c *Client) ListProjects(ctx context.Context) (*ProjectList, error) {
 	return &out, c.Do(ctx, http.MethodGet, pathProjects, nil, &out)
 }
 
-// CreateProject : organisationID vide = organisation personnelle.
-func (c *Client) CreateProject(ctx context.Context, name, description, organizationID string) (*CreatedProject, error) {
+// Region : région proposée à la création d'un projet (GET /regions).
+type Region struct {
+	Code      string `json:"code"`
+	Available bool   `json:"available"`
+	Default   bool   `json:"default"`
+}
+
+func (c *Client) Regions(ctx context.Context) ([]Region, error) {
+	var out []Region
+	return out, c.Do(ctx, http.MethodGet, "/regions", nil, &out)
+}
+
+// CreateProject : organisationID vide = organisation personnelle ; region
+// vide = choisie par la plateforme.
+func (c *Client) CreateProject(ctx context.Context, name, description, organizationID, region string) (*CreatedProject, error) {
 	body := map[string]string{"name": name}
+	if region != "" {
+		body["region"] = region
+	}
 	if description != "" {
 		body["description"] = description
 	}
