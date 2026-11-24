@@ -39,7 +39,7 @@ func newDatabases() *cobra.Command {
 			"# " + i18n.T("ex.db.import") + "\n" +
 			"pg_dump -Fc -d \"$OLD_DATABASE_URL\" -f app.dump\n" +
 			"betorun databases import main app.dump"}
-	c.AddCommand(newDatabasesList(), newDatabasesCreate(), newDatabasesAttach(), newDatabasesDelete(), newDatabasesImport(), newDatabasesPower(true), newDatabasesPower(false))
+	c.AddCommand(newDatabasesList(), newDatabasesCreate(), newDatabasesAttach(), newDatabasesDelete(), newDatabasesImport(), newDatabasesPower(true), newDatabasesPower(false), newDatabasesBackups())
 	return c
 }
 
@@ -72,7 +72,7 @@ func newDatabasesList() *cobra.Command {
 					}
 				}
 			}
-			t := p.Table(i18n.T("wl.col.name"), i18n.T("wl.col.status"), i18n.T("db.col.size"), i18n.T("proj.du.col.used"))
+			t := p.Table(i18n.T("wl.col.name"), i18n.T("wl.col.status"), i18n.T("db.col.size"), i18n.T("proj.du.col.used"), i18n.T("db.col.backups"))
 			for _, d := range list {
 				tone := ui.ToneProgress
 				switch d.Status {
@@ -85,7 +85,7 @@ func newDatabasesList() *cobra.Command {
 				if !ok {
 					u = "—"
 				}
-				t.Row(p.Bold(d.Name), p.Status(tone, d.Status), d.StorageSize, u)
+				t.Row(p.Bold(d.Name), p.Status(tone, d.Status), d.StorageSize, u, backupsCell(p, d))
 			}
 			return t.Flush()
 		},
@@ -295,6 +295,62 @@ func newDatabasesPower(stop bool) *cobra.Command {
 	}
 }
 
+// backupsCell : « oui », « non » (à activer) ou l'échec de la dernière sauvegarde.
+func backupsCell(p *ui.Printer, d cliDatabase) string {
+	switch {
+	case !d.Backups.Enabled:
+		return p.Status(ui.ToneError, i18n.T("db.backups.off"))
+	case d.Backups.LastStatus == "failed":
+		return p.Status(ui.ToneError, i18n.T("db.backups.failed"))
+	}
+	return p.Status(ui.ToneOK, i18n.T("db.backups.on"))
+}
+
+// newDatabasesBackups : « backups enable <base> » (bases créées sans sauvegardes).
+func newDatabasesBackups() *cobra.Command {
+	c := &cobra.Command{Use: "backups", Short: i18n.T("db.backups.short")}
+	var yes bool
+	enable := &cobra.Command{
+		Use: "enable " + i18n.T("arg.database"), Short: i18n.T("db.backups.enable.short"), Long: i18n.T("db.backups.enable.long"),
+		Example: "betorun databases backups enable main", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cl, project, _, err := projectClient()
+			if err != nil {
+				return err
+			}
+			ctx := cmd.Context()
+			db, err := databaseByName(ctx, cl, project, args[0])
+			if err != nil {
+				return err
+			}
+			p := printer(cmd)
+			if db.Backups.Enabled {
+				if ok, err := wantJSON(cmd, db); ok {
+					return err
+				}
+				p.Success(i18n.T("db.backups.already", db.Name))
+				return nil
+			}
+			if !yes && !confirm(cmd, i18n.T("db.backups.enable.confirm", db.Name), db.Name) {
+				return errors.New(i18n.T("db.backups.enable.aborted"))
+			}
+			var out cliDatabase
+			if err := cl.Do(ctx, http.MethodPost, databasesPath(project)+"/"+url.PathEscape(db.ID)+"/backups/enable", map[string]any{}, &out); err != nil {
+				return err
+			}
+			if ok, err := wantJSON(cmd, out); ok {
+				return err
+			}
+			p.Success(i18n.T("db.backups.enable.done", db.Name))
+			p.Hint(i18n.T("db.backups.enable.hint"))
+			return nil
+		},
+	}
+	enable.Flags().BoolVarP(&yes, "yes", "y", false, i18n.T("flag.yes"))
+	c.AddCommand(enable)
+	return c
+}
+
 func newDatabasesImport() *cobra.Command {
 	var clean, noWait bool
 	c := &cobra.Command{
@@ -385,6 +441,10 @@ type cliDatabase struct {
 	Name        string `json:"name"`
 	Status      string `json:"status"`
 	StorageSize string `json:"storage_size"`
+	Backups     struct {
+		Enabled    bool   `json:"enabled"`
+		LastStatus string `json:"last_status"`
+	} `json:"backups"`
 }
 
 func databasesPath(project string) string {

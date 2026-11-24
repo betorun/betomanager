@@ -52,6 +52,16 @@ Lecture et écriture SQL sans exec (la plateforme n'a pas `pods/exec`, voir [rba
 - **Disque plein** : à 120 % de sa taille, le module `diskusage` arrête la base par le même chemin, puis laisse 6 h après une relance pour faire de la place (voir [diskusage](diskusage.md)).
 - **Console** : boutons « Arrêter » (confirmation) et « Relancer » sur la carte de la base (page Bases et page Services).
 
+## Sauvegardes d'une base existante
+
+Une base créée avant que `databases.backup.*` soit configuré n'a pas de sauvegarde (`backups.enabled=false`).
+
+| Méthode | Chemin | Permission | Effet |
+|---|---|---|---|
+| `POST` | `/:databaseID/backups/enable` | `databases.databases.create` (éditeur) | Crée les mêmes objets qu'à la création (secret S3, ObjectStore `db-<nom>-store`, ScheduledBackup `db-<nom>-daily` avec première sauvegarde immédiate) et ajoute le plugin d'archivage au Cluster par fusion JSON. L'instance redémarre (une minute environ). Sans effet si tout est déjà en place. `409` si la base est arrêtée ou absente, `503` si la plateforme n'a pas de stockage de sauvegarde. |
+
+- **CLI** : `betorun databases backups enable <base>` (confirmation par le nom, `--yes` pour s'en passer) ; colonne « Sauvegardes » dans `betorun databases list`.
+
 ## Fichiers clés
 
 - [service.go](../../internal/modules/databases/service.go) — création, état, attachement, restauration.

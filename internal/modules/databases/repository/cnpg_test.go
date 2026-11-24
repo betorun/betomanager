@@ -149,10 +149,22 @@ func TestCNPGWithBackups(t *testing.T) {
 	// Dernière sauvegarde lue sur les objets Backup du cluster.
 	b := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "postgresql.cnpg.io/v1", "kind": "Backup",
-		"metadata": map[string]any{"name": "b1", "namespace": "km-demo", "labels": map[string]any{"cnpg.io/cluster": "db-main"}},
+		// Sans étiquette cnpg.io/cluster (lancée à la main) : comptée quand même.
+		"metadata": map[string]any{"name": "b1", "namespace": "km-demo"},
+		"spec":     map[string]any{"cluster": map[string]any{"name": "db-main"}},
 		"status":   map[string]any{"phase": "completed", "stoppedAt": "2026-11-18T03:00:05Z"},
 	}}
 	if _, err := dyn.Resource(BackupGVR).Namespace("km-demo").Create(ctx, b, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// Sauvegarde d'une autre base du projet : ignorée.
+	other := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "postgresql.cnpg.io/v1", "kind": "Backup",
+		"metadata": map[string]any{"name": "b2", "namespace": "km-demo", "creationTimestamp": "2099-01-01T00:00:00Z"},
+		"spec":     map[string]any{"cluster": map[string]any{"name": "db-other"}},
+		"status":   map[string]any{"phase": "failed"},
+	}}
+	if _, err := dyn.Resource(BackupGVR).Namespace("km-demo").Create(ctx, other, metav1.CreateOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := c.State(ctx, "km-demo", "db-main")
@@ -322,5 +334,90 @@ func TestCNPGCreate_ClusterStorageClass(t *testing.T) {
 		if sc, _, _ := unstructured.NestedString(obj.Object, "spec", "storage", "storageClass"); sc != tc.want {
 			t.Fatalf("storageClass = %q, attendu %q", sc, tc.want)
 		}
+	}
+}
+
+// Base créée sans sauvegardes, puis la plateforme les active : mêmes objets
+// qu'à la création, plugin ajouté au Cluster ; un second appel ne change rien.
+func TestCNPGEnableBackups(t *testing.T) {
+	ctx := context.Background()
+	dyn := dynfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds)
+	kube := kubefake.NewClientset()
+	spec := service.ClusterSpec{Name: "db-main", DatabaseID: "d1", ProjectID: "p1", Storage: "1Gi"}
+	if err := (&CNPG{Dynamic: dyn, Kube: kube}).Create(ctx, "km-demo", spec); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := (&CNPG{Dynamic: dyn, Kube: kube}).State(ctx, "km-demo", "db-main"); st.BackupsEnabled {
+		t.Fatal("base créée avec sauvegardes")
+	}
+	if _, err := (&CNPG{Dynamic: dyn, Kube: kube}).EnableBackups(ctx, "km-demo", spec); err != domain.ErrBackupsDisabled {
+		t.Fatalf("sans stockage : %v", err)
+	}
+	c := &CNPG{Dynamic: dyn, Kube: kube, Backup: &service.BackupTarget{Endpoint: "https://s3.example", Bucket: "db-backups",
+		Region: "eu", AccessKey: "AK", SecretKey: "SK", Retention: "7d", Schedule: "0 0 3 * * *"}}
+	for i, want := range []bool{true, false} {
+		restarting, err := c.EnableBackups(ctx, "km-demo", spec)
+		if err != nil || restarting != want {
+			t.Fatalf("appel %d : restarting=%v %v", i+1, restarting, err)
+		}
+	}
+	cl, _ := dyn.Resource(ClusterGVR).Namespace("km-demo").Get(ctx, "db-main", metav1.GetOptions{})
+	plugins, _, _ := unstructured.NestedSlice(cl.Object, "spec", "plugins")
+	if len(plugins) != 1 || plugins[0].(map[string]any)["isWALArchiver"] != true {
+		t.Fatalf("plugin d'archivage : %v", plugins)
+	}
+	// Le reste du Cluster est intact (fusion, pas remplacement).
+	if size, _, _ := unstructured.NestedString(cl.Object, "spec", "storage", "size"); size != "1Gi" {
+		t.Fatalf("disque modifié : %q", size)
+	}
+	store, err := dyn.Resource(ObjectStoreGVR).Namespace("km-demo").Get(ctx, "db-main-store", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dest, _, _ := unstructured.NestedString(store.Object, "spec", "configuration", "destinationPath"); dest != "s3://db-backups/p1/d1" {
+		t.Fatalf("destination : %q", dest)
+	}
+	if _, err := kube.CoreV1().Secrets("km-demo").Get(ctx, "db-main-backup-s3", metav1.GetOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	sched, err := dyn.Resource(ScheduledBackupGVR).Namespace("km-demo").Get(ctx, "db-main-daily", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pas de sauvegarde immédiate : elle partirait avant le conteneur du plugin.
+	if immediate, _, _ := unstructured.NestedBool(sched.Object, "spec", "immediate"); immediate {
+		t.Fatal("sauvegarde immédiate pendant le redémarrage")
+	}
+	if st, _ := c.State(ctx, "km-demo", "db-main"); !st.BackupsEnabled {
+		t.Fatal("sauvegardes non vues comme actives")
+	}
+
+	// Première sauvegarde : seulement quand postgres ET le plugin sont prêts.
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "db-main-1", Namespace: "km-demo",
+			Labels: map[string]string{"cnpg.io/cluster": "db-main", "cnpg.io/instanceRole": "primary"}},
+		Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{Name: "postgres", Ready: true}}},
+	}
+	if _, err := kube.CoreV1().Pods("km-demo").Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if started, err := c.FirstBackup(ctx, "km-demo", "db-main"); err != nil || started {
+		t.Fatalf("sans plugin : started=%v %v", started, err)
+	}
+	pod.Status.InitContainerStatuses = []corev1.ContainerStatus{{Name: "plugin-barman-cloud", Ready: true}}
+	if _, err := kube.CoreV1().Pods("km-demo").UpdateStatus(ctx, pod, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ { // second appel : déjà créée, sans erreur
+		if started, err := c.FirstBackup(ctx, "km-demo", "db-main"); err != nil || !started {
+			t.Fatalf("plugin prêt : started=%v %v", started, err)
+		}
+	}
+	b, err := dyn.Resource(BackupGVR).Namespace("km-demo").Get(ctx, "db-main-first", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _, _ := unstructured.NestedString(b.Object, "spec", "method"); m != "plugin" {
+		t.Fatalf("méthode : %q", m)
 	}
 }

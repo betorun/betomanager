@@ -14,3 +14,7 @@ var ErrBackupPluginMissing = errors.New("the Barman Cloud plugin is not installe
 var ErrOperatorMissing = errors.New("CloudNativePG is not installed on the cluster")
 
 var ErrAppSecretMissing = errors.New("connection secret not created yet")
+
+// ErrBackupsUnavailable : la plateforme ne peut pas sauvegarder les bases
+// (stockage non configuré ou plugin absent du cluster).
+var ErrBackupsUnavailable = errors.New("backups are not available on this platform yet")

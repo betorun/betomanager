@@ -67,6 +67,8 @@ func apiError(err error) error {
 	case errors.As(err, new(*repository.TaskError)):
 		// Journal de psql ou pg_dump : la base est celle du projet.
 		return betoerrors.New(betoerrors.CodeUnprocessable, err.Error())
+	case errors.Is(err, domain.ErrBackupsUnavailable):
+		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	case errors.Is(err, domain.ErrUnavailable):
 		return betoerrors.New(betoerrors.CodeServiceUnavailable, err.Error())
 	case strings.HasPrefix(err.Error(), "at most "), strings.HasPrefix(err.Error(), "project is not ready"):
@@ -136,6 +138,16 @@ func (h *Controller) Stop(c *gin.Context, in *domain.DatabasePath) (*domain.Data
 		return nil, err
 	}
 	out, err := h.Service.Stop(c.Request.Context(), p, d)
+	return out, apiError(err)
+}
+
+// EnableBackups : sauvegardes d'une base créée sans elles.
+func (h *Controller) EnableBackups(c *gin.Context, in *domain.DatabasePath) (*domain.DatabaseView, error) {
+	p, d, err := ids(in.ProjectID, in.DatabaseID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := h.Service.EnableBackups(c.Request.Context(), p, d)
 	return out, apiError(err)
 }
 

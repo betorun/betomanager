@@ -152,6 +152,12 @@ func addDatabaseRoutes(app *App) {
 		g.Perm(iam.DatabasesStop, db), tonic.Handler(r.Start, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "start_database", Write: true, Risk: tools.RiskLow,
 			Hint: "Starts a stopped database again on the same disk; ready in about a minute."})
+	// Bases créées avant que la plateforme ne sauvegarde : create, comme la
+	// restauration (des objets de sauvegarde sont créés dans le projet).
+	dbs.AddRoute("/:databaseID/backups/enable", http.MethodPost, "Activer les sauvegardes d'une base créée sans elles (l'instance redémarre, une minute environ)",
+		g.Perm(iam.DatabasesCreate, db), tonic.Handler(r.EnableBackups, http.StatusOK)).
+		ForCopilot(CopilotTool{Name: "enable_database_backups", Write: true, Risk: tools.RiskMedium,
+			Hint: "Turns on backups (continuous log archiving plus a nightly full backup) for a database created without them. The instance restarts (about a minute): containers using it lose their connection meanwhile. Only when get_database shows backups.enabled=false."})
 	dbs.AddRoute("/:databaseID", http.MethodDelete, "Supprimer une base (ses données sont perdues)", g.Perm(iam.DatabasesDelete, db),
 		tonic.Handler(r.Delete, http.StatusNoContent))
 
