@@ -128,6 +128,21 @@ func (v *configCheck) publicURL(key, value string) {
 	}
 }
 
+// platformMode : process du back-office (même valeur que router.ModePlatform).
+func platformMode() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_MODE")), "platform")
+}
+
+// consoleURL : URL publique en HTTPS, ou console sur le poste de l'équipe
+// (http://localhost ou 127.0.0.1, avec un port) pour le back-office.
+func (v *configCheck) consoleURL(key, value string) {
+	if u, err := url.Parse(value); err == nil && u.Scheme == "http" && u.Port() != "" && u.Path == "" &&
+		(u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1") {
+		return
+	}
+	v.publicURL(key, value)
+}
+
 // secret : présent, assez long, pas une valeur d'exemple ou de développement.
 func (v *configCheck) secret(key, value string, minLen int) {
 	if !v.required(key, value) {
@@ -214,15 +229,21 @@ func (c *GlobalConfig) checkServer(v *configCheck) {
 	if len(c.Server.AllowedOrigins) == 0 {
 		v.fail("server.allowed_origins", "obligatoire (origine HTTPS de la console)")
 	}
+	// Back-office (APP_MODE=platform) : jamais public, joint par tunnel SSH
+	// depuis la console de l'équipe sur son poste (http://localhost:3001).
+	consoleURL := v.publicURL
+	if platformMode() {
+		consoleURL = v.consoleURL
+	}
 	for _, origin := range c.Server.AllowedOrigins {
 		if strings.TrimSpace(origin) == "*" {
 			v.fail("server.allowed_origins", "« * » refusé")
 			continue
 		}
-		v.publicURL("server.allowed_origins", origin)
+		consoleURL("server.allowed_origins", origin)
 	}
 	checkTrustedProxies(v, c.Server.TrustedProxies)
-	v.publicURL("frontend.url", c.Frontend.BaseURL)
+	consoleURL("frontend.url", c.Frontend.BaseURL)
 
 	if !c.RateLimit.Enabled || c.RateLimit.Limit <= 0 {
 		v.fail("rate_limit.enabled", "le rate limit doit rester actif en production (rate_limit.limit > 0)")
