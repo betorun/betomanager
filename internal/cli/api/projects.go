@@ -15,6 +15,8 @@ type ProjectSummary struct {
 	Status         string    `json:"status"`
 	OrganizationID string    `json:"organization_id"`
 	CreatedAt      time.Time `json:"created_at"`
+	// DeletionScheduledAt : suppression programmée, effacement à cette date.
+	DeletionScheduledAt *time.Time `json:"deletion_scheduled_at,omitempty"`
 }
 
 // OrganizationQuota : organisation où l'on peut créer un projet.
@@ -65,4 +67,23 @@ func (c *Client) RenameProject(ctx context.Context, id, name string, description
 	}
 	var out ProjectSummary
 	return &out, c.Do(ctx, http.MethodPatch, pathProjects+"/"+url.PathEscape(id), body, &out)
+}
+
+// DeletedProject : réponse d'une demande de suppression.
+type DeletedProject struct {
+	ProjectID           string     `json:"project_id"`
+	Status              string     `json:"status"`
+	DeletionScheduledAt *time.Time `json:"deletion_scheduled_at,omitempty"`
+}
+
+// DeleteProject : suppression programmée (effacement après le délai de grâce).
+func (c *Client) DeleteProject(ctx context.Context, id string) (*DeletedProject, error) {
+	var out DeletedProject
+	return &out, c.Do(ctx, http.MethodDelete, pathProjects+"/"+url.PathEscape(id), nil, &out)
+}
+
+// RestoreProject : annule une suppression programmée.
+func (c *Client) RestoreProject(ctx context.Context, id string) (*ProjectSummary, error) {
+	var out ProjectSummary
+	return &out, c.Do(ctx, http.MethodPost, pathProjects+"/"+url.PathEscape(id)+"/restore", nil, &out)
 }

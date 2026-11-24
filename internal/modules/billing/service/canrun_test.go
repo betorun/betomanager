@@ -71,3 +71,12 @@ func TestCanRun_FailsClosedOnLookupError(t *testing.T) {
 		})
 	}
 }
+
+// Projet en suppression programmée : rien n'y démarre (une reprise après
+// solde rechargé ne doit pas relancer ses conteneurs).
+func TestCanRun_RefusesProjectPendingDeletion(t *testing.T) {
+	svc := &Service{Inventory: &fakeInventory{pending: true}, Ledger: accountLedger{}, Phase4: nopPhase4{}}
+	if err := svc.CanRun(context.Background(), uuid.New()); !errors.Is(err, domain.ErrProjectPendingDeletion) {
+		t.Fatalf("CanRun = %v, attendu ErrProjectPendingDeletion", err)
+	}
+}

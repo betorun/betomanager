@@ -55,7 +55,7 @@ Règles :
 | Workflow | Où | Activities | Compensation |
 |----------|-----|-----------|--------------|
 | `CreateProjectWorkflow` | [projects/workflows/create.go](../../internal/modules/projects/workflows/create.go) | CreateProjectInDB → CreateNamespace → ReconcileProjectResources → AssignDefaultOwner | `DeleteProjectDBActivity` si namespace échoue |
-| `DeleteProjectWorkflow` | [projects/workflows/delete.go](../../internal/modules/projects/workflows/delete.go) | DeleteNamespace → DeleteProjectWorkloadsActivity → DeleteProjectDBActivity | pas de compensation (opérations toutes idempotentes + destructives) |
+| `DeleteProjectWorkflow` | [projects/workflows/delete.go](../../internal/modules/projects/workflows/delete.go) | DeleteNamespace → DeleteProjectWorkloadsActivity → DeleteProjectSiteObjects → DeleteProjectDBActivity ; lancé par la purge 12 h après la demande (suppression programmée, restaurable d'ici là) | pas de compensation (opérations toutes idempotentes + destructives) |
 | `DeployWorkloadWorkflow` | [workloads/workflows/deployWorkload.go](../../internal/modules/workloads/workflows/deployWorkload.go) | EnsureSecret → InstallChart → UpdateStatus | `UpdateStatus(FAILED)` + garder la DB row pour retry manuel |
 | `DeleteWorkloadWorkflow` | [workloads/workflows/deleteWorkload.go](../../internal/modules/workloads/workflows/deleteWorkload.go) | UninstallChart → SoftDeleteWorkload | `UpdateStatus(DELETE_FAILED)` si Helm échoue (pas de re-install auto, admin retry) |
 

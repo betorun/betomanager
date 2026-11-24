@@ -55,7 +55,7 @@ func (i *Inventory) containers(ctx context.Context, _ time.Time) ([]domain.Reser
 	err := i.DB.WithContext(ctx).Raw(`
 		SELECT w.id, w.project_id, p.organization_id, w.name, w.status, w.replicas,
 		       w.cpu_limit, w.memory_limit, w.persistence_enabled, w.storage_size
-		FROM workloads w JOIN projects p ON p.id = w.project_id AND p.deleted_at IS NULL
+		FROM workloads w JOIN projects p ON p.id = w.project_id AND p.deleted_at IS NULL AND p.status <> 'PENDING_DELETION'
 		WHERE w.status <> 'DELETED'`).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("billing inventory containers: %w", err)
@@ -85,7 +85,7 @@ func (i *Inventory) databases(ctx context.Context, _ time.Time) ([]domain.Reserv
 	var rows []databaseRow
 	err := i.DB.WithContext(ctx).Raw(`
 		SELECT d.id, d.project_id, p.organization_id, d.name, d.storage_size
-		FROM databases d JOIN projects p ON p.id = d.project_id AND p.deleted_at IS NULL`).Scan(&rows).Error
+		FROM databases d JOIN projects p ON p.id = d.project_id AND p.deleted_at IS NULL AND p.status <> 'PENDING_DELETION'`).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("billing inventory databases: %w", err)
 	}
@@ -137,7 +137,7 @@ func (i *Inventory) siteDomains(ctx context.Context, _ time.Time) ([]domain.Rese
 	err := i.DB.WithContext(ctx).Raw(`
 		SELECT sd.id, s.project_id, p.organization_id, sd.hostname
 		FROM site_domains sd JOIN sites s ON s.id = sd.site_id
-		JOIN projects p ON p.id = s.project_id AND p.deleted_at IS NULL
+		JOIN projects p ON p.id = s.project_id AND p.deleted_at IS NULL AND p.status <> 'PENDING_DELETION'
 		WHERE sd.verified`).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("billing inventory site domains: %w", err)
@@ -155,7 +155,7 @@ func (i *Inventory) egressIPs(ctx context.Context, _ time.Time) ([]domain.Reserv
 	var rows []domainRow
 	err := i.DB.WithContext(ctx).Raw(`
 		SELECT e.id, e.project_id, p.organization_id, e.address AS hostname
-		FROM egress_addresses e JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL`).Scan(&rows).Error
+		FROM egress_addresses e JOIN projects p ON p.id = e.project_id AND p.deleted_at IS NULL AND p.status <> 'PENDING_DELETION'`).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("billing inventory egress addresses: %w", err)
 	}
@@ -225,6 +225,16 @@ func (i *Inventory) RunningWorkloads(ctx context.Context, org uuid.UUID, project
 	var out []domain.WorkloadRef
 	err := i.DB.WithContext(ctx).Raw(q+` ORDER BY w.created_at`, args...).Scan(&out).Error
 	return out, err
+}
+
+// ProjectPendingDeletion : projet en suppression programmée (rien n'y
+// redémarre avant sa restauration).
+func (i *Inventory) ProjectPendingDeletion(ctx context.Context, project uuid.UUID) (bool, error) {
+	var status []string
+	if err := i.DB.WithContext(ctx).Raw(`SELECT status FROM projects WHERE id = ?`, project).Scan(&status).Error; err != nil {
+		return false, fmt.Errorf("billing inventory: project %s: %w", project, err)
+	}
+	return len(status) == 1 && status[0] == "PENDING_DELETION", nil
 }
 
 // ProjectOrg : organisation d'un projet.

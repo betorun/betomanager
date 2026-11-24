@@ -12,8 +12,11 @@ const (
 	ProjectStatusReady        = "READY"
 	ProjectStatusError        = "ERROR"
 	ProjectStatusDeleting     = "DELETING"
-	ProjectStatusDeleted      = "DELETED"
-	ProjectStatusSuspended    = "SUSPENDED"
+	// ProjectStatusPendingDeletion : suppression demandée, effacement après
+	// le délai de grâce ; restaurable d'ici là.
+	ProjectStatusPendingDeletion = "PENDING_DELETION"
+	ProjectStatusDeleted         = "DELETED"
+	ProjectStatusSuspended       = "SUSPENDED"
 )
 
 const (
@@ -144,7 +147,7 @@ const (
 func IsValidProjectStatus(status string) bool {
 	switch status {
 	case ProjectStatusPending, ProjectStatusProvisioning, ProjectStatusReady,
-		ProjectStatusError, ProjectStatusDeleting, ProjectStatusSuspended:
+		ProjectStatusError, ProjectStatusDeleting, ProjectStatusSuspended, ProjectStatusPendingDeletion:
 		return true
 	}
 	return false

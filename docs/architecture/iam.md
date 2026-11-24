@@ -102,6 +102,7 @@ Format : **`<service>.<ressource>.<verbe>`**, en anglais, figé.
 resourcemanager.organizations.get       resourcemanager.projects.create
 resourcemanager.projects.get            resourcemanager.projects.delete
 resourcemanager.projects.getIamPolicy   resourcemanager.projects.setIamPolicy
+resourcemanager.projects.undelete
 
 workloads.workloads.list     workloads.workloads.get      workloads.workloads.create
 workloads.workloads.update   workloads.workloads.delete   workloads.workloads.restart

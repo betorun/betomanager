@@ -98,7 +98,11 @@ func newProjects() *cobra.Command {
 				if pr.ProjectID == s.ProjectID {
 					mark = "*"
 				}
-				t.Row(mark, pr.Name, pr.ProjectID, orgs[pr.OrganizationID], pr.Status)
+				status := pr.Status
+				if pr.DeletionScheduledAt != nil {
+					status = p.Yellow(i18n.T("proj.status.pending_deletion", pr.DeletionScheduledAt.Local().Format("2006-01-02 15:04")))
+				}
+				t.Row(mark, pr.Name, pr.ProjectID, orgs[pr.OrganizationID], status)
 			}
 			if err := t.Flush(); err != nil {
 				return err
@@ -155,7 +159,83 @@ func newProjects() *cobra.Command {
 			return nil
 		},
 	})
+	c.AddCommand(newProjectsDelete(), newProjectsRestore())
 	return c
+}
+
+// newProjectsDelete : « projects delete <projet> » : le projet est nommé
+// explicitement (jamais le projet courant par défaut) et son nom retapé.
+// Tout est arrêté ; l'effacement définitif a lieu 12 h plus tard, sauf
+// « projects restore » d'ici là.
+func newProjectsDelete() *cobra.Command {
+	var yes bool
+	c := &cobra.Command{
+		Use: "delete " + i18n.T("arg.project"), Short: i18n.T("proj.delete.short"), Long: i18n.T("proj.delete.long"),
+		Example: "betorun projects delete \"Boutique préprod\"\nbetorun projects restore \"Boutique préprod\"",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s, err := settings()
+			if err != nil {
+				return err
+			}
+			cl := client(s)
+			pr, err := findProject(cmd, cl, args[0])
+			if err != nil {
+				return err
+			}
+			p := printer(cmd)
+			if pr.DeletionScheduledAt == nil && !yes {
+				p.Warn(i18n.T("proj.delete.warn", pr.Name))
+				if !confirm(cmd, i18n.T("proj.delete.confirm", pr.Name), pr.Name) {
+					return errors.New(i18n.T("proj.delete.aborted"))
+				}
+			}
+			out, err := cl.DeleteProject(cmd.Context(), pr.ProjectID)
+			if err != nil {
+				return err
+			}
+			if done, err := wantJSON(cmd, out); done {
+				return err
+			}
+			if out.DeletionScheduledAt != nil {
+				p.Success(i18n.T("proj.delete.scheduled", pr.Name, out.DeletionScheduledAt.Local().Format("2006-01-02 15:04")))
+				p.Hint(i18n.T("proj.delete.restore_hint", pr.Name))
+				return nil
+			}
+			p.Success(i18n.T("proj.delete.started", pr.Name))
+			return nil
+		},
+	}
+	c.Flags().BoolVarP(&yes, "yes", "y", false, i18n.T("flag.yes"))
+	return c
+}
+
+// newProjectsRestore : « projects restore <projet> » : annule une
+// suppression programmée ; ce qui avait été arrêté redémarre.
+func newProjectsRestore() *cobra.Command {
+	return &cobra.Command{
+		Use: "restore " + i18n.T("arg.project"), Short: i18n.T("proj.restore.short"), Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s, err := settings()
+			if err != nil {
+				return err
+			}
+			cl := client(s)
+			pr, err := findProject(cmd, cl, args[0])
+			if err != nil {
+				return err
+			}
+			out, err := cl.RestoreProject(cmd.Context(), pr.ProjectID)
+			if err != nil {
+				return err
+			}
+			if done, err := wantJSON(cmd, out); done {
+				return err
+			}
+			printer(cmd).Success(i18n.T("proj.restore.done", pr.Name))
+			return nil
+		},
+	}
 }
 
 // findProject : par ID, ou par nom (sans tenir compte de la casse).

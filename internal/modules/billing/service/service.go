@@ -20,6 +20,8 @@ type Inventory interface {
 	ProjectNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 	RunningWorkloads(ctx context.Context, org uuid.UUID, project *uuid.UUID) ([]domain.WorkloadRef, error)
 	ProjectOrg(ctx context.Context, project uuid.UUID) (uuid.UUID, error)
+	// ProjectPendingDeletion : projet en suppression programmée.
+	ProjectPendingDeletion(ctx context.Context, project uuid.UUID) (bool, error)
 	ProjectUsages(ctx context.Context, org uuid.UUID) ([]domain.ProjectUsage, error)
 	LimitTargets(ctx context.Context, org *uuid.UUID, plan *string) ([]domain.LimitTarget, error)
 }

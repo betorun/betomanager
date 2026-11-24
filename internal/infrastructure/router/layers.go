@@ -232,6 +232,8 @@ func (a *App) initDomainLayers() error {
 	}
 	// Constats : réutilisent les services des contrôleurs ci-dessus.
 	a.Controllers.Insights = a.newInsightsController()
+	// Suppression programmée des projets : délai de grâce, restauration.
+	a.wireProjectDeletion()
 
 	a.Logger.Info("Domain layers successfully initialized.")
 	return nil

@@ -2814,5 +2814,13 @@
  {
   "fr": "Constats, du plus grave au moins grave puis du plus récent, 10 au plus",
   "en": "Insights, most severe first then most recent, at most 10"
+ },
+ {
+  "fr": "Supprimer un projet : tout est arrêté, effacement définitif après 12 h (restaurable d'ici là)",
+  "en": "Delete a project: everything is stopped, erased for good after 12 hours (can be restored until then)"
+ },
+ {
+  "fr": "Restaurer un projet dont la suppression est programmée (avant l'effacement)",
+  "en": "Restore a project scheduled for deletion (before it is erased)"
  }
 ]

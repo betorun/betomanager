@@ -19,6 +19,7 @@ type IProjectController interface {
 	CreateProject(c *gin.Context, in *typeiam.CreateProjectRequest) (*typeiam.ProjectResponse, error)
 	GetProjectStatus(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectStatusResponse, error)
 	DeleteProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectResponse, error)
+	RestoreProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectDetail, error)
 	GetProjectMetrics(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.NamespaceMetrics, error)
 	ListProjects(c *gin.Context) (*typeiam.ListProjectsResponse, error)
 	SetProjectLimits(c *gin.Context, in *SetProjectLimitsRequest) (*typeiam.ProjectLimitsResponse, error)
@@ -130,7 +131,20 @@ func (h *ProjectHandler) GetProjectStatus(c *gin.Context, in *GetProjectStatusRe
 }
 
 func (h *ProjectHandler) DeleteProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectResponse, error) {
-	return h.ProjectService.DeleteProject(c.Request.Context(), in.ProjectID)
+	return h.ProjectService.DeleteProject(c.Request.Context(), in.ProjectID, actorOf(c))
+}
+
+// RestoreProject : annule une suppression programmée (avant l'effacement).
+func (h *ProjectHandler) RestoreProject(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.ProjectDetail, error) {
+	return h.ProjectService.RestoreProject(c.Request.Context(), in.ProjectID, actorOf(c))
+}
+
+// actorOf : auteur de la demande (principal IAM), pour le journal et l'e-mail.
+func actorOf(c *gin.Context) string {
+	if p, ok := security.PrincipalFromContext(c); ok {
+		return string(p)
+	}
+	return ""
 }
 
 func (h *ProjectHandler) GetProjectMetrics(c *gin.Context, in *GetProjectStatusRequest) (*typeiam.NamespaceMetrics, error) {

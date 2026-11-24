@@ -30,6 +30,7 @@ const (
 	ProjectsList              Permission = "resourcemanager.projects.list"
 	ProjectsUpdate            Permission = "resourcemanager.projects.update"
 	ProjectsDelete            Permission = "resourcemanager.projects.delete"
+	ProjectsUndelete          Permission = "resourcemanager.projects.undelete"
 	ProjectsGetIamPolicy      Permission = "resourcemanager.projects.getIamPolicy"
 	ProjectsSetIamPolicy      Permission = "resourcemanager.projects.setIamPolicy"
 
@@ -228,6 +229,7 @@ var catalog = map[Permission]PermissionInfo{
 	ProjectsList:              {Title: "Lister les projets", CustomRoles: true},
 	ProjectsUpdate:            {Title: "Modifier un projet", CustomRoles: true},
 	ProjectsDelete:            {Title: "Supprimer un projet", CustomRoles: true, Sensitive: true},
+	ProjectsUndelete:          {Title: "Restaurer un projet dont la suppression est programmée", CustomRoles: true},
 	ProjectsGetIamPolicy:      {Title: "Voir les accès d'un projet", CustomRoles: true},
 	ProjectsSetIamPolicy:      {Title: "Modifier les accès d'un projet", CustomRoles: true, Sensitive: true},
 

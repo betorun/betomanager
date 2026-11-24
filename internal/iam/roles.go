@@ -81,7 +81,7 @@ var (
 
 	ownerPerms = concat(editorPerms, []Permission{
 		OrganizationsUpdate, OrganizationsSetIamPolicy,
-		ProjectsCreate, ProjectsDelete, ProjectsSetIamPolicy,
+		ProjectsCreate, ProjectsDelete, ProjectsUndelete, ProjectsSetIamPolicy,
 		RolesCreate, RolesUpdate, RolesDelete,
 		GroupsCreate, GroupsUpdate, GroupsDelete,
 		DenyPoliciesUpdate,

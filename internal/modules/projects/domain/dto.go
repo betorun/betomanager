@@ -19,6 +19,8 @@ type ProjectResponse struct {
 	WorkflowID string `json:"workflow_id"`
 	Status     string `json:"status"`
 	Message    string `json:"message"`
+	// DeletionScheduledAt : effacement définitif (suppression programmée).
+	DeletionScheduledAt *time.Time `json:"deletion_scheduled_at,omitempty"`
 }
 
 type ProjectStatusResponse struct {
@@ -73,6 +75,9 @@ type ProjectSummary struct {
 	Status         string    `json:"status"`
 	OrganizationID string    `json:"organization_id"`
 	CreatedAt      time.Time `json:"created_at"`
+	// DeletionScheduledAt : statut PENDING_DELETION, effacement définitif à
+	// cette date ; restaurable d'ici là.
+	DeletionScheduledAt *time.Time `json:"deletion_scheduled_at,omitempty"`
 }
 
 // ListProjectsResponse : projets accessibles. Truncated : il y en a plus que

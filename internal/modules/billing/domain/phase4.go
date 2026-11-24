@@ -302,6 +302,10 @@ var ErrInvalidBudget = errors.New("invalid budget: a positive whole amount, or 0
 // ErrAccountSuspended : l'organisation est suspendue faute de solde, ou le
 // projet a atteint son budget avec arrêt : rien ne démarre avant une
 // recharge (ou un budget relevé).
+// ErrProjectPendingDeletion : projet en suppression programmée ; rien n'y
+// démarre avant sa restauration.
+var ErrProjectPendingDeletion = errors.New("this project is scheduled for deletion: restore it before starting anything")
+
 var ErrAccountSuspended = errors.New("billing: this organization's balance is used up, or the project reached its budget: top up (or raise the budget) to start containers again")
 
 // ErrProjectUnknown : le projet n'existe pas (ou plus) côté facturation. À

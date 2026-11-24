@@ -26,6 +26,8 @@ func (s *ProjectService) ListProjects(ctx context.Context, orgIDs, projectIDs, e
 			Status:         p.Status,
 			OrganizationID: p.OrganizationID.String(),
 			CreatedAt:      p.CreatedAt,
+
+			DeletionScheduledAt: p.DeletionScheduledAt,
 		})
 	}
 	return out, nil

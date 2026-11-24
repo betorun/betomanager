@@ -97,6 +97,7 @@ type MiddlewareManager struct {
 	sts            TokenVerifier
 	mfa            *MFAConfig
 	dataAccess     DataAccessPolicy
+	projectState   ProjectStateChecker
 }
 
 func NewMiddlewareManager(

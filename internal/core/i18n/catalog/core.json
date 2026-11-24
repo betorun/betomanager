@@ -194,5 +194,25 @@
  {
   "fr": "Aucun site pour ce nom d'hôte",
   "en": "no site for this host"
+ },
+ {
+  "fr": "Ce projet a encore des VPS : supprimez-les d'abord, puis supprimez le projet",
+  "en": "this project still has VPS: delete them first, then delete the project"
+ },
+ {
+  "fr": "Ce projet ne peut pas être supprimé pour l'instant : attendez qu'il soit prêt",
+  "en": "this project cannot be deleted right now: wait until it is ready"
+ },
+ {
+  "fr": "La suppression de ce projet n'est pas programmée",
+  "en": "this project is not scheduled for deletion"
+ },
+ {
+  "fr": "La suppression de ce projet est programmée : restaurez-le avant de modifier quoi que ce soit",
+  "en": "this project is scheduled for deletion: restore it before changing anything"
+ },
+ {
+  "fr": "La suppression de ce projet est programmée : restaurez-le avant de démarrer quoi que ce soit",
+  "en": "this project is scheduled for deletion: restore it before starting anything"
  }
 ]
