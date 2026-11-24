@@ -20,10 +20,12 @@ func newProjects() *cobra.Command {
 		Long: i18n.T("proj.long"),
 		Example: "betorun projects list\n" +
 			"betorun projects create \"Boutique préprod\" --use\n" +
+			"betorun regions\n" +
+			"betorun projects create \"Boutique Douala\" --region <code>\n" +
 			"betorun projects use \"Boutique préprod\"\n" +
 			"betorun projects rename \"Boutique préprod\" \"Boutique staging\""}
 
-	var description, org string
+	var description, org, region string
 	var use, noWait bool
 	create := &cobra.Command{
 		Use: "create " + i18n.T("arg.project_name"), Short: i18n.T("proj.create.short"), Args: cobra.ExactArgs(1),
@@ -32,7 +34,8 @@ func newProjects() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := client(s).CreateProject(cmd.Context(), strings.TrimSpace(args[0]), strings.TrimSpace(description), org)
+			res, err := client(s).CreateProject(cmd.Context(), strings.TrimSpace(args[0]), strings.TrimSpace(description), org,
+				strings.ToLower(strings.TrimSpace(region)))
 			if err != nil {
 				return err
 			}
@@ -65,6 +68,7 @@ func newProjects() *cobra.Command {
 	}
 	create.Flags().StringVar(&description, "description", "", i18n.T("flag.proj.description"))
 	create.Flags().StringVar(&org, "org", "", i18n.T("flag.proj.org"))
+	create.Flags().StringVar(&region, "region", "", i18n.T("flag.proj.region"))
 	create.Flags().BoolVar(&use, "use", false, i18n.T("flag.proj.use"))
 	create.Flags().BoolVar(&noWait, "no-wait", false, i18n.T("flag.proj.no_wait"))
 
