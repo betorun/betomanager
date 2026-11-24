@@ -148,8 +148,12 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, by Actor, in Create
 	if err := s.Store.CreateTicket(ctx, t, ev); err != nil {
 		return nil, err
 	}
+	s.publishStaff(ctx, t, FeedTicketCreated, by.UserID)
 	if s.Notify != nil {
 		s.Notify.Received(ctx, t)
+		if t.Priority == domain.PriorityHigh || t.Priority == domain.PriorityUrgent {
+			s.Notify.StaffUrgent(ctx, t)
+		}
 	}
 	return s.view(ctx, t)
 }
@@ -243,7 +247,16 @@ func (s *Service) Reply(ctx context.Context, org, id uuid.UUID, by Actor, body s
 	if err != nil {
 		return nil, err
 	}
-	return s.addMessage(ctx, t, by, domain.AuthorCustomer, body, next)
+	v, err := s.addMessage(ctx, t, by, domain.AuthorCustomer, body, next)
+	if err != nil {
+		return nil, err
+	}
+	s.publishStaff(ctx, v.Ticket, FeedCustomerMessage, by.UserID)
+	if s.Notify != nil && v.Ticket.AssignedToUserID != nil && len(v.Messages) > 0 {
+		msg := v.Messages[len(v.Messages)-1]
+		s.Notify.StaffCustomerMessage(ctx, v.Ticket, &msg, *v.Ticket.AssignedToUserID)
+	}
+	return v, nil
 }
 
 // Resolve : le client marque sa demande résolue (sans effet si déjà terminée).
@@ -428,6 +441,7 @@ func (s *Service) AdminReply(ctx context.Context, id uuid.UUID, by Actor, body s
 	if err != nil {
 		return nil, err
 	}
+	s.publishOrg(ctx, v.Ticket, OrgAgentMessage)
 	if s.Notify != nil {
 		msg := v.Messages[len(v.Messages)-1]
 		s.Notify.AgentReplied(ctx, v.Ticket, &msg, customerRecipients(v.Ticket, v.Messages))
@@ -470,7 +484,7 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, by Actor, in Up
 	}
 	now := s.now()
 	var events []domain.Event
-	resolved := false
+	resolved, statusChanged := false, false
 	if in.Status != nil {
 		st, err := domain.ParseStatus(*in.Status)
 		if err != nil {
@@ -479,6 +493,7 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, by Actor, in Up
 		if st != t.Status {
 			events = append(events, s.event(t, domain.EventStatusChanged, by, map[string]string{"status": string(st), "from": string(t.Status)}))
 			resolved = st.Done() && !t.Status.Done()
+			statusChanged = true
 			t.SetStatus(st, now)
 		}
 	}
@@ -518,6 +533,9 @@ func (s *Service) AdminUpdate(ctx context.Context, id uuid.UUID, by Actor, in Up
 		return nil, err
 	}
 	s.publish(ctx, t, LiveStatus, "")
+	if statusChanged {
+		s.publishOrg(ctx, t, OrgStatus)
+	}
 	if resolved && s.Notify != nil {
 		s.Notify.Resolved(ctx, t)
 	}
@@ -552,6 +570,9 @@ func (s *Service) Assign(ctx context.Context, id uuid.UUID, by Actor, to *uuid.U
 	if to != nil {
 		assigned = to.String()
 	}
+	// E-mail à l'agent : seulement une nouvelle assignation, par quelqu'un d'autre.
+	notify := to != nil && (t.AssignedToUserID == nil || *t.AssignedToUserID != *to) &&
+		(by.UserID == nil || *by.UserID != *to)
 	t.AssignedToUserID = to
 	now := s.now()
 	t.LastActivityAt, t.UpdatedAt = now, now
@@ -560,6 +581,9 @@ func (s *Service) Assign(ctx context.Context, id uuid.UUID, by Actor, to *uuid.U
 		return nil, err
 	}
 	s.publish(ctx, t, LiveAssign, "")
+	if notify && s.Notify != nil {
+		s.Notify.StaffAssigned(ctx, t, *to)
+	}
 	return s.staffView(ctx, t)
 }
 

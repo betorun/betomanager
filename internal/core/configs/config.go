@@ -671,6 +671,10 @@ type SocialProviderConfig struct {
 
 type FrontendConfig struct {
 	BaseURL string `mapstructure:"url"`
+	// PlatformURL : console de l'équipe (back-office), pour les liens des
+	// e-mails envoyés à l'équipe. Vide : celle du process en mode platform,
+	// aucun e-mail à l'équipe depuis les autres modes.
+	PlatformURL string `mapstructure:"platform_url"`
 }
 
 type RolesConfig struct {

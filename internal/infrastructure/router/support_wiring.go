@@ -47,9 +47,22 @@ func (a *App) newSupportController() *support.Controller {
 		a.Logger.Warnw("support e-mails disabled: mail configuration invalid", "error", err)
 	} else if sender != nil {
 		s.Notify = &supportSvc.MailNotifier{Store: store, Mail: sender, ConsoleURL: a.Config.Frontend.BaseURL,
+			StaffURL: a.staffConsoleURL(), Staff: store,
 			Logger: a.Logger.With("component", "support-mail"), Spawner: a.spawner()}
 	}
 	return &support.Controller{Service: s, WriteError: writeClassifiedError}
+}
+
+// staffConsoleURL : console de l'équipe pour les liens des e-mails
+// (frontend.platform_url ; à défaut, celle du process du back-office).
+func (a *App) staffConsoleURL() string {
+	if u := strings.TrimSpace(a.Config.Frontend.PlatformURL); u != "" {
+		return u
+	}
+	if ResolveMode() == ModePlatform {
+		return a.Config.Frontend.BaseURL
+	}
+	return ""
 }
 
 // writeClassifiedError : erreur d'une route hors tonic, au format habituel.
@@ -111,6 +124,7 @@ func addSupportRoutes(app *App) {
 	// routes /realtime ; le jeton d'un ticket porte la même garde que sa lecture.
 	if rt, ok := app.Controllers.Realtime.(*realtimeCtrl.Controller); ok && rt != nil {
 		admin.AddRoute("/live/token", http.MethodGet, "Jeton de connexion au flux en direct du support (back-office)", manage, tonic.Handler(rt.GetConnectionToken, http.StatusOK))
+		admin.AddRoute("/live/feed", http.MethodGet, "Jeton d'abonnement au fil de l'équipe (nouveaux tickets, messages des clients)", manage, tonic.Handler(rt.GetStaffFeedToken, http.StatusOK))
 		admin.AddRoute("/tickets/:ticketID/live", http.MethodGet, "Jeton d'abonnement aux changements d'un ticket (back-office)", onTicket, tonic.Handler(rt.GetStaffTicketToken, http.StatusOK))
 		rt.TicketOrganization = func(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 			t, err := r.Service.Store.Ticket(ctx, id)

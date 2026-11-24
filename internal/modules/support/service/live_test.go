@@ -12,13 +12,27 @@ import (
 
 type liveSpy struct {
 	channels []string
-	events   []LiveEvent
+	events   []LiveEvent // canaux support:ticket:<id>
+	staff    []StaffFeedEvent
+	org      []OrgFeedEvent
+	orgChans []string
 	fail     bool
 }
 
 func (l *liveSpy) Publish(_ context.Context, channel string, data any) error {
-	l.channels = append(l.channels, channel)
-	l.events = append(l.events, data.(LiveEvent))
+	switch ev := data.(type) {
+	case LiveEvent:
+		l.channels = append(l.channels, channel)
+		l.events = append(l.events, ev)
+	case StaffFeedEvent:
+		if channel != "support:staff" {
+			panic(channel)
+		}
+		l.staff = append(l.staff, ev)
+	case OrgFeedEvent:
+		l.orgChans = append(l.orgChans, channel)
+		l.org = append(l.org, ev)
+	}
 	if l.fail {
 		return errors.New("centrifugo indisponible")
 	}
@@ -68,4 +82,47 @@ func TestLive_FailOpen(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.Reply(ctx, org, v.Ticket.ID, client, "Relance")
 	assert.NoError(t, err, "Centrifugo en panne ne fait pas échouer la réponse")
+}
+
+func TestLive_StaffAndOrgFeeds(t *testing.T) {
+	s, _, _, org, client, staff := fixture()
+	spy := &liveSpy{}
+	s.Live = spy
+	ctx := context.Background()
+	v, err := s.Create(ctx, org, client, CreateInput{Subject: "Site en panne", Description: "502", Priority: "URGENT"})
+	require.NoError(t, err)
+	id := v.Ticket.ID
+	_, err = s.Reply(ctx, org, id, client, "Toujours en panne")
+	require.NoError(t, err)
+	_, err = s.AddNote(ctx, id, staff, "Voir le nœud 2")
+	require.NoError(t, err)
+	_, err = s.AdminReply(ctx, id, staff, "Relancé")
+	require.NoError(t, err)
+	resolved := "RESOLVED"
+	_, err = s.AdminUpdate(ctx, id, staff, UpdateInput{Status: &resolved})
+	require.NoError(t, err)
+	high := "HIGH"
+	_, err = s.AdminUpdate(ctx, id, staff, UpdateInput{Priority: &high})
+	require.NoError(t, err)
+
+	require.Len(t, spy.staff, 2)
+	assert.Equal(t, FeedTicketCreated, spy.staff[0].Kind)
+	assert.Equal(t, FeedCustomerMessage, spy.staff[1].Kind)
+	for _, ev := range spy.staff {
+		assert.Equal(t, id.String(), ev.TicketID)
+		assert.Equal(t, org.String(), ev.OrganizationID)
+		assert.Equal(t, "Site en panne", ev.Subject)
+		assert.Equal(t, "URGENT", ev.Priority)
+		assert.Equal(t, "awa@ex.sn", ev.AuthorEmail)
+	}
+	assert.Equal(t, "OPEN", spy.staff[1].Status)
+
+	var kinds []string
+	for i, ev := range spy.org {
+		assert.Equal(t, "support:org:"+org.String(), spy.orgChans[i])
+		assert.Equal(t, "Site en panne", ev.Subject)
+		kinds = append(kinds, ev.Kind)
+	}
+	assert.Equal(t, []string{OrgAgentMessage, OrgStatus}, kinds, "ni la note, ni la priorité")
+	assert.Equal(t, "RESOLVED", spy.org[1].Status)
 }
