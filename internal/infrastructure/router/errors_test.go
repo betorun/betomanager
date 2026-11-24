@@ -10,6 +10,7 @@ import (
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
 	"gorm.io/gorm"
 
+	"github.com/thekrauss/kubemanager/internal/modules/assistance"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	identityKC "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
@@ -48,4 +49,16 @@ func TestClassifyError_UserAPIKeysRetired(t *testing.T) {
 	status, body := classifyError(authSvc.ErrUserAPIKeysRetired)
 	assert.Equal(t, http.StatusGone, status)
 	assert.Contains(t, body.Message, "serviceAccounts", "le message indique la nouvelle API")
+}
+
+// Une raison stable traverse le hook (le message, lui, est traduit).
+func TestClassifyError_Reason(t *testing.T) {
+	err := fmt.Errorf("approve: %w", assistance.ErrNotPending)
+	status, body := classifyError(err)
+	if status != http.StatusConflict || body.Code != betoerrors.CodeConflict || body.Reason != "ASSISTANCE_NOT_PENDING" {
+		t.Fatalf("%d %+v", status, body)
+	}
+	if _, plain := classifyError(betoerrors.New(betoerrors.CodeConflict, "x")); plain.Reason != "" {
+		t.Fatalf("raison inventée : %+v", plain)
+	}
 }

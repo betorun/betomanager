@@ -56,7 +56,18 @@ Client (`/organizations/:id/assistance`) :
 | GET | `/admin/assistance` | `platform.support.get` | → `{items}` : les accès de la personne seulement |
 | POST | `/admin/assistance/:grantID/close` | `platform.assistance.request` | `{note}` : clore son accès ou retirer sa demande |
 
-Erreurs : `404` (accès inconnu ou d'une autre organisation), `409` (déjà une demande ou un accès ouvert ; demande déjà tranchée ; accès plus actif), `400` (motif trop court, ticket sans agent assigné).
+Erreurs : le champ `message` est traduit dans la langue de la requête ; un client compare `code` et `reason` (stable, jamais traduit), jamais le message.
+
+| Statut | `code` | `reason` | Cas |
+|---|---|---|---|
+| 404 | `NOT_FOUND` | — | accès inconnu ou d'une autre organisation, ticket inconnu |
+| 409 | `CONFLICT` | `ASSISTANCE_ALREADY_OPEN` | déjà une demande ou un accès ouvert pour cette personne |
+| 409 | `CONFLICT` | `ASSISTANCE_NOT_PENDING` | demande déjà tranchée ou expirée |
+| 409 | `CONFLICT` | `ASSISTANCE_NOT_ACTIVE` | accès plus actif (retrait, clôture) |
+| 400 | `INVALID_INPUT` | `ASSISTANCE_NO_ASSIGNEE` | ticket sans agent assigné |
+| 400 | `INVALID_INPUT` | `ASSISTANCE_REASON_INVALID` / `ASSISTANCE_DURATION_INVALID` | motif ou durée hors bornes, vus par le service |
+
+Un corps hors bornes peut aussi être refusé plus tôt, à la lecture de la requête (`INVALID_INPUT` sans `reason`) : la console vérifie les bornes avant l'envoi (motif de 20 à 500 caractères, 1 à 24 h, 5 à 60 min).
 
 ## Règles
 

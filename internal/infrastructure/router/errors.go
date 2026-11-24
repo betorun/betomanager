@@ -2,9 +2,11 @@ package router
 
 import (
 	"errors"
+	"net/http"
+
+	"github.com/thekrauss/kubemanager/internal/core/apierr"
 	egressDomain "github.com/thekrauss/kubemanager/internal/modules/egress/domain"
 	egressRepo "github.com/thekrauss/kubemanager/internal/modules/egress/repository"
-	"net/http"
 
 	clustersDomain "github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
 	clustersRepo "github.com/thekrauss/kubemanager/internal/modules/clusters/repository"
@@ -48,6 +50,9 @@ type ErrorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Error   string `json:"error"`
+	// Reason : code machine stable (jamais traduit) quand deux refus
+	// partagent le même code ; le client compare celui-ci, jamais message.
+	Reason string `json:"reason,omitempty"`
 }
 
 type sentinelMapping struct {
@@ -460,7 +465,9 @@ func classifyError(err error) (int, ErrorBody) {
 	var typed *betoerrors.Error
 	if errors.As(err, &typed) {
 		status, _ := betoerrors.ToHTTPError(typed)
-		return status, body(typed.Code, typed.Message)
+		b := body(typed.Code, typed.Message)
+		b.Reason = apierr.Reason(err)
+		return status, b
 	}
 	for _, m := range sentinelErrors {
 		if errors.Is(err, m.err) {
