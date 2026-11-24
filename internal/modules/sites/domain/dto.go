@@ -1,5 +1,7 @@
 package domain
 
+import "github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
+
 // Toutes les routes sont imbriquées sous /projects/:id/sites (":id" = projet,
 // imposé par les routes /projects/:id existantes) pour que
 // RequireProjectPermission vérifie l'appartenance au projet.
@@ -65,6 +67,9 @@ type DomainResponse struct {
 	Records []DNSRecord `json:"records"`
 	// Pointing : le domaine pointe vers la plateforme (connu après une vérification).
 	Pointing bool `json:"pointing"`
+	// Certificate : état du certificat HTTPS dans le cluster (domaine
+	// vérifié) ; absent si rien à montrer ou cluster injoignable.
+	Certificate *certstatus.Status `json:"certificate,omitempty"`
 }
 
 // DNSRecord : enregistrement à créer chez le fournisseur DNS.

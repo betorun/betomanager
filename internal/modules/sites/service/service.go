@@ -21,6 +21,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/objectstore"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/temporal"
 	"github.com/thekrauss/kubemanager/internal/modules/sites/activities"
@@ -72,6 +73,9 @@ type Config struct {
 type SiteService struct {
 	// HostnameInUse : nom déjà vérifié ailleurs sur la plateforme (optionnel).
 	HostnameInUse func(ctx context.Context, host string) (bool, error)
+	// Certificates : certificats des domaines servis par static-edge, par nom
+	// d'objet (optionnel : sans lui, aucun état de certificat n'est montré).
+	Certificates func(ctx context.Context) (map[string]*certstatus.Status, error)
 
 	repo        repository.SiteRepository
 	store       objectstore.Store
@@ -356,8 +360,11 @@ func (s *SiteService) ListDomains(ctx context.Context, projectID, siteID uuid.UU
 		return nil, err
 	}
 	out := make([]domain.DomainResponse, 0, len(ds))
+	certs := s.certificates(ctx, ds)
 	for i := range ds {
-		out = append(out, *s.domainResponse(&ds[i]))
+		view := s.domainResponse(&ds[i])
+		view.Certificate = certificateFor(certs, &ds[i])
+		out = append(out, *view)
 	}
 	return out, nil
 }
@@ -391,10 +398,10 @@ func (s *SiteService) VerifyDomain(ctx context.Context, projectID, siteID, domai
 			return nil, err
 		}
 		d.CheckedAt = &now
-		return s.domainView(d, pointing), nil
+		return s.domainView(ctx, d, pointing), nil
 	}
 	if d.Verified {
-		return s.domainView(d, pointing), nil
+		return s.domainView(ctx, d, pointing), nil
 	}
 	claimed := betoerrors.New(betoerrors.CodeConflict, "ce domaine est déjà rattaché à un site")
 	if s.HostnameInUse != nil {
@@ -426,7 +433,7 @@ func (s *SiteService) VerifyDomain(ctx context.Context, projectID, siteID, domai
 	}
 	d.Verified, d.CheckedAt, d.VerifiedAt = true, &now, &now
 	s.syncEdgeDomains(ctx) // Ingress et certificat du domaine
-	return s.domainView(d, pointing), nil
+	return s.domainView(ctx, d, pointing), nil
 }
 
 func (s *SiteService) pointsToEdge(ctx context.Context, host, siteHost string) bool {
@@ -505,10 +512,37 @@ func (s *SiteService) domainResponse(d *domain.SiteDomain) *domain.DomainRespons
 	return &domain.DomainResponse{SiteDomain: *d, CNAMETarget: s.cfg.EdgeTarget, Records: records}
 }
 
-func (s *SiteService) domainView(d *domain.SiteDomain, pointing bool) *domain.DomainResponse {
+func (s *SiteService) domainView(ctx context.Context, d *domain.SiteDomain, pointing bool) *domain.DomainResponse {
 	view := s.domainResponse(d)
 	view.Pointing = pointing
+	view.Certificate = certificateFor(s.certificates(ctx, []domain.SiteDomain{*d}), d)
 	return view
+}
+
+// certificates : lus seulement si un domaine est vérifié ; nil : rien à
+// montrer (pas de static-edge dans le cluster, cluster injoignable).
+func (s *SiteService) certificates(ctx context.Context, ds []domain.SiteDomain) map[string]*certstatus.Status {
+	if s.Certificates == nil || !s.cfg.EdgeIngress ||
+		!slices.ContainsFunc(ds, func(d domain.SiteDomain) bool { return d.Verified }) {
+		return nil
+	}
+	certs, err := s.Certificates(ctx)
+	if err != nil {
+		return nil
+	}
+	return certs
+}
+
+// certificateFor : état du certificat d'un domaine ; absent (pas encore créé
+// par cert-manager) : en cours.
+func certificateFor(certs map[string]*certstatus.Status, d *domain.SiteDomain) *certstatus.Status {
+	if certs == nil || !d.Verified {
+		return nil
+	}
+	if c, ok := certs[activities.EdgeObjectName(d.Hostname)]; ok {
+		return c
+	}
+	return certstatus.Pending()
 }
 
 // publicURL : http en dev local (*.localhost), https partout ailleurs.

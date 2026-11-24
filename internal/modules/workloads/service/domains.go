@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net"
 	"slices"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/auth"
 	"github.com/thekrauss/kubemanager/internal/core/configs"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
 	registriesDomain "github.com/thekrauss/kubemanager/internal/modules/registries/domain"
 	sitesDomain "github.com/thekrauss/kubemanager/internal/modules/sites/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
@@ -185,7 +188,55 @@ func (s *WorkloadService) ListDomains(ctx context.Context, workload uuid.UUID) (
 	for i := range list {
 		out = append(out, s.domainView(ctx, &list[i], false, providers))
 	}
+	if w, err := s.Repo.GetByID(ctx, workload); err == nil {
+		certs := s.certificates(ctx, w, list)
+		for i := range out {
+			out[i].Certificate = certificateFor(certs, w.Name, &list[i])
+		}
+	}
 	return out, nil
+}
+
+// certificates : certificats du namespace du conteneur, lus seulement si un
+// de ses domaines est vérifié et que la plateforme demande des certificats.
+// nil : rien à montrer (cluster injoignable, cert-manager absent).
+func (s *WorkloadService) certificates(ctx context.Context, w *domain.Workload, list []domain.WorkloadDomain) map[string]*certstatus.Status {
+	if s.DomainCfg == nil || !s.DomainCfg.TLS || s.Kube == nil ||
+		!slices.ContainsFunc(list, func(d domain.WorkloadDomain) bool { return d.Verified }) {
+		return nil
+	}
+	kube, err := s.Kube.ForProject(ctx, w.ProjectID)
+	if err != nil || kube == nil || kube.Dynamic == nil {
+		return nil
+	}
+	certs, err := certstatus.List(ctx, kube.Dynamic, w.Namespace)
+	if err != nil {
+		return nil
+	}
+	return certs
+}
+
+// certificateFor : état du certificat d'une route ; absent (pas encore créé
+// par cert-manager) : en cours.
+func certificateFor(certs map[string]*certstatus.Status, release string, d *domain.WorkloadDomain) *certstatus.Status {
+	if certs == nil || !d.Verified {
+		return nil
+	}
+	if c, ok := certs[CertificateName(release, d.Hostname, d.Path)]; ok {
+		return c
+	}
+	return certstatus.Pending()
+}
+
+// CertificateName : nom de l'Ingress et du certificat d'une route, comme le
+// chart standard-app (templates/custom-domains.yaml).
+func CertificateName(release, host, path string) string {
+	key := host
+	if path != "" && path != "/" {
+		key = host + path
+	}
+	sum := sha256.Sum256([]byte(key))
+	return release + "-d-" + hex.EncodeToString(sum[:])[:10]
 }
 
 // AddDomain : enregistre la demande, sans effet sur le routage.
@@ -280,6 +331,7 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 	if d.Verified {
 		view := s.domainView(ctx, d, pointing, nil)
 		view.Check = check
+		view.Certificate = certificateFor(s.certificates(ctx, w, []domain.WorkloadDomain{*d}), w.Name, d)
 		return &view, nil
 	}
 	if w.Status == utils.WorkloadStopped {
@@ -338,6 +390,7 @@ func (s *WorkloadService) VerifyDomain(ctx context.Context, workload, id uuid.UU
 	}
 	view := s.domainView(ctx, updated, pointing, nil)
 	view.Check = check
+	view.Certificate = certificateFor(s.certificates(ctx, w, []domain.WorkloadDomain{*updated}), w.Name, updated)
 	return &view, nil
 }
 

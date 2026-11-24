@@ -3074,5 +3074,21 @@
  {
   "fr": "Retirer une adresse e-mail des alertes d'un projet (jeton du lien reçu ; retrait en un clic)",
   "en": "Remove an email address from a project's alerts (token from the received link; one-click removal)"
+ },
+ {
+  "fr": "pending, active ou failed",
+  "en": "pending, active or failed"
+ },
+ {
+  "fr": "Raison de l'échec : rate_limited, challenge ou unknown",
+  "en": "Failure reason: rate_limited, challenge or unknown"
+ },
+ {
+  "fr": "Fin de validité du certificat",
+  "en": "Certificate expiry"
+ },
+ {
+  "fr": "Renouvellement automatique prévu",
+  "en": "Scheduled automatic renewal"
  }
 ]
