@@ -109,6 +109,8 @@ func TestGitHub(t *testing.T) {
 			_ = json.NewEncoder(w).Encode([]any{
 				map[string]any{"email": "old@ex.gh", "primary": false, "verified": true},
 				map[string]any{"email": "Kofi@ex.gh", "primary": true, "verified": true},
+				map[string]any{"email": "jamais@ex.gh", "primary": false, "verified": false},
+				map[string]any{"email": "4242+kofi@users.noreply.github.com", "primary": false, "verified": true},
 			})
 		}
 	}))
@@ -116,7 +118,7 @@ func TestGitHub(t *testing.T) {
 	h := NewGitHub(Config{ClientID: "gh-app", ClientSecret: "s", TokenURL: srv.URL + "/login/oauth/access_token", APIURL: srv.URL})
 	p, err := h.Exchange(context.Background(), "code", "verifier", "", "cb")
 	require.NoError(t, err)
-	assert.Equal(t, Profile{Provider: GitHub, Subject: "4242", Email: "kofi@ex.gh", EmailVerified: true, Name: "kofi",
+	assert.Equal(t, Profile{Provider: GitHub, Subject: "4242", Email: "kofi@ex.gh", EmailVerified: true, OtherEmails: []string{"old@ex.gh"}, Name: "kofi",
 		AvatarURL: "https://a/k.png"}, *p, "adresse principale, nom de connexion à défaut de nom")
 	assert.Contains(t, h.AuthCodeURL("st", "ch", "", "cb"), "scope=read%3Auser+user%3Aemail")
 }
