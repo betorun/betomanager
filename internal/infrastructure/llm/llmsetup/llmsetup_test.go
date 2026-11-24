@@ -38,6 +38,26 @@ func TestBuild(t *testing.T) {
 			t.Fatalf("%s : erreur attendue", name)
 		}
 	}
+	claude := ok
+	claude.Primary = configs.LLMProviderConfig{Name: "claude", Kind: KindAnthropic, Model: "claude-opus-5-5", APIKey: "k", Effort: "high"}
+	if p, err := build(claude, ledger); err != nil || p.Name() != "claude>groq" {
+		t.Fatalf("pile claude : %v %v", p, err)
+	}
+	badClaude := map[string]func(*configs.LLMProviderConfig){
+		"kind inconnu":       func(p *configs.LLMProviderConfig) { p.Kind = "bedrock" },
+		"claude sans clé":    func(p *configs.LLMProviderConfig) { p.APIKey = "" },
+		"effort inconnu":     func(p *configs.LLMProviderConfig) { p.Effort = "turbo" },
+		"extra sur claude":   func(p *configs.LLMProviderConfig) { p.ExtraBodyJSON = `{}` },
+		"url claude":         func(p *configs.LLMProviderConfig) { p.BaseURL = "api" },
+		"effort hors claude": func(p *configs.LLMProviderConfig) { p.Kind = KindOpenAI; p.BaseURL = "http://x"; p.Effort = "low" },
+	}
+	for name, mut := range badClaude {
+		c := claude
+		mut(&c.Primary)
+		if _, err := build(c, ledger); err == nil {
+			t.Fatalf("%s : erreur attendue", name)
+		}
+	}
 	if _, err := Build(ok, nil); err == nil {
 		t.Fatal("sans Redis : erreur attendue (pas de plafond sans compteur partagé)")
 	}

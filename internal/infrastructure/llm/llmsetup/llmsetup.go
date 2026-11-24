@@ -16,6 +16,7 @@ import (
 
 	"github.com/thekrauss/kubemanager/internal/core/configs"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/llm/anthropic"
 	"github.com/thekrauss/kubemanager/internal/infrastructure/llm/openai"
 )
 
@@ -45,9 +46,9 @@ func build(cfg configs.LLMConfig, ledger llm.Ledger) (llm.Provider, error) {
 	var chain []llm.Provider
 	names := map[string]bool{}
 	for _, s := range slots {
-		if s.p.BaseURL == "" {
+		if s.p.BaseURL == "" && s.p.Kind == "" {
 			if s.label == "primary" {
-				return nil, errors.New("llm: llm.primary.base_url est obligatoire")
+				return nil, errors.New("llm: llm.primary.base_url (ou kind) est obligatoire")
 			}
 			continue
 		}
@@ -69,11 +70,13 @@ func build(cfg configs.LLMConfig, ledger llm.Ledger) (llm.Provider, error) {
 	return llm.Instrument(c), nil
 }
 
-func provider(label string, p configs.LLMProviderConfig) (*openai.Client, error) {
-	u, err := url.Parse(p.BaseURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("llm.%s.base_url invalide", label)
-	}
+// Kinds de fournisseur.
+const (
+	KindOpenAI    = "openai"
+	KindAnthropic = "anthropic"
+)
+
+func provider(label string, p configs.LLMProviderConfig) (llm.Provider, error) {
 	if p.Model == "" {
 		return nil, fmt.Errorf("llm.%s.model est obligatoire", label)
 	}
@@ -83,6 +86,34 @@ func provider(label string, p configs.LLMProviderConfig) (*openai.Client, error)
 	name := p.Name
 	if name == "" {
 		name = label
+	}
+	switch p.Kind {
+	case "", KindOpenAI:
+	case KindAnthropic:
+		if p.BaseURL != "" {
+			if err := checkURL(label, p.BaseURL); err != nil {
+				return nil, err
+			}
+		}
+		if p.MaxTokensField != "" || p.ExtraBodyJSON != "" {
+			return nil, fmt.Errorf("llm.%s : max_tokens_field et extra_body_json ne s'appliquent pas à l'API Claude", label)
+		}
+		c, err := anthropic.New(anthropic.Config{
+			Name: name, APIKey: p.APIKey, Model: p.Model, Effort: p.Effort,
+			BaseURL: p.BaseURL, Timeout: p.Timeout,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("llm.%s : %w", label, err)
+		}
+		return c, nil
+	default:
+		return nil, fmt.Errorf("llm.%s.kind inconnu : %q (openai ou anthropic)", label, p.Kind)
+	}
+	if err := checkURL(label, p.BaseURL); err != nil {
+		return nil, err
+	}
+	if p.Effort != "" {
+		return nil, fmt.Errorf("llm.%s.effort ne s'applique qu'à l'API Claude", label)
 	}
 	var extra map[string]any
 	if p.ExtraBodyJSON != "" {
@@ -94,4 +125,12 @@ func provider(label string, p configs.LLMProviderConfig) (*openai.Client, error)
 		Name: name, BaseURL: p.BaseURL, APIKey: p.APIKey, Model: p.Model,
 		Timeout: p.Timeout, MaxTokensField: p.MaxTokensField, ExtraBody: extra,
 	})
+}
+
+func checkURL(label, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("llm.%s.base_url invalide", label)
+	}
+	return nil
 }

@@ -674,5 +674,17 @@
  {
   "fr": "Parcourt, télécharge, envoie, supprime et partage les fichiers des buckets, sans gérer les buckets ni les clés.",
   "en": "Browses, downloads, uploads, deletes and shares bucket files, without managing buckets or keys."
+ },
+ {
+  "fr": "Utiliser l'Opérateur, l'agent d'exploitation de l'équipe",
+  "en": "Use the Operator, the team's operations agent"
+ },
+ {
+  "fr": "Lire les tickets de support de tous les clients",
+  "en": "Read all customers' support tickets"
+ },
+ {
+  "fr": "Voir l'état des composants et les incidents",
+  "en": "View component health and incidents"
  }
 ]

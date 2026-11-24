@@ -4,8 +4,8 @@
   "en": "copilot: %s %s: only reads (GET) can be tools"
  },
  {
-  "fr": "copilot: no answer",
-  "en": "copilot: no answer"
+  "fr": "agent: no answer",
+  "en": "agent: no answer"
  },
  {
   "fr": "copilot: nom d'outil invalide %q",

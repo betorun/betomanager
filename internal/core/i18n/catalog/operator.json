@@ -1,0 +1,234 @@
+[
+ {
+  "fr": "\"query\":{\"type\":\"string\",\"description\":\"Requête PromQL ; préférer les agrégations (sum by, topk) aux séries brutes\"}",
+  "en": "\"query\":{\"type\":\"string\",\"description\":\"PromQL query; prefer aggregations (sum by, topk) over raw series\"}"
+ },
+ {
+  "fr": "%w (catalogue : HTTP %d)",
+  "en": "%w (catalog: HTTP %d)"
+ },
+ {
+  "fr": "%w (catalogue illisible)",
+  "en": "%w (unreadable catalog)"
+ },
+ {
+  "fr": "%w (réponse illisible)",
+  "en": "%w (unreadable response)"
+ },
+ {
+  "fr": "Prometheus %s : réponse illisible (HTTP %d)",
+  "en": "Prometheus %s: unreadable response (HTTP %d)"
+ },
+ {
+  "fr": "Prometheus %s injoignable : %w",
+  "en": "Prometheus %s unreachable: %w"
+ },
+ {
+  "fr": "at doit être un instant RFC 3339 : %q",
+  "en": "at must be an RFC 3339 instant: %q"
+ },
+ {
+  "fr": "journal de l'Opérateur : la clé privée doit être une graine de 32 octets en base64",
+  "en": "operator journal: the private key must be a 32-byte seed in base64"
+ },
+ {
+  "fr": "journal de l'Opérateur : signature refusée",
+  "en": "operator journal: bad signature"
+ },
+ {
+  "fr": "journal de l'Opérateur : une clé publique doit faire 32 octets en base64",
+  "en": "operator journal: a public key must be 32 bytes in base64"
+ },
+ {
+  "fr": "l'Opérateur n'est accessible qu'à une personne connectée",
+  "en": "the Operator is only available to a signed-in person"
+ },
+ {
+  "fr": "l'accès à l'Opérateur a été retiré",
+  "en": "access to the Operator has been withdrawn"
+ },
+ {
+  "fr": "le jeton de l'Opérateur n'a pas pu être émis",
+  "en": "the Operator token could not be issued"
+ },
+ {
+  "fr": "les outils de l'Opérateur ne sont pas disponibles",
+  "en": "the Operator tools are not available"
+ },
+ {
+  "fr": "lot du journal de l'Opérateur invalide",
+  "en": "invalid operator journal batch"
+ },
+ {
+  "fr": "operator: OPERATOR_API_URL invalide",
+  "en": "operator: invalid OPERATOR_API_URL"
+ },
+ {
+  "fr": "operator: OPERATOR_DATABASE_URL est obligatoire",
+  "en": "operator: OPERATOR_DATABASE_URL is required"
+ },
+ {
+  "fr": "operator: OPERATOR_LISTEN doit rester local (tunnel SSH) ; OPERATOR_LISTEN_ANY=true pour un conteneur",
+  "en": "operator: OPERATOR_LISTEN must stay local (SSH tunnel); OPERATOR_LISTEN_ANY=true for a container"
+ },
+ {
+  "fr": "operator: OPERATOR_LISTEN invalide : %w",
+  "en": "operator: invalid OPERATOR_LISTEN: %w"
+ },
+ {
+  "fr": "operator: URL Prometheus invalide pour %s",
+  "en": "operator: invalid Prometheus URL for %s"
+ },
+ {
+  "fr": "operator: cluster en double : %q",
+  "en": "operator: duplicate cluster: %q"
+ },
+ {
+  "fr": "operator: code TOTP refusé",
+  "en": "operator: TOTP code rejected"
+ },
+ {
+  "fr": "operator: compte de secours déjà présent",
+  "en": "operator: rescue account already exists"
+ },
+ {
+  "fr": "operator: connexion à la base : %w",
+  "en": "operator: database connection: %w"
+ },
+ {
+  "fr": "operator: dossier des clusters : %w",
+  "en": "operator: clusters directory: %w"
+ },
+ {
+  "fr": "operator: e-mail invalide",
+  "en": "operator: invalid e-mail"
+ },
+ {
+  "fr": "operator: identifiants de secours refusés",
+  "en": "operator: rescue credentials rejected"
+ },
+ {
+  "fr": "operator: investigation close",
+  "en": "operator: investigation closed"
+ },
+ {
+  "fr": "operator: investigation introuvable",
+  "en": "operator: investigation not found"
+ },
+ {
+  "fr": "operator: jeton absent, expiré ou refusé",
+  "en": "operator: token missing, expired or rejected"
+ },
+ {
+  "fr": "operator: kubeconfig %s : %w",
+  "en": "operator: kubeconfig %s: %w"
+ },
+ {
+  "fr": "operator: l'API ne répond pas ; utiliser l'accès de secours",
+  "en": "operator: the API is not responding; use the rescue access"
+ },
+ {
+  "fr": "operator: l'accès de secours exige OPERATOR_ALERT_WEBHOOK_FILE (alerte de l'équipe)",
+  "en": "operator: rescue access requires OPERATOR_ALERT_WEBHOOK_FILE (team alert)"
+ },
+ {
+  "fr": "operator: la base doit être une URL postgres://",
+  "en": "operator: the database must be a postgres:// URL"
+ },
+ {
+  "fr": "operator: la clé de secours doit faire 32 octets, en base64",
+  "en": "operator: the rescue key must be 32 bytes, base64-encoded"
+ },
+ {
+  "fr": "operator: le webhook d'alerte doit être une URL https",
+  "en": "operator: the alert webhook must be an https URL"
+ },
+ {
+  "fr": "operator: lecture de la clé de secours : %w",
+  "en": "operator: reading the rescue key: %w"
+ },
+ {
+  "fr": "operator: lecture de la clé du journal : %w",
+  "en": "operator: reading the journal key: %w"
+ },
+ {
+  "fr": "operator: lecture de la clé du modèle : %w",
+  "en": "operator: reading the model key: %w"
+ },
+ {
+  "fr": "operator: lecture du webhook d'alerte : %w",
+  "en": "operator: reading the alert webhook: %w"
+ },
+ {
+  "fr": "operator: migrations : %w",
+  "en": "operator: migrations: %w"
+ },
+ {
+  "fr": "operator: mot de passe de secours trop court (%d caractères au moins)",
+  "en": "operator: rescue password too short (at least %d characters)"
+ },
+ {
+  "fr": "operator: motif de connexion de secours obligatoire (10 à 300 caractères)",
+  "en": "operator: a rescue login reason is required (10 to 300 characters)"
+ },
+ {
+  "fr": "operator: nom de cluster invalide : %q",
+  "en": "operator: invalid cluster name: %q"
+ },
+ {
+  "fr": "operator: origine de console invalide : %q",
+  "en": "operator: invalid console origin: %q"
+ },
+ {
+  "fr": "operator: outil en double : %s",
+  "en": "operator: duplicate tool: %s"
+ },
+ {
+  "fr": "operator: question vide",
+  "en": "operator: empty question"
+ },
+ {
+  "fr": "operator: source Prometheus en double : %q",
+  "en": "operator: duplicate Prometheus source: %q"
+ },
+ {
+  "fr": "operator: source Prometheus invalide : %q (nom=url)",
+  "en": "operator: invalid Prometheus source: %q (name=url)"
+ },
+ {
+  "fr": "operator: statut de clôture invalide : %s",
+  "en": "operator: invalid closing status: %s"
+ },
+ {
+  "fr": "operator: trop de tentatives, réessayer plus tard",
+  "en": "operator: too many attempts, try again later"
+ },
+ {
+  "fr": "outil de l'Opérateur inconnu",
+  "en": "unknown Operator tool"
+ },
+ {
+  "fr": "requête PromQL vide ou trop longue (%d caractères au plus)",
+  "en": "empty or too long PromQL query (%d characters at most)"
+ },
+ {
+  "fr": "réponse trop grosse : restreindre la requête (filtre de labels, agrégation, topk)",
+  "en": "response too large: narrow the query (label filter, aggregation, topk)"
+ },
+ {
+  "fr": "since : une durée de 7 jours au plus, ex. 30m, 6h, 2d (reçu %q)",
+  "en": "since: a duration of 7 days at most, e.g. 30m, 6h, 2d (got %q)"
+ },
+ {
+  "fr": "source Prometheus inconnue %q ; sources : %s",
+  "en": "unknown Prometheus source %q; sources: %s"
+ },
+ {
+  "fr": "type de résultat inattendu : %s",
+  "en": "unexpected result type: %s"
+ },
+ {
+  "fr": "un jeton de l'Opérateur est requis",
+  "en": "an Operator token is required"
+ }
+]

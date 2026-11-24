@@ -26,6 +26,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/legal"
 	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
 	"github.com/thekrauss/kubemanager/internal/modules/network"
+	"github.com/thekrauss/kubemanager/internal/modules/operatoraccess"
 	"github.com/thekrauss/kubemanager/internal/modules/projects"
 	projectRepos "github.com/thekrauss/kubemanager/internal/modules/projects/repository"
 	projectSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
@@ -107,6 +108,8 @@ type ControllerContainer struct {
 	Status *status.Controller
 	// Support : tickets des clients, file de l'équipe.
 	Support *support.Controller
+	// OperatorAccess : jeton de l'équipe pour l'Opérateur (ADR 0016).
+	OperatorAccess *operatoraccess.Controller
 }
 
 func AddAllRoutes(a *App) {
@@ -137,7 +140,10 @@ func AddAllRoutes(a *App) {
 	addLegalRoutes(a)
 	addSupportRoutes(a)
 	addStatusRoutes(a)
+	addOperatorRoutes(a)
 	addInsightsRoutes(a)
 	// Copilot : outils et guides de la table de couverture (copilot_decisions.go).
 	applyCopilotDecisions(AllGroups)
+	// Opérateur : outils de lecture de la table operator_decisions.go.
+	applyOperatorDecisions(AllGroups)
 }

@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS journal_uid;
+ALTER TABLE journal DROP COLUMN IF EXISTS uid;

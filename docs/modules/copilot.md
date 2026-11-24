@@ -165,7 +165,7 @@ Redis, clé `betorun:copilot:conv:<utilisateur>:<conversation>` : une conversati
 Clés `llm.*` ([config.go](../../internal/core/configs/config.go)), réglables par `KUBEMANAGER_LLM_*` :
 
 - `llm.enabled` : faux par défaut ; faux = Copilot désactivé, `status` renvoie `enabled: false`.
-- `llm.primary.*` (obligatoire si activé) et `llm.fallback.*` (facultatif, `base_url` vide = absent) : `name`, `base_url` (http/https), `api_key` (secret, par l'environnement), `model` (obligatoire), `timeout` (120 s par défaut), `max_tokens_field` (`max_tokens` ou `max_completion_tokens`), `extra_body_json`, `input_micro_usd_per_mtok`, `output_micro_usd_per_mtok`.
+- `llm.primary.*` (obligatoire si activé) et `llm.fallback.*` (facultatif, `base_url` et `kind` vides = absent) : `name`, `kind` (`openai` par défaut, ou `anthropic` pour l'API Claude native, [anthropic.go](../../internal/infrastructure/llm/anthropic/anthropic.go)), `base_url` (http/https ; facultative pour `anthropic`), `api_key` (secret, par l'environnement), `model` (obligatoire), `timeout` (120 s par défaut), `max_tokens_field` (`max_tokens` ou `max_completion_tokens`) et `extra_body_json` (`openai` seulement), `effort` (`anthropic` seulement : `low` à `max`), `input_micro_usd_per_mtok`, `output_micro_usd_per_mtok`.
 - `llm.daily_budget_micro_usd` : plafond journalier (UTC), **obligatoire > 0** ; le Copilot l'applique par personne (`user:<id>`), pas encore par organisation.
 - `llm.breaker_failures` (3) et `llm.breaker_cooldown` (30 s).
 

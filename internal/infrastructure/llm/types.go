@@ -37,6 +37,18 @@ type Message struct {
 	Text       string
 	ToolCalls  []ToolCall
 	ToolResult *ToolResult
+	// Native : message assistant tel que le fournisseur l'a produit (blocs
+	// de réflexion compris). Renvoyé à l'identique au même fournisseur, qui
+	// peut exiger un historique inchangé ; les autres l'ignorent et lisent
+	// Text et ToolCalls.
+	Native *Native
+}
+
+// Native : contenu propre à un fournisseur (Provider = Name() de
+// l'adaptateur qui l'a produit). Data n'est lu que par cet adaptateur.
+type Native struct {
+	Provider string
+	Data     any
 }
 
 // ToolCall : appel d'outil demandé par le modèle. Arguments est un objet JSON.

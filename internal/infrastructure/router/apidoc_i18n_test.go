@@ -2,6 +2,8 @@ package router
 
 import (
 	"encoding/json"
+	mailmod "github.com/thekrauss/kubemanager/internal/modules/mail"
+	"github.com/thekrauss/kubemanager/internal/modules/operatoraccess"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -77,26 +79,28 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Clusters: struct {
 					clusters.IClusterController
 				}{},
-				Site:        struct{ sites.ISiteController }{},
-				IAM:         &iamapi.Controller{},
-				Builds:      &builds.Controller{},
-				GitHub:      &github.Controller{},
-				Registries:  &registries.Controller{},
-				Billing:     &billing.Controller{},
-				DomainSales: &domainsales.Controller{},
-				Compute:     &compute.Controller{},
-				Legal:       &legal.Controller{},
-				Status:      &status.Controller{},
-				Support:     &support.Controller{},
-				Databases:   &databases.Controller{},
-				StorageS3:   &storages3.Controller{},
-				Network:     &network.Controller{},
-				Egress:      &egress.Controller{},
-				Addons:      &addons.Controller{},
-				DiskUsage:   &diskusage.Controller{},
-				Insights:    &insights.Controller{},
-				DiskResize:  &diskresize.Controller{},
-				Alerts:      &alerts.Controller{},
+				Site:           struct{ sites.ISiteController }{},
+				IAM:            &iamapi.Controller{},
+				Builds:         &builds.Controller{},
+				GitHub:         &github.Controller{},
+				Registries:     &registries.Controller{},
+				Billing:        &billing.Controller{},
+				DomainSales:    &domainsales.Controller{},
+				Compute:        &compute.Controller{},
+				Legal:          &legal.Controller{},
+				Status:         &status.Controller{},
+				Support:        &support.Controller{},
+				Mail:           &mailmod.Controller{},
+				OperatorAccess: &operatoraccess.Controller{},
+				Databases:      &databases.Controller{},
+				StorageS3:      &storages3.Controller{},
+				Network:        &network.Controller{},
+				Egress:         &egress.Controller{},
+				Addons:         &addons.Controller{},
+				DiskUsage:      &diskusage.Controller{},
+				Insights:       &insights.Controller{},
+				DiskResize:     &diskresize.Controller{},
+				Alerts:         &alerts.Controller{},
 			},
 		}
 		docFizz = fizz.NewFromEngine(gin.New())

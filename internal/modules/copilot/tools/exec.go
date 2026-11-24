@@ -26,6 +26,9 @@ type Invoker struct {
 	ClientIP string
 	// AcceptLanguage : langue de la personne (messages d'erreur).
 	AcceptLanguage string
+	// Justification : motif d'un accès du staff aux données d'un client
+	// (X-Betorun-Justification) ; l'Opérateur y met le motif du dossier.
+	Justification string
 }
 
 // Result : réponse d'un outil, prête pour le modèle.
@@ -224,6 +227,9 @@ func invoke(ctx context.Context, inv Invoker, p *Prepared, keepTail bool, idempo
 	}
 	if inv.AcceptLanguage != "" {
 		req.Header.Set("Accept-Language", inv.AcceptLanguage)
+	}
+	if inv.Justification != "" {
+		req.Header.Set("X-Betorun-Justification", inv.Justification)
 	}
 	req.RemoteAddr = inv.ClientIP + ":0"
 	w := newCapture(keepTail)
