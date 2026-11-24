@@ -1,0 +1,126 @@
+// Package certstatus lit l'état des certificats HTTPS délivrés par
+// cert-manager (ressource Certificate) pour l'afficher aux clients : en cours,
+// actif, en échec. Aucun texte de cert-manager n'est renvoyé : seulement un
+// état et une raison, traduits par la console.
+package certstatus
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+)
+
+// États d'un certificat.
+const (
+	StatePending = "pending"
+	StateActive  = "active"
+	StateFailed  = "failed"
+)
+
+// Raisons d'un échec.
+const (
+	ReasonRateLimited = "rate_limited"
+	ReasonChallenge   = "challenge"
+	ReasonUnknown     = "unknown"
+)
+
+// ReadTimeout : lecture du cluster bornée ; au-delà, rien n'est affiché.
+const ReadTimeout = 3 * time.Second
+
+// GVR : Certificate de cert-manager.
+var GVR = schema.GroupVersionResource{Group: "cert-manager.io", Version: "v1", Resource: "certificates"}
+
+// Status : état du certificat d'un domaine, tel que la console l'affiche.
+type Status struct {
+	State string `json:"state" description:"pending, active ou failed"`
+	// Reason : seulement en échec (rate_limited, challenge, unknown).
+	Reason string `json:"reason,omitempty" description:"Raison de l'échec : rate_limited, challenge ou unknown"`
+	// NotAfter et RenewalAt : seulement un certificat actif.
+	NotAfter  *time.Time `json:"not_after,omitempty" description:"Fin de validité du certificat"`
+	RenewalAt *time.Time `json:"renewal_at,omitempty" description:"Renouvellement automatique prévu"`
+}
+
+// Pending : certificat demandé, pas encore délivré (ou pas encore créé).
+func Pending() *Status { return &Status{State: StatePending} }
+
+// List : certificats d'un namespace, par nom (nom du Certificate = nom du
+// secret TLS de l'Ingress, posé par cert-manager).
+func List(ctx context.Context, dyn dynamic.Interface, namespace string) (map[string]*Status, error) {
+	ctx, cancel := context.WithTimeout(ctx, ReadTimeout)
+	defer cancel()
+	list, err := dyn.Resource(GVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]*Status, len(list.Items))
+	for i := range list.Items {
+		out[list.Items[i].GetName()] = FromObject(&list.Items[i])
+	}
+	return out, nil
+}
+
+// FromObject : état d'un Certificate.
+//   - Ready=True : actif (même pendant un renouvellement) ;
+//   - Issuing=True : délivrance en cours, y compris une nouvelle tentative ;
+//   - un échec enregistré (lastFailureTime) sans tentative en cours : échec ;
+//   - sinon : en cours.
+func FromObject(u *unstructured.Unstructured) *Status {
+	ready, _ := condition(u, "Ready")
+	issuing, issuingMsg := condition(u, "Issuing")
+	_, readyMsg := condition(u, "Ready")
+	if ready == "True" {
+		s := &Status{State: StateActive}
+		s.NotAfter = timeField(u, "notAfter")
+		s.RenewalAt = timeField(u, "renewalTime")
+		return s
+	}
+	if issuing == "True" {
+		return Pending()
+	}
+	if failed, _, _ := unstructured.NestedString(u.Object, "status", "lastFailureTime"); failed != "" {
+		return &Status{State: StateFailed, Reason: reason(issuingMsg + " " + readyMsg)}
+	}
+	return Pending()
+}
+
+func condition(u *unstructured.Unstructured, kind string) (status, message string) {
+	conds, _, _ := unstructured.NestedSlice(u.Object, "status", "conditions")
+	for _, c := range conds {
+		m, ok := c.(map[string]any)
+		if !ok || m["type"] != kind {
+			continue
+		}
+		status, _ = m["status"].(string)
+		message, _ = m["message"].(string)
+		return status, message
+	}
+	return "", ""
+}
+
+func timeField(u *unstructured.Unstructured, field string) *time.Time {
+	raw, _, _ := unstructured.NestedString(u.Object, "status", field)
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+// reason : catégorie d'un message d'échec de cert-manager / ACME.
+func reason(msg string) string {
+	m := strings.ToLower(msg)
+	switch {
+	case strings.Contains(m, "ratelimited") || strings.Contains(m, "rate limit") || strings.Contains(m, "too many"):
+		return ReasonRateLimited
+	case strings.Contains(m, "challenge") || strings.Contains(m, "acme:error:unauthorized") ||
+		strings.Contains(m, "acme:error:connection") || strings.Contains(m, "acme:error:dns") ||
+		strings.Contains(m, "nxdomain") || strings.Contains(m, "no valid a records"):
+		return ReasonChallenge
+	}
+	return ReasonUnknown
+}

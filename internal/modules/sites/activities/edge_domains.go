@@ -127,6 +127,9 @@ func (a *EdgeDomainActivities) ingress(name, host string) *networkingv1.Ingress 
 	}
 }
 
+// EdgeObjectName : nom de l'Ingress et du certificat d'un domaine de site.
+func EdgeObjectName(host string) string { return edgeObjectName(host) }
+
 // edgeObjectName : nom d'objet stable et valide pour un hôte (un nom de
 // domaine peut dépasser 63 caractères).
 func edgeObjectName(host string) string {

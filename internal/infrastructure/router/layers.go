@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
+	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
 	authCtrl "github.com/thekrauss/kubemanager/internal/modules/auth"
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	"github.com/thekrauss/kubemanager/internal/modules/builds/images"
@@ -151,6 +152,14 @@ func (a *App) initDomainLayers() error {
 		concrete.HostnameInUse = func(ctx context.Context, host string) (bool, error) {
 			claims, err := workloadService.Domains.HostClaims(ctx, host, uuid.Nil)
 			return len(claims) > 0, err
+		}
+		// État des certificats des domaines : static-edge tourne dans le
+		// cluster par défaut, ses Ingress sont dans son namespace.
+		if ei := sc.EdgeIngress.WithDefaults(); ei.Enabled && a.K8sProvider != nil && a.K8sProvider.Dynamic != nil {
+			dyn, ns := a.K8sProvider.Dynamic, ei.Namespace
+			concrete.Certificates = func(ctx context.Context) (map[string]*certstatus.Status, error) {
+				return certstatus.List(ctx, dyn, ns)
+			}
 		}
 		siteController = sites.NewSiteController(siteService, a.Logger)
 	}

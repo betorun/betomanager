@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/thekrauss/kubemanager/internal/infrastructure/certstatus"
 )
 
 // MaxDomainsPerWorkload : domaines d'un conteneur.
@@ -87,6 +89,9 @@ type DomainResponse struct {
 	// HTTPS : la plateforme demande un certificat pour ce domaine (faux :
 	// mode sans certificat, le domaine n'est servi qu'en HTTP).
 	HTTPS bool `json:"https"`
+	// Certificate : état du certificat HTTPS dans le cluster (domaine vérifié
+	// et HTTPS actif) ; absent si rien à montrer ou cluster injoignable.
+	Certificate *certstatus.Status `json:"certificate,omitempty"`
 	// Check : ce que la vérification a lu dans le DNS (après « Vérifier »).
 	Check *DomainCheck `json:"check,omitempty"`
 }
