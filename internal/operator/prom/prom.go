@@ -37,6 +37,8 @@ const (
 	samples      = 12
 	queryTimeout = 15 * time.Second
 	toolTimeout  = 20 * time.Second
+	// targetTimeout : une source, dans un outil qui les interroge toutes.
+	targetTimeout = 12 * time.Second
 )
 
 var sourceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)

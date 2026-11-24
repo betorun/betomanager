@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/thekrauss/kubemanager/internal/operator/fanout"
 )
 
 type sourceArgs struct {
@@ -55,11 +57,11 @@ func sourcesTool(ctx context.Context, s *Sources, _ json.RawMessage) (string, er
 	}
 	var b strings.Builder
 	b.WriteString("SOURCE\tCIBLES EN PANNE\tALERTES ACTIVES\n")
-	for _, n := range s.names {
+	// Toutes les sources à la fois, chacune avec son délai.
+	lines := fanout.Each(ctx, s.names, targetTimeout, func(ctx context.Context, n string) string {
 		ts, err := s.targets(ctx, n)
 		if err != nil {
-			fmt.Fprintf(&b, "%s\tinjoignable : %v\t-\n", n, err)
-			continue
+			return fmt.Sprintf("%s\tinjoignable : %v\t-\n", n, err)
 		}
 		down := 0
 		for _, t := range ts {
@@ -77,7 +79,10 @@ func sourcesTool(ctx context.Context, s *Sources, _ json.RawMessage) (string, er
 			}
 			firing = strconv.Itoa(c)
 		}
-		fmt.Fprintf(&b, "%s\t%d/%d\t%s\n", n, down, len(ts), firing)
+		return fmt.Sprintf("%s\t%d/%d\t%s\n", n, down, len(ts), firing)
+	})
+	for _, l := range lines {
+		b.WriteString(l)
 	}
 	return b.String(), nil
 }

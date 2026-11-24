@@ -56,9 +56,18 @@ type ToolView struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
-// ToolsResponse : outils ouverts à la personne.
+// CardToolView : une action que l'agent peut proposer (jamais exécuter).
+type CardToolView struct {
+	ToolView
+	Risk   string `json:"risk"`
+	Strong bool   `json:"strong"`
+}
+
+// ToolsResponse : outils ouverts à la personne : lectures (items) et
+// actions proposables sur carte (cards).
 type ToolsResponse struct {
-	Items []ToolView `json:"items"`
+	Items []ToolView     `json:"items"`
+	Cards []CardToolView `json:"cards"`
 }
 
 // operatorCaller : la requête vient d'un jeton délégué à l'Opérateur.
@@ -96,11 +105,20 @@ func (h *Controller) Tools(c *gin.Context) (*ToolsResponse, error) {
 	if !has[iam.PlatformOperatorUse] {
 		return nil, betoerrors.New(betoerrors.CodeForbidden, "access to the Operator has been withdrawn")
 	}
-	out := ToolsResponse{Items: []ToolView{}}
+	out := ToolsResponse{Items: []ToolView{}, Cards: []CardToolView{}}
 	for _, d := range cat.Tools.Definitions() {
-		if has[cat.Perms[d.Name]] {
-			out.Items = append(out.Items, ToolView{Name: d.Name, Description: d.Description, Parameters: d.Parameters})
+		if !has[cat.Perms[d.Name]] {
+			continue
 		}
+		v := ToolView{Name: d.Name, Description: d.Description, Parameters: d.Parameters}
+		if t, ok := cat.Tools.Lookup(d.Name); ok && t.Write {
+			// Les cartes ne sont proposées que si l'API peut les garder.
+			if h.Cards != nil {
+				out.Cards = append(out.Cards, CardToolView{ToolView: v, Risk: string(t.Risk), Strong: t.Strong})
+			}
+			continue
+		}
+		out.Items = append(out.Items, v)
 	}
 	return &out, nil
 }

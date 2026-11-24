@@ -40,6 +40,12 @@ const (
 //	                               dépannage) ; vide = aucun cluster
 //	OPERATOR_PROMETHEUS            sources Prometheus du chemin de secours,
 //	                               "nom=url,nom=url" ; vide = aucune
+//	OPERATOR_NODES                 agents de nœud, "nom=https://hôte:port,…" ;
+//	                               vide = aucun
+//	OPERATOR_NODE_CERT_FILE / _KEY_FILE  certificat client mTLS de l'Opérateur
+//	OPERATOR_NODE_CA_FILE          autorité des certificats des nœuds
+//	OPERATOR_ORDER_KEY_FILE        clé Ed25519 qui signe les ordres validés
+//	                               (operator order-key) ; vide = lecture seule
 //	OPERATOR_MODEL                 modèle (défaut claude-opus-5-5)
 //	OPERATOR_EFFORT                effort (défaut high)
 //	OPERATOR_ANTHROPIC_API_KEY_FILE  fichier de la clé du modèle (de préférence)
@@ -52,6 +58,9 @@ const (
 //	OPERATOR_ALERT_WEBHOOK_FILE    fichier de l'URL du webhook d'alerte de
 //	                               l'équipe (hors du serveur 1) ; obligatoire
 //	                               avec l'accès de secours
+//	OPERATOR_ALERT_LOG_ONLY        "true" : développement, alertes dans le
+//	                               journal du processus au lieu du webhook ;
+//	                               refusé si l'écoute n'est pas locale
 type Config struct {
 	Listen      string
 	DatabaseURL string
@@ -60,10 +69,18 @@ type Config struct {
 	ConsoleOrigins []string
 	// KubeconfigDir : chemin de secours vers les clusters (kube.LoadDir).
 	KubeconfigDir string
+	// KubeActions : cartes d'action sur les clusters (le rôle de l'identité
+	// de dépannage doit ouvrir les verbes d'écriture listés dans la doc).
+	KubeActions bool
 	// Prometheus : sources du chemin de secours (prom.Parse).
 	Prometheus string
-	Model      string
-	Effort     string
+	// Nodes : agents de nœud (nodes.Parse) et leurs fichiers mTLS.
+	Nodes                     string
+	NodeCert, NodeKey, NodeCA string
+	// OrderKey : secret, jamais journalisé (graine Ed25519 en base64).
+	OrderKey string
+	Model    string
+	Effort   string
 	// AnthropicKey : secret, jamais journalisé. Vide = Opérateur sans agent
 	// (la console reste utilisable à la main, ADR 0016 §2).
 	AnthropicKey string
@@ -73,6 +90,8 @@ type Config struct {
 	JournalKey string
 	// AlertWebhook : secret, jamais journalisé (WebhookAlerter).
 	AlertWebhook string
+	// AlertLogOnly : développement (LogAlerter).
+	AlertLogOnly bool
 	// ResultRetention : durée de conservation des résultats complets des
 	// outils ; ensuite seul le condensé reste (ADR 0016 §5).
 	ResultRetention time.Duration
@@ -86,6 +105,10 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		APIURL:          strings.TrimRight(getenv("OPERATOR_API_URL"), "/"),
 		KubeconfigDir:   getenv("OPERATOR_KUBECONFIG_DIR"),
 		Prometheus:      getenv("OPERATOR_PROMETHEUS"),
+		Nodes:           getenv("OPERATOR_NODES"),
+		NodeCert:        getenv("OPERATOR_NODE_CERT_FILE"),
+		NodeKey:         getenv("OPERATOR_NODE_KEY_FILE"),
+		NodeCA:          getenv("OPERATOR_NODE_CA_FILE"),
 		Model:           or(getenv("OPERATOR_MODEL"), DefaultModel),
 		Effort:          or(getenv("OPERATOR_EFFORT"), DefaultEffort),
 		ResultRetention: 30 * 24 * time.Hour,
@@ -142,6 +165,16 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 			return Config{}, err
 		}
 	}
+	if f := getenv("OPERATOR_ORDER_KEY_FILE"); f != "" {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return Config{}, fmt.Errorf("operator: lecture de la clé d'ordres : %w", err)
+		}
+		c.OrderKey = strings.TrimSpace(string(b))
+		if _, err := opjournal.ParsePrivateKey(c.OrderKey); err != nil {
+			return Config{}, err
+		}
+	}
 	if f := getenv("OPERATOR_ALERT_WEBHOOK_FILE"); f != "" {
 		b, err := os.ReadFile(f)
 		if err != nil {
@@ -153,7 +186,17 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		}
 	}
 	// Un accès de secours que personne ne voit passer n'est pas acceptable.
-	if c.RescueKey != "" && c.AlertWebhook == "" {
+	if getenv("OPERATOR_ALERT_LOG_ONLY") == "true" {
+		if !loopback(host) || getenv("OPERATOR_LISTEN_ANY") == "true" {
+			return Config{}, errors.New("operator: OPERATOR_ALERT_LOG_ONLY est réservé au développement (écoute locale)")
+		}
+		c.AlertLogOnly = true
+	}
+	c.KubeActions = getenv("OPERATOR_KUBE_ACTIONS") == "true"
+	if c.KubeActions && c.KubeconfigDir == "" {
+		return Config{}, errors.New("operator: OPERATOR_KUBE_ACTIONS exige OPERATOR_KUBECONFIG_DIR")
+	}
+	if c.RescueKey != "" && c.AlertWebhook == "" && !c.AlertLogOnly {
 		return Config{}, errors.New("operator: l'accès de secours exige OPERATOR_ALERT_WEBHOOK_FILE (alerte de l'équipe)")
 	}
 	return c, nil

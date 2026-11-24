@@ -41,6 +41,23 @@ func (m *memStore) Get(_ context.Context, id uuid.UUID) (store.Investigation, []
 	return m.inv, append([]store.Step(nil), m.steps...), nil
 }
 
+func (m *memStore) Conversation(_ context.Context, id uuid.UUID) (store.Investigation, []store.Step, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id != m.inv.ID {
+		return store.Investigation{}, nil, store.ErrNotFound
+	}
+	var out []store.Step
+	for _, st := range m.steps {
+		switch st.Kind {
+		case store.StepQuestion, store.StepAnswer, store.StepAction:
+			st.Input, st.Result = nil, nil
+			out = append(out, st)
+		}
+	}
+	return m.inv, out, nil
+}
+
 func (m *memStore) AddStep(_ context.Context, _ uuid.UUID, st store.Step) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

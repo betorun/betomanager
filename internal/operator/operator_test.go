@@ -76,6 +76,13 @@ func TestLoadConfig(t *testing.T) {
 	if _, err := LoadConfig(env(map[string]string{"OPERATOR_DATABASE_URL": "postgres://x/y", "OPERATOR_RESCUE_KEY_FILE": rk, "OPERATOR_ALERT_WEBHOOK_FILE": plain})); err == nil {
 		t.Error("webhook http accepté")
 	}
+	if c, err := LoadConfig(env(map[string]string{"OPERATOR_DATABASE_URL": "postgres://x/y", "OPERATOR_RESCUE_KEY_FILE": rk, "OPERATOR_ALERT_LOG_ONLY": "true"})); err != nil || !c.AlertLogOnly {
+		t.Fatalf("développement : %v", err)
+	}
+	if _, err := LoadConfig(env(map[string]string{"OPERATOR_DATABASE_URL": "postgres://x/y", "OPERATOR_RESCUE_KEY_FILE": rk, "OPERATOR_ALERT_LOG_ONLY": "true",
+		"OPERATOR_LISTEN": "0.0.0.0:8095", "OPERATOR_LISTEN_ANY": "true"})); err == nil {
+		t.Error("alertes en journal seulement acceptées hors du poste local")
+	}
 	c, err = LoadConfig(env(map[string]string{"OPERATOR_DATABASE_URL": "postgres://x/y", "OPERATOR_RESCUE_KEY_FILE": rk, "OPERATOR_ALERT_WEBHOOK_FILE": hook}))
 	if err != nil || c.AlertWebhook != "https://chat.example.test/hooks/x" {
 		t.Fatalf("webhook = %q %v", c.AlertWebhook, err)

@@ -170,7 +170,7 @@ func newDossiers(sc Scenario, now time.Time) *dossiers {
 		ActorUserID: "eval", ActorEmail: "banc@betorun.test", Status: store.StatusOpen, CreatedAt: now, UpdatedAt: now}}
 }
 
-func (d *dossiers) Get(_ context.Context, _ uuid.UUID) (store.Investigation, []store.Step, error) {
+func (d *dossiers) Conversation(_ context.Context, _ uuid.UUID) (store.Investigation, []store.Step, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.inv, append([]store.Step(nil), d.steps...), nil

@@ -27,12 +27,14 @@ import (
 
 // Bornes des résultats : un outil ne doit pas noyer le modèle.
 const (
-	maxRows      = 200
-	maxResult    = 24 << 10
-	maxLogLines  = 300
-	maxLogBytes  = 64 << 10
-	toolTimeout  = 20 * time.Second
-	defaultLines = 100
+	maxRows     = 200
+	maxResult   = 24 << 10
+	maxLogLines = 300
+	maxLogBytes = 64 << 10
+	toolTimeout = 20 * time.Second
+	// targetTimeout : un cluster, dans un outil qui les interroge tous.
+	targetTimeout = 12 * time.Second
+	defaultLines  = 100
 )
 
 var clusterName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)

@@ -24,6 +24,9 @@ var Limits = agentkit.Limits{
 	MaxToolCalls:    80,
 	Timeout:         10 * time.Minute,
 	MaxOutputTokens: 16000, // réflexion adaptative comprise
+	// Lectures d'un même lot en parallèle (nœuds, clusters, API) : les
+	// outils de l'Opérateur sont sans état partagé, le flux est verrouillé.
+	ParallelTools: 4,
 }
 
 // digestLen : taille du condensé d'un résultat d'outil, gardé à vie.
@@ -31,7 +34,8 @@ const digestLen = 600
 
 // Dossiers : ce que l'investigation lit et écrit dans la base.
 type Dossiers interface {
-	Get(ctx context.Context, id uuid.UUID) (store.Investigation, []store.Step, error)
+	// Conversation : le dossier et ses échanges, sans les résultats d'outils.
+	Conversation(ctx context.Context, id uuid.UUID) (store.Investigation, []store.Step, error)
 	AddStep(ctx context.Context, id uuid.UUID, st store.Step) (int, error)
 	AddUsage(ctx context.Context, id uuid.UUID, in, out int64) error
 }
@@ -51,14 +55,14 @@ func (iv *Investigator) Ask(ctx context.Context, id uuid.UUID, question string, 
 	if question == "" {
 		return agentkit.Result{}, errors.New("operator: question vide")
 	}
-	inv, steps, err := iv.Store.Get(ctx, id)
+	inv, steps, err := iv.Store.Conversation(ctx, id)
 	if err != nil {
 		return agentkit.Result{}, err
 	}
 	if inv.Status != store.StatusOpen {
 		return agentkit.Result{}, store.ErrClosed
 	}
-	history := History(steps)
+	history, outcomes := History(steps)
 	if _, err := iv.Store.AddStep(ctx, id, store.Step{Kind: store.StepQuestion, Digest: question}); err != nil {
 		return agentkit.Result{}, err
 	}
@@ -67,7 +71,7 @@ func (iv *Investigator) Ask(ctx context.Context, id uuid.UUID, question string, 
 	res, runErr := iv.Agent.Run(ctx, agentkit.Turn{
 		System:  Prompt(inv, iv.now()),
 		History: history,
-		Message: question,
+		Message: withOutcomes(nonEmpty(outcomes), question),
 		Caller:  llm.Caller{UserID: inv.ActorUserID, TurnID: id.String()},
 	}, rec, emit)
 
@@ -98,20 +102,34 @@ func (iv *Investigator) now() time.Time {
 }
 
 // History : les échanges précédents du dossier, en texte seulement (les
-// résultats d'outils restent dans le dossier, pas dans le contexte).
-func History(steps []store.Step) []llm.Message {
+// résultats d'outils restent dans le dossier, pas dans le contexte). L'issue
+// des cartes (validées, exécutées, refusées) précède la question suivante :
+// l'agent sait ce qui a été fait entre deux tours. Rend aussi les issues
+// survenues après la dernière question, à joindre à la nouvelle.
+func History(steps []store.Step) ([]llm.Message, string) {
 	var out []llm.Message
+	var pending []string
 	for _, st := range steps {
 		switch st.Kind {
+		case store.StepAction:
+			pending = append(pending, st.Digest)
 		case store.StepQuestion:
-			out = append(out, llm.Message{Role: llm.RoleUser, Text: st.Digest})
+			out = append(out, llm.Message{Role: llm.RoleUser, Text: withOutcomes(pending, st.Digest)})
+			pending = nil
 		case store.StepAnswer:
 			if st.Digest != "" {
 				out = append(out, llm.Message{Role: llm.RoleAssistant, Text: st.Digest})
 			}
 		}
 	}
-	return out
+	return out, strings.Join(pending, "\n")
+}
+
+func withOutcomes(outcomes []string, question string) string {
+	if len(outcomes) == 0 {
+		return question
+	}
+	return "[Issue des actions depuis ta dernière réponse]\n" + strings.Join(outcomes, "\n") + "\n\n" + question
 }
 
 // recorder : enregistre chaque appel d'outil. Un résultat qui n'a pas pu
@@ -162,4 +180,11 @@ func Digest(s string) string {
 		cut = cut[:i]
 	}
 	return fmt.Sprintf("%s\n… (%d lignes, %d octets)", cut, lines, len(s))
+}
+
+func nonEmpty(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return []string{s}
 }

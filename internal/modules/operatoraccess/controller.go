@@ -38,6 +38,8 @@ type Controller struct {
 	IAM Authorizer
 	// Journal : recopie du journal de l'Opérateur ; nil = route fermée.
 	Journal *JournalImporter
+	// Cards : cartes sur les routes /admin ; nil = routes fermées.
+	Cards *Cards
 
 	slot catalogSlot
 }

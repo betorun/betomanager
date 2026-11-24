@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -217,5 +219,59 @@ func TestAPIAuth(t *testing.T) {
 	}
 	if _, err := (&APIAuth{}).Identify(context.Background(), "good"); err != ErrAPIUnavailable {
 		t.Fatalf("sans API : %v", err)
+	}
+}
+
+// Dix requêtes simultanées avec le même jeton (chargement d'une page) : une
+// seule question à l'API ; un appelant parti n'annule pas celle des autres.
+func TestAPIAuthSingleflight(t *testing.T) {
+	user := uuid.New()
+	var calls atomic.Int32
+	release := make(chan struct{})
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		<-release
+		_ = json.NewEncoder(w).Encode(map[string]any{"user_id": user, "email": "a@b.test"})
+	}))
+	defer api.Close()
+	a := &APIAuth{BaseURL: api.URL + "/kmanager/v1"}
+	gone, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	errs := make([]error, 10)
+	for i := range 10 {
+		ctx := context.Background()
+		if i == 0 {
+			ctx = gone
+		}
+		wg.Go(func() { _, errs[i] = a.Identify(ctx, "good") })
+	}
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	close(release)
+	wg.Wait()
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("%d questions à l'API", n)
+	}
+	for i, err := range errs[1:] {
+		if err != nil {
+			t.Fatalf("appelant %d : %v", i+1, err)
+		}
+	}
+}
+
+// Pendant un silence, le flux reçoit « : ping » ; rien n'est écrit après la
+// fin du tour.
+func TestEventsHeartbeat(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ev := newEvents(rec)
+	stop := ev.heartbeat(5 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
+	ev.send("done", map[string]any{})
+	stop()
+	n := rec.Body.Len()
+	ev.send("late", map[string]any{})
+	body := rec.Body.String()
+	if !strings.Contains(body, ": ping\n\n") || !strings.Contains(body, "event: done") || rec.Body.Len() != n {
+		t.Fatalf("flux : %q", body)
 	}
 }

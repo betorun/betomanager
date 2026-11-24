@@ -258,6 +258,30 @@ func (s *Store) Get(ctx context.Context, id uuid.UUID) (Investigation, []Step, e
 	return inv, steps, err
 }
 
+// Conversation : un dossier et ses seuls échanges (questions, réponses,
+// issues des cartes), sans les résultats d'outils : de quoi reprendre un tour
+// sans charger des mégaoctets de preuves que le modèle ne relit pas.
+func (s *Store) Conversation(ctx context.Context, id uuid.UUID) (Investigation, []Step, error) {
+	inv, err := scan(s.pool.QueryRow(ctx, `SELECT `+columns+` FROM investigations WHERE id=$1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Investigation{}, nil, ErrNotFound
+	}
+	if err != nil {
+		return Investigation{}, nil, err
+	}
+	rows, err := s.pool.Query(ctx, `SELECT seq, kind, tool, digest, is_error, created_at
+		FROM investigation_steps WHERE investigation_id=$1 AND kind IN ('question', 'answer', 'action') ORDER BY seq`, id)
+	if err != nil {
+		return Investigation{}, nil, err
+	}
+	steps, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Step, error) {
+		var st Step
+		err := r.Scan(&st.Seq, &st.Kind, &st.Tool, &st.Digest, &st.IsError, &st.CreatedAt)
+		return st, err
+	})
+	return inv, steps, err
+}
+
 // List : les dossiers les plus récents d'abord.
 func (s *Store) List(ctx context.Context, limit int) ([]Investigation, error) {
 	if limit <= 0 || limit > 200 {

@@ -12,6 +12,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/thekrauss/kubemanager/internal/operator/fanout"
 )
 
 type clusterArgs struct {
@@ -25,11 +27,11 @@ func clustersTool(ctx context.Context, c *Clusters, _ json.RawMessage) (string, 
 	}
 	var b strings.Builder
 	b.WriteString("CLUSTER\tNŒUDS PRÊTS\n")
-	for _, n := range c.names {
+	// Tous les clusters à la fois, chacun avec son délai.
+	lines := fanout.Each(ctx, c.names, targetTimeout, func(ctx context.Context, n string) string {
 		nodes, err := c.clients[n].CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 		if err != nil {
-			fmt.Fprintf(&b, "%s\tinjoignable : %v\n", n, err)
-			continue
+			return fmt.Sprintf("%s\tinjoignable : %v\n", n, err)
 		}
 		ready := 0
 		for _, node := range nodes.Items {
@@ -37,7 +39,10 @@ func clustersTool(ctx context.Context, c *Clusters, _ json.RawMessage) (string, 
 				ready++
 			}
 		}
-		fmt.Fprintf(&b, "%s\t%d/%d\n", n, ready, len(nodes.Items))
+		return fmt.Sprintf("%s\t%d/%d\n", n, ready, len(nodes.Items))
+	})
+	for _, l := range lines {
+		b.WriteString(l)
 	}
 	return b.String(), nil
 }

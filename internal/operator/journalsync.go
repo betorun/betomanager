@@ -80,7 +80,7 @@ func (j *JournalSync) send(ctx context.Context, entries []store.Entry) error {
 	}
 	hc := j.HTTP
 	if hc == nil {
-		hc = &http.Client{Timeout: 20 * time.Second}
+		hc = journalClient
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

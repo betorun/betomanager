@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,6 +25,13 @@ func (a *App) newOperatorAccessController() *operatoraccess.Controller {
 		return nil
 	}
 	c := &operatoraccess.Controller{STS: a.STS, IAM: a.IAM}
+	if a.DB != nil {
+		c.Cards = &operatoraccess.Cards{DB: a.DB}
+		cards := c.Cards
+		a.goBackground("operator-cards-reaper", func(ctx context.Context) {
+			cards.RunReaper(ctx, func(err error) { a.Logger.Errorw("operator cards reaper", "error", err) })
+		})
+	}
 	if a.Config != nil && len(a.Config.IAM.OperatorJournalKeys) > 0 {
 		keys, err := opjournal.ParsePublicKeys(a.Config.IAM.OperatorJournalKeys)
 		if err != nil {
@@ -60,6 +68,16 @@ func addOperatorRoutes(app *App) {
 		Public(), r.Journal.Journal)
 	admin.AddRoute("/tools/:name", http.MethodPost, "Appel d'un outil de l'Opérateur, rejoué avec le jeton délégué et le motif du dossier",
 		AuthenticatedDelegable(), tonic.Handler(r.Call, http.StatusOK))
+	// Cartes (ADR 0016 §3 bis) : l'Opérateur propose et relit l'issue avec
+	// son jeton délégué ; la personne valide avec SA session, ici.
+	admin.AddRoute("/cards", http.MethodPost, "Proposition d'une action par l'Opérateur : requête contrôlée et figée, rien n'est exécuté",
+		AuthenticatedDelegable(), tonic.Handler(r.Propose, http.StatusCreated))
+	admin.AddRoute("/cards/:cardID", http.MethodGet, "État d'une carte de l'Opérateur et issue de l'action",
+		AuthenticatedDelegable(), tonic.Handler(r.Card, http.StatusOK))
+	admin.AddRoute("/cards/:cardID/approve", http.MethodPost, "Validation d'une carte par la personne (sa session) : l'action est jouée une fois ; carte sensible : double authentification",
+		g.Perm(iam.PlatformOperatorUse, security.PlatformResource), r.Approve)
+	admin.AddRoute("/cards/:cardID/reject", http.MethodPost, "Refus d'une carte, par la personne ou relayé par l'Opérateur",
+		AuthenticatedDelegable(), tonic.Handler(r.Reject, http.StatusOK))
 }
 
 // bindOperator : une fois toutes les routes enregistrées, le catalogue des

@@ -16,6 +16,26 @@
   "en": "%w (unreadable response)"
  },
  {
+  "fr": "%w : %s est déjà isolé",
+  "en": "%w: %s is already cordoned"
+ },
+ {
+  "fr": "%w : %s n'est pas isolé",
+  "en": "%w: %s is not cordoned"
+ },
+ {
+  "fr": "%w : %s n'est pas redémarrable sur %s (configuration du nœud)",
+  "en": "%w: %s cannot be restarted on %s (node configuration)"
+ },
+ {
+  "fr": "%w : le pod %s n'a pas de contrôleur : supprimé, il ne reviendrait pas",
+  "en": "%w: pod %s has no controller: once deleted, it would not come back"
+ },
+ {
+  "fr": "%w : replicas de 0 à %d",
+  "en": "%w: replicas from 0 to %d"
+ },
+ {
   "fr": "Prometheus %s : réponse illisible (HTTP %d)",
   "en": "Prometheus %s: unreadable response (HTTP %d)"
  },
@@ -24,8 +44,60 @@
   "en": "Prometheus %s unreachable: %w"
  },
  {
+  "fr": "action inconnue",
+  "en": "unknown action"
+ },
+ {
+  "fr": "action non jouée : l'état a changé depuis la proposition : %w",
+  "en": "action not run: the state changed since the proposal: %w"
+ },
+ {
+  "fr": "action non jouée : la cible a changé depuis la proposition",
+  "en": "action not run: the target changed since the proposal"
+ },
+ {
+  "fr": "action non jouée : le risque est passé de %s à %s (%s) ; une nouvelle proposition est nécessaire",
+  "en": "action not run: the risk went from %s to %s (%s); a new proposal is needed"
+ },
+ {
+  "fr": "action refusée",
+  "en": "action refused"
+ },
+ {
+  "fr": "agent du nœud %s injoignable : %w",
+  "en": "node agent %s unreachable: %w"
+ },
+ {
   "fr": "at doit être un instant RFC 3339 : %q",
   "en": "at must be an RFC 3339 instant: %q"
+ },
+ {
+  "fr": "carte de l'Opérateur inconnue",
+  "en": "unknown Operator card"
+ },
+ {
+  "fr": "carte de l'Opérateur introuvable",
+  "en": "Operator card not found"
+ },
+ {
+  "fr": "cette carte a déjà été décidée",
+  "en": "this card has already been decided"
+ },
+ {
+  "fr": "cette carte a déjà été décidée ou a expiré",
+  "en": "this card has already been decided or has expired"
+ },
+ {
+  "fr": "cette personne ne peut pas faire cette action",
+  "en": "this person cannot perform this action"
+ },
+ {
+  "fr": "déploiement %s/%s : %v",
+  "en": "deployment %s/%s: %v"
+ },
+ {
+  "fr": "interrompue : l'Opérateur s'est arrêté pendant l'action ; état réel à vérifier",
+  "en": "interrupted: the Operator stopped while the action ran; check the actual state"
  },
  {
   "fr": "journal de l'Opérateur : la clé privée doit être une graine de 32 octets en base64",
@@ -48,8 +120,20 @@
   "en": "access to the Operator has been withdrawn"
  },
  {
+  "fr": "l'action n'a pas pu être autorisée",
+  "en": "the action could not be authorized"
+ },
+ {
+  "fr": "la cible de cette action est introuvable ou inaccessible",
+  "en": "the target of this action was not found or is not accessible"
+ },
+ {
   "fr": "le jeton de l'Opérateur n'a pas pu être émis",
   "en": "the Operator token could not be issued"
+ },
+ {
+  "fr": "les cartes de l'Opérateur ne sont pas disponibles",
+  "en": "the Operator cards are not available"
  },
  {
   "fr": "les outils de l'Opérateur ne sont pas disponibles",
@@ -58,6 +142,18 @@
  {
   "fr": "lot du journal de l'Opérateur invalide",
   "en": "invalid operator journal batch"
+ },
+ {
+  "fr": "nœud %s/%s : %v",
+  "en": "node %s/%s: %v"
+ },
+ {
+  "fr": "nœud inconnu %q ; nœuds : %s",
+  "en": "unknown node %q; nodes: %s"
+ },
+ {
+  "fr": "operator: OPERATOR_ALERT_LOG_ONLY est réservé au développement (écoute locale)",
+  "en": "operator: OPERATOR_ALERT_LOG_ONLY is for development only (local listen address)"
  },
  {
   "fr": "operator: OPERATOR_API_URL invalide",
@@ -76,8 +172,40 @@
   "en": "operator: invalid OPERATOR_LISTEN: %w"
  },
  {
+  "fr": "operator: OPERATOR_NODE_CERT_FILE, OPERATOR_NODE_KEY_FILE et OPERATOR_NODE_CA_FILE sont obligatoires avec OPERATOR_NODES",
+  "en": "operator: OPERATOR_NODE_CERT_FILE, OPERATOR_NODE_KEY_FILE and OPERATOR_NODE_CA_FILE are required with OPERATOR_NODES"
+ },
+ {
+  "fr": "operator: OPERATOR_ORDER_KEY_FILE absent : aucune action sur les nœuds",
+  "en": "operator: OPERATOR_ORDER_KEY_FILE not set: no action on nodes"
+ },
+ {
   "fr": "operator: URL Prometheus invalide pour %s",
   "en": "operator: invalid Prometheus URL for %s"
+ },
+ {
+  "fr": "operator: URL invalide pour le nœud %s (https://hôte:port)",
+  "en": "operator: invalid URL for node %s (https://host:port)"
+ },
+ {
+  "fr": "operator: autorité des nœuds : %w",
+  "en": "operator: node certificate authority: %w"
+ },
+ {
+  "fr": "operator: autorité des nœuds illisible",
+  "en": "operator: unreadable node certificate authority"
+ },
+ {
+  "fr": "operator: carte déjà décidée",
+  "en": "operator: card already decided"
+ },
+ {
+  "fr": "operator: carte introuvable",
+  "en": "operator: card not found"
+ },
+ {
+  "fr": "operator: certificat client des nœuds : %w",
+  "en": "operator: node client certificate: %w"
  },
  {
   "fr": "operator: cluster en double : %q",
@@ -144,6 +272,10 @@
   "en": "operator: the alert webhook must be an https URL"
  },
  {
+  "fr": "operator: lecture de la clé d'ordres : %w",
+  "en": "operator: reading the order key: %w"
+ },
+ {
   "fr": "operator: lecture de la clé de secours : %w",
   "en": "operator: reading the rescue key: %w"
  },
@@ -176,6 +308,14 @@
   "en": "operator: invalid cluster name: %q"
  },
  {
+  "fr": "operator: nœud en double : %q",
+  "en": "operator: duplicate node: %q"
+ },
+ {
+  "fr": "operator: nœud invalide : %q (nom=https://…)",
+  "en": "operator: invalid node: %q (name=https://…)"
+ },
+ {
   "fr": "operator: origine de console invalide : %q",
   "en": "operator: invalid console origin: %q"
  },
@@ -200,20 +340,52 @@
   "en": "operator: invalid closing status: %s"
  },
  {
+  "fr": "operator: trop de cartes en attente dans ce dossier",
+  "en": "operator: too many pending cards in this investigation"
+ },
+ {
   "fr": "operator: trop de tentatives, réessayer plus tard",
   "en": "operator: too many attempts, try again later"
+ },
+ {
+  "fr": "operator: un ordre exige la personne qui l'a validé",
+  "en": "operator: an order requires the person who approved it"
+ },
+ {
+  "fr": "operator: une action de l'API se valide auprès de l'API, jamais par l'Opérateur",
+  "en": "operator: an API action is approved at the API, never by the Operator"
+ },
+ {
+  "fr": "operator: une action exige la carte et la personne qui l'a validée",
+  "en": "operator: an action requires the card and the person who approved it"
  },
  {
   "fr": "outil de l'Opérateur inconnu",
   "en": "unknown Operator tool"
  },
  {
+  "fr": "refus auprès de l'API (HTTP %d) : %s",
+  "en": "rejection at the API (HTTP %d): %s"
+ },
+ {
   "fr": "requête PromQL vide ou trop longue (%d caractères au plus)",
   "en": "empty or too long PromQL query (%d characters at most)"
  },
  {
+  "fr": "réponse de l'API illisible",
+  "en": "unreadable API response"
+ },
+ {
   "fr": "réponse trop grosse : restreindre la requête (filtre de labels, agrégation, topk)",
   "en": "response too large: narrow the query (label filter, aggregation, topk)"
+ },
+ {
+  "fr": "seule la personne connectée peut valider une carte de l'Opérateur",
+  "en": "only the signed-in person can validate an Operator card"
+ },
+ {
+  "fr": "seule une personne ou l'Opérateur peut refuser une carte de l'Opérateur",
+  "en": "only a person or the Operator can reject an Operator card"
  },
  {
   "fr": "since : une durée de 7 jours au plus, ex. 30m, 6h, 2d (reçu %q)",
@@ -230,5 +402,9 @@
  {
   "fr": "un jeton de l'Opérateur est requis",
   "en": "an Operator token is required"
+ },
+ {
+  "fr": "vous n'avez pas la permission qu'exige cette action",
+  "en": "you do not have the permission this action requires"
  }
 ]
