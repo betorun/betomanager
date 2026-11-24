@@ -51,6 +51,34 @@ func TestValidateProduction_Complete(t *testing.T) {
 	}
 }
 
+// Back-office : console sur le poste de l'équipe (tunnel SSH) ; l'API des
+// clients garde l'HTTPS obligatoire.
+func TestValidateProduction_PlatformLocalConsole(t *testing.T) {
+	local := func(c *GlobalConfig) {
+		c.Server.AllowedOrigins = []string{"http://localhost:3001", "http://127.0.0.1:3001"}
+		c.Frontend.BaseURL = "http://localhost:3001"
+	}
+	c := validProductionConfig(t)
+	local(c)
+	if err := c.ValidateProduction(); err == nil {
+		t.Fatal("API des clients : origine locale acceptée")
+	}
+
+	t.Setenv("APP_MODE", "platform")
+	c = validProductionConfig(t)
+	local(c)
+	if err := c.ValidateProduction(); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"http://localhost", "http://10.0.0.5:3001", "http://admin.betorun.app:3001", "http://localhost:3001/x"} {
+		c = validProductionConfig(t)
+		c.Server.AllowedOrigins = []string{bad}
+		if err := c.ValidateProduction(); err == nil || !strings.Contains(err.Error(), "server.allowed_origins") {
+			t.Errorf("%s : accepté (%v)", bad, err)
+		}
+	}
+}
+
 // Chaque défaut doit citer la clé fautive.
 func TestValidateProduction_Rejects(t *testing.T) {
 	cases := []struct {

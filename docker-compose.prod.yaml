@@ -20,9 +20,14 @@
 #   connexion.
 #
 # CONNEXIONS POSTGRES (max_connections=100, au maximum par processus)
-#   api 15 + worker 15 + keycloak 10
-#   + temporal 32 (4 services x (6 + 2 visibilité)) = 82 ; marge pour migrations,
+#   api 15 + worker 15 + compute 5 + api-platform 5 (profil admin) + keycloak 10
+#   + temporal 32 (4 services x (6 + 2 visibilité)) = 92 ; marge pour migrations,
 #   sauvegardes et administration.
+#
+# BACK-OFFICE (profil admin)
+#   api-platform n'a aucun nom public : port 8081 sur la boucle locale du
+#   serveur, joint par tunnel SSH depuis la console de l'équipe lancée sur son
+#   poste (deploy/README.txt, 7 sexies).
 #
 # TEMPORAL : image `server` et non `auto-setup`
 #   auto-setup est prévue pour le développement : elle crée le schéma à chaque
@@ -199,6 +204,10 @@ x-app-env: &app-env
   KUBEMANAGER_SOCIAL_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
   KUBEMANAGER_SOCIAL_GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
   KUBEMANAGER_SOCIAL_GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  # VPS (docs/modules/compute.md) : routes et relais. Les clés du fournisseur
+  # ne sont données qu'au service compute.
+  KUBEMANAGER_COMPUTE_ENABLED: ${COMPUTE_ENABLED:-false}
+  KUBEMANAGER_COMPUTE_TASK_QUEUE: compute
 
 x-app-volumes: &app-volumes
   - ${BETORUN_SECRETS_DIR:?}/registry/token.crt:/etc/betorun/registry/token.crt:ro
@@ -466,6 +475,8 @@ services:
     environment:
       <<: *app-env
       GOMEMLIMIT: 410MiB
+      # Commandes réelles de VPS (faux : offres et prix seulement).
+      KUBEMANAGER_COMPUTE_ORDERING_ENABLED: ${COMPUTE_ORDERING_ENABLED:-false}
     volumes: *app-volumes
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/ready"]
@@ -522,6 +533,84 @@ services:
       backend:
       outbound:
 
+  # Mode compute : seul processus à détenir les clés du fournisseur de VPS. Il
+  # exécute les demandes que l'API dépose (outbox → Temporal, file « compute »).
+  # Sans clé : il démarre, et les demandes échouent proprement.
+  compute:
+    <<: *service
+    image: ${KUBEMANAGER_IMAGE:?}
+    environment:
+      <<: *app-env
+      APP_MODE: compute
+      KUBEMANAGER_DATABASE_SKIP_MIGRATIONS: "true"
+      KUBEMANAGER_DATABASE_MAX_OPEN_CONNS: "5"
+      KUBEMANAGER_DATABASE_MAX_IDLE_CONNS: "2"
+      KUBEMANAGER_COMPUTE_OVH_ENDPOINT: ${COMPUTE_OVH_ENDPOINT:-https://eu.api.ovh.com/1.0}
+      KUBEMANAGER_COMPUTE_OVH_SUBSIDIARY: ${COMPUTE_OVH_SUBSIDIARY:-FR}
+      KUBEMANAGER_COMPUTE_OVH_APPLICATION_KEY: ${COMPUTE_OVH_APPLICATION_KEY:-}
+      KUBEMANAGER_COMPUTE_OVH_APPLICATION_SECRET: ${COMPUTE_OVH_APPLICATION_SECRET:-}
+      KUBEMANAGER_COMPUTE_OVH_CONSUMER_KEY: ${COMPUTE_OVH_CONSUMER_KEY:-}
+      # Boîte e-mail technique (mot de passe du mode secours) ; vide : absent.
+      KUBEMANAGER_COMPUTE_IMAP_HOST: ${COMPUTE_IMAP_HOST:-}
+      KUBEMANAGER_COMPUTE_IMAP_PORT: ${COMPUTE_IMAP_PORT:-993}
+      KUBEMANAGER_COMPUTE_IMAP_USERNAME: ${COMPUTE_IMAP_USERNAME:-}
+      KUBEMANAGER_COMPUTE_IMAP_PASSWORD: ${COMPUTE_IMAP_PASSWORD:-}
+      KUBEMANAGER_COMPUTE_IMAP_MAILBOX: ${COMPUTE_IMAP_MAILBOX:-INBOX}
+      GOMEMLIMIT: 200MiB
+    volumes: *app-volumes
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    depends_on:
+      api:
+        condition: service_healthy
+    cap_drop: [ALL]
+    stop_grace_period: 30s
+    mem_limit: 256m
+    networks:
+      backend:
+      outbound:
+
+  # API du back-office (routes /admin, connexion, IAM), à la demande :
+  #   deploy/compose.sh --profile admin up -d api-platform
+  # Port sur la boucle locale seulement (jamais ouvert au monde) ; la console
+  # de l'équipe tourne sur son poste (npm run dev:platform, tunnel SSH).
+  api-platform:
+    <<: *service
+    profiles: [admin]
+    image: ${KUBEMANAGER_IMAGE:?}
+    environment:
+      <<: *app-env
+      APP_MODE: platform
+      KUBEMANAGER_DATABASE_SKIP_MIGRATIONS: "true"
+      KUBEMANAGER_DATABASE_MAX_OPEN_CONNS: "5"
+      KUBEMANAGER_DATABASE_MAX_IDLE_CONNS: "2"
+      KUBEMANAGER_SERVER_ALLOWED_ORIGINS: http://localhost:3001,http://127.0.0.1:3001
+      KUBEMANAGER_FRONTEND_URL: http://localhost:3001
+      KUBEMANAGER_COMPUTE_ORDERING_ENABLED: ${COMPUTE_ORDERING_ENABLED:-false}
+      GOMEMLIMIT: 300MiB
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes: *app-volumes
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    depends_on:
+      api:
+        condition: service_healthy
+    cap_drop: [ALL]
+    stop_grace_period: 20s
+    mem_limit: 384m
+    networks:
+      backend:
+      outbound:
+
   # static-edge (sites statiques) tourne dans le cluster du serveur 2, derrière
   # Traefik : deploy/k8s/static-edge.yaml. Il lit la table des sites par l'API
   # et les fichiers par S3_PUBLIC_HOST (Caddy, réservé à l'IP du serveur 2).
@@ -558,6 +647,7 @@ services:
       - "443:443/udp"
     environment:
       ACME_EMAIL: ${ACME_EMAIL:?}
+      LANDING_HOST: ${LANDING_HOST:?}
       CONSOLE_HOST: ${CONSOLE_HOST:?}
       API_HOST: ${API_HOST:?}
       REGISTRY_HOST: ${REGISTRY_HOST:?}

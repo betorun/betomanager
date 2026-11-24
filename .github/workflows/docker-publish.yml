@@ -95,8 +95,12 @@ jobs:
             # publiée ci-dessus, sa mise à jour est manuelle (README, section 10).
             sed -i '/^KUBEMANAGER_IMAGE=/d;/^STATIC_EDGE_IMAGE=/d' "$f"
             echo "KUBEMANAGER_IMAGE=thekrauss/kubemanager:${{ github.sha }}" >> "$f"
-            deploy/compose.sh pull api worker
+            deploy/compose.sh pull api worker compute
             deploy/compose.sh up -d --no-deps api
-            deploy/compose.sh up -d --no-deps worker
+            deploy/compose.sh up -d --no-deps worker compute
+            # Back-office (profil admin) : relancé seulement s'il tourne.
+            if [ -n "$(deploy/compose.sh --profile admin ps -q api-platform)" ]; then
+              deploy/compose.sh --profile admin up -d --no-deps api-platform
+            fi
             docker image prune -f
             echo "Deployed ${{ github.sha }}"

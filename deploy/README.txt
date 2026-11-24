@@ -72,7 +72,9 @@ Machine de construction de la console : Docker. Pas le serveur 1 : next build
 ------
 
   Nom                       Type    Valeur   Rôle
-  app.<domaine>             A       <IP1>    console
+  <domaine>                 A       <IP1>    site public (LANDING_HOST)
+  www.<domaine>             A       <IP1>    redirection vers <domaine>
+  console.<domaine>         A       <IP1>    console (CONSOLE_HOST)
   api.<domaine>             A       <IP1>    API
   registry.<domaine>        A       <IP1>    registre d'images
   realtime.<domaine>        A       <IP1>    Centrifugo (wss)
@@ -225,8 +227,8 @@ Facultative : sans elle, les builds depuis un dépôt GitHub sont désactivés, 
 reste fonctionne. Créer une application NEUVE (jamais celle du développement),
 GitHub, Settings, Developer settings, GitHub Apps, New GitHub App :
 
-  Homepage URL               https://app.<domaine>
-  Callback URL               https://app.<domaine>/integrations/github/callback
+  Homepage URL               https://console.<domaine>
+  Callback URL               https://console.<domaine>/integrations/github/callback
   Request user authorization (OAuth) during installation : cochée
   Setup URL                  (vide : la Callback URL sert)
   Webhook URL                https://api.<domaine>/kmanager/v1/integrations/github/webhook
@@ -291,7 +293,10 @@ Serveur 1 :
 
 Depuis l'extérieur :
 
-    curl -I  https://app.<domaine>/                       # 200, en-tête HSTS
+    curl -I  https://console.<domaine>/                       # 200, en-tête HSTS
+    curl -sI https://<domaine>/                           # 200 (landing)
+    curl -sI https://<domaine>/sign-in | grep -i location # https://console.<domaine>/sign-in
+    curl -sI https://www.<domaine>/pricing | grep -i location   # https://<domaine>/pricing
     curl -sI https://api.<domaine>/api/v1/health          # 200
     curl -sI https://api.<domaine>/metrics                # 404
     curl -sI https://api.<domaine>/api/v1/ready           # 404
@@ -527,6 +532,37 @@ Prix : storage_gb_monthly dans la grille (back-office, Facturation, Grilles) ;
 
 Le disque du serveur 1 grandit avec les données des clients : le suivre, et la
 sauvegarde de nuit du volume s3data prend plus de temps et de place (section 9).
+
+
+7 SEXIES. VPS ET BACK-OFFICE
+----------------------------
+
+VPS (docs/modules/compute.md). Le service compute est le seul à recevoir les
+clés du fournisseur ; l'API et le worker ne les ont pas. Dans .env.prod :
+COMPUTE_ENABLED=true, les COMPUTE_OVH_* d'une clé DÉDIÉE aux VPS (droits listés
+dans .env.prod.example), COMPUTE_IMAP_* si la boîte technique est prête. Laisser
+COMPUTE_ORDERING_ENABLED=false jusqu'au premier essai réel (moyen de paiement
+par défaut sur le compte du fournisseur, un petit VPS commandé puis résilié).
+
+    deploy/compose.sh up -d compute
+    deploy/compose.sh logs compute | grep -E "compute worker started|mailbox"
+    # « provider: true » : clé lue ; avertissement « no technical mailbox » si
+    # COMPUTE_IMAP_* est vide (seul le mot de passe du mode secours manque).
+
+Back-office (API APP_MODE=platform, profil admin) : AUCUN nom public. L'API
+écoute sur 127.0.0.1:8081 du serveur 1 ; la console de l'équipe tourne sur le
+poste de l'opérateur et la joint par un tunnel SSH.
+
+    # serveur 1, quand on en a besoin :
+    deploy/compose.sh --profile admin up -d api-platform
+    # poste de l'opérateur :
+    ssh -N -L 8081:127.0.0.1:8081 <serveur 1>
+    cd kweb && npm run dev:platform        # http://localhost:3001
+    # fini : deploy/compose.sh stop api-platform
+
+Connexion avec un compte de PLATFORM_ADMINS. Double authentification : code
+TOTP (les passkeys sont liées à l'adresse de la console des clients, pas à
+localhost). Le profil admin n'est pas démarré par « up -d » sans --profile.
 
 
 8. ADRESSE DES CLIENTS ET RATE LIMIT

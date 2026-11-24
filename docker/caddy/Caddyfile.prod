@@ -19,6 +19,30 @@
 	header Strict-Transport-Security "max-age=31536000"
 }
 
+# Site public (même application que la console) : landing, tarifs, produits,
+# docs, pages légales et état du service. Tout le reste (connexion, tableau de
+# bord, BFF /api/auth) part vers la console : une seule origine pour la session
+# et pour l'API (server.allowed_origins).
+{$LANDING_HOST} {
+	import compress
+	import hsts
+	@public {
+		path / /pricing /pricing/* /produits /produits/* /docs /docs/* /legal /legal/* /status /status/*
+		path /_next/* /i18n/* /icons/* /logos/* /offline /api/csp-report
+		path /robots.txt /sitemap.xml /manifest.webmanifest /icon.svg /sw.js /favicon.ico
+	}
+	handle @public {
+		reverse_proxy console:3000
+	}
+	handle {
+		redir https://{$CONSOLE_HOST}{uri} 302
+	}
+}
+
+www.{$LANDING_HOST} {
+	redir https://{$LANDING_HOST}{uri} 308
+}
+
 # Console
 {$CONSOLE_HOST} {
 	import compress
