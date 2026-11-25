@@ -183,7 +183,16 @@ func TestDeploy_CancelInterruptsInstall(t *testing.T) {
 
 // Le délai de Helm reste nettement sous celui de l'activité : Temporal ne
 // relance jamais pendant que Helm tourne encore.
+// L'attente de Helm suit le délai de démarrage toléré (sonde) : jamais plus
+// courte, sinon un conteneur lent est déclaré en échec avant d'avoir démarré.
 func TestInstallTimeoutsAreOrdered(t *testing.T) {
-	assert.GreaterOrEqual(t, installActivityTimeout, activities.HelmInstallTimeout+time.Minute)
-	assert.Greater(t, activities.InstallChartProcessingTTL, installActivityTimeout)
+	for _, startup := range []int{0, 150, 300, 600} {
+		wait := activities.HelmWaitTimeout(startup)
+		assert.GreaterOrEqual(t, wait, activities.HelmInstallTimeout, "startup %d", startup)
+		assert.Greater(t, wait, time.Duration(startup)*time.Second+time.Minute, "startup %d : Helm attend au-delà de la sonde", startup)
+		assert.GreaterOrEqual(t, installActivityTimeout(startup), wait+time.Minute, "startup %d", startup)
+		assert.Greater(t, activities.InstallProcessingTTL(startup), installActivityTimeout(startup), "startup %d", startup)
+	}
+	assert.Equal(t, activities.HelmInstallTimeout, activities.HelmWaitTimeout(0), "défaut inchangé")
+	assert.Equal(t, 12*time.Minute, activities.HelmWaitTimeout(600))
 }
