@@ -458,6 +458,15 @@ par les pods) : deploy/terrain/tunnel-inverse.sh règle sshd, ufw et
 registries.yaml pour la bonne adresse et affiche la commande ssh ;
 deploy/terrain/k3s.sh installe le serveur.
 
+Disque : au-delà de ~85 % d'occupation, le nœud passe en DiskPressure et
+expulse les conteneurs (terrain, 25/11 : 88 %, bases et Gotenberg arrêtés).
+Le runner de la CI de SYK tourne aussi sur ce VPS et remplit le disque
+(caches de build, images de scan). Un disque additionnel reçoit les volumes
+(k3s local-path), les images (containerd) et Docker, par montages « bind »
+(chemins inchangés) : deploy/terrain/disque-donnees.sh check | apply /dev/sdX
+| cleanup (coupure de quelques minutes ; anciennes copies gardées jusqu'au
+cleanup).
+
 a) k3s sans flannel ni kube-proxy (nouveau cluster, ou réinstallation) :
 
     curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none \
