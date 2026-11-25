@@ -94,9 +94,25 @@ func addClusterRoutes(app *App) {
 			list, tonic.Handler(r.ListClusters, http.StatusOK))
 		return
 	}
-	RootGroup.NewGroup("/regions", "Régions").AddRoute("", http.MethodGet,
-		"Régions où créer un projet (disponibles maintenant ou non) ; la région choisie se passe à la création du projet",
-		Authenticated(), tonic.Handler(reg.Regions, http.StatusOK))
+	RootGroup.NewGroup("/regions", "Régions").
+		Named("Régions", "Régions où créer un projet, région suggérée selon le pays de l'organisation et adresse de mesure du temps de réponse.").
+		AddRoute("", http.MethodGet,
+			"Régions où créer un projet (disponibles maintenant ou non), avec l'adresse de mesure du temps de réponse de chacune ; avec organization_id, la région associée au pays de l'organisation est suggérée et passe en tête. La région choisie se passe à la création du projet",
+			Authenticated(), tonic.Handler(reg.Regions, http.StatusOK))
+	if reg.Registry.Geo != nil {
+		cr := RootGroup.NewGroup("/admin/country-regions", "Admin — région suggérée selon le pays du client").Internal()
+		cr.AddRoute("", http.MethodGet, "Table pays → région suggérée, triée par pays",
+			list, tonic.Handler(reg.CountryRegions, http.StatusOK))
+		cr.AddRoute("/:country", http.MethodPut, "Associer une région à un pays (la région doit être celle d'au moins un cluster enregistré)",
+			manage, tonic.Handler(reg.SetCountryRegion, http.StatusOK))
+		cr.AddRoute("/:country", http.MethodDelete, "Retirer l'association d'un pays (plus de région suggérée)",
+			manage, tonic.Handler(reg.DeleteCountryRegion, http.StatusNoContent))
+		rg := RootGroup.NewGroup("/admin/regions", "Admin — réglages des régions").Internal()
+		rg.AddRoute("", http.MethodGet, "Régions connues des clusters et leur adresse de mesure du temps de réponse",
+			list, tonic.Handler(reg.RegionSettings, http.StatusOK))
+		rg.AddRoute("/:code", http.MethodPut, "Adresse https de mesure du temps de réponse de la région, appelée depuis le navigateur ; elle doit répondre vite et sans données (vide : retirée)",
+			manage, tonic.Handler(reg.SetRegionProbe, http.StatusOK))
+	}
 	adminClusters.AddRoute("", http.MethodGet,
 		"Registre des clusters : fournisseur, distribution, région, état, accès déposé, dernier relevé de santé",
 		list, tonic.Handler(reg.RegistryList, http.StatusOK))
@@ -560,7 +576,11 @@ func addIAMRoutes(app *App) {
 
 	// Politique de sécurité d'une organisation (iam.md §9, §13).
 	orgs := RootGroup.NewGroup("/organizations/:id", "Organisation").
-		Named("Organisations", "Politique de sécurité de l'organisation.")
+		Named("Organisations", "Organisation : nom, pays et politique de sécurité.")
+	orgs.AddRoute("", http.MethodGet, "Organisation : nom, type (personnelle ou d'équipe) et pays",
+		g.Perm(iam.OrganizationsGet, security.OrganizationParam("id")), tonic.Handler(r.GetOrganization, http.StatusOK))
+	orgs.AddRoute("", http.MethodPatch, "Modifier l'organisation : pays du client (il désigne la région suggérée à la création d'un projet)",
+		g.Perm(iam.OrganizationsUpdate, security.OrganizationParam("id")), tonic.Handler(r.UpdateOrganization, http.StatusOK))
 	orgs.AddRoute("/securityPolicy", http.MethodGet, "Politique de sécurité (double authentification exigée…)",
 		g.Perm(iam.OrganizationsGet, security.OrganizationParam("id")), tonic.Handler(r.GetOrgSecurityPolicy, http.StatusOK))
 	orgs.AddRoute("/securityPolicy", http.MethodPut, "Modifier la politique de sécurité (confirmation récente du second facteur requise)",

@@ -111,7 +111,7 @@ func (s *ProjectService) OrganizationQuotas(ctx context.Context, orgIDs []uuid.U
 	out := make([]typesproject.OrganizationQuota, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, typesproject.OrganizationQuota{
-			OrganizationID: r.ID.String(), DisplayName: r.DisplayName, Projects: r.Projects, MaxProjects: r.MaxProjects,
+			OrganizationID: r.ID.String(), DisplayName: r.DisplayName, Country: r.Country, Projects: r.Projects, MaxProjects: r.MaxProjects,
 		})
 	}
 	return out, nil

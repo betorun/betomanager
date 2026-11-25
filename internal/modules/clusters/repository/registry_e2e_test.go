@@ -130,3 +130,30 @@ func TestE2E_AgentFields(t *testing.T) {
 	assert.True(t, now.Equal(c.AgentInstalledAt.UTC()))
 	assert.Equal(t, "user:staff", c.AgentInstalledBy)
 }
+
+func TestE2E_CountryRegions(t *testing.T) {
+	db := e2eDB(t)
+	ctx := context.Background()
+	s := &repository.RegionStore{DB: db}
+	require.NoError(t, s.SetCountryRegion(ctx, &domain.CountryRegion{Country: "ZW", Region: "af-south", UpdatedBy: "user:staff"}))
+	require.NoError(t, s.SetCountryRegion(ctx, &domain.CountryRegion{Country: "ZW", Region: "af-central"}))
+	r, err := s.RegionForCountry(ctx, "ZW")
+	require.NoError(t, err)
+	assert.Equal(t, "af-central", r, "remplacée")
+	list, err := s.CountryRegions(ctx)
+	require.NoError(t, err)
+	assert.NotEmpty(t, list)
+	require.NoError(t, s.DeleteCountryRegion(ctx, "ZW"))
+	r, err = s.RegionForCountry(ctx, "ZW")
+	require.NoError(t, err)
+	assert.Empty(t, r)
+
+	require.NoError(t, s.SetRegionProbe(ctx, &domain.RegionSetting{Code: "e2e-region", ProbeURL: "https://probe.e2e.test/healthz"}))
+	probes, err := s.RegionProbes(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "https://probe.e2e.test/healthz", probes["e2e-region"])
+	require.NoError(t, s.SetRegionProbe(ctx, &domain.RegionSetting{Code: "e2e-region"}))
+	probes, err = s.RegionProbes(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, probes, "e2e-region", "retirée")
+}

@@ -133,6 +133,11 @@ type Region struct {
 	Available bool `json:"available" description:"Un nouveau projet peut y être créé maintenant"`
 	// Default : région du cluster par défaut (choix proposé d'office).
 	Default bool `json:"default" description:"Région proposée par défaut"`
+	// Suggested : région associée au pays de l'organisation demandée.
+	Suggested bool `json:"suggested" description:"Région suggérée pour le pays de l'organisation demandée (organization_id)"`
+	// ProbeURL : adresse https à appeler depuis le navigateur pour mesurer
+	// le temps de réponse ("" : non réglée).
+	ProbeURL string `json:"probe_url" description:"Adresse https à appeler depuis le navigateur pour mesurer le temps de réponse de la région ; vide si non réglée"`
 }
 
 // Regions : régions des clusters ouverts (sans région : non proposés).

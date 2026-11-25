@@ -44,6 +44,18 @@ Routes internes sur `platform` (staff). `platform.clusters.manage` est **sensibl
 | `GET` | `/admin/clusters/:clusterID/agent` | `platform.clusters.list` | État de l'agent lu par l'accès restreint |
 | `POST` | `/admin/clusters/:clusterID/agent` | `platform.clusters.manage` | Nouvelle image ou nouvelle clé de l'agent |
 
+### Admin — régions (`/admin/country-regions`, `/admin/regions`)
+
+Mêmes permissions que le registre ; écrans du back-office « Régions ». Écritures au journal d'audit (pays, région, adresse annotés).
+
+| Méthode | Chemin | Permission | Description |
+|---------|--------|-----------|-------------|
+| `GET` | `/admin/country-regions` | `platform.clusters.list` | Table pays → région : `[{country, region}]`, triée par pays |
+| `PUT` | `/admin/country-regions/:country` | `platform.clusters.manage` | `{region}` : région suggérée aux clients du pays ; rend l'entrée. Pays non ISO : `400 INVALID_INPUT` ; région d'aucun cluster enregistré (tous états) : `400 UNKNOWN_REGION` |
+| `DELETE` | `/admin/country-regions/:country` | `platform.clusters.manage` | Retire l'association (absente : rien) ; `204` |
+| `GET` | `/admin/regions` | `platform.clusters.list` | Régions connues des clusters enregistrés (tous états) : `[{code, probe_url}]`, triées |
+| `PUT` | `/admin/regions/:code` | `platform.clusters.manage` | `{probe_url}` : adresse de mesure du temps de réponse, https obligatoire (`400 INVALID_INPUT`), `""` la retire ; région inconnue : `400 UNKNOWN_REGION` |
+
 ## Registre multi-cluster (lot 1)
 
 - **Déclaration** : un cluster peut être déclaré avant que son watcher ne s'enrôle (`enrolled_at` vide) ; l'enrôlement garde la déclaration. Un watcher qui s'enrôle sans déclaration crée une ligne (fournisseur `other`, distribution `k3s`) à compléter.
@@ -55,7 +67,9 @@ Routes internes sur `platform` (staff). `platform.clusters.manage` est **sensibl
 ## Placement des projets (lot 2a)
 
 - Chaque projet porte son cluster (`projects.cluster_id`, migration 000070 ; NULL : cluster par défaut, projets existants rattachés au défaut). L'identifiant du cluster n'est jamais montré au client (marque blanche).
-- **Régions** : `GET /regions` (client connecté) rend les régions des clusters `active` (`code`, `available`, `default`) ; un cluster sans région n'est pas proposé. Le client passe `region` à `POST /projects` (vide : choix de la plateforme).
+- **Régions** : `GET /regions` (client connecté) rend les régions des clusters `active` (`code`, `available`, `default`, `suggested`, `probe_url`) ; un cluster sans région n'est pas proposé. Le client passe `region` à `POST /projects` (vide : choix de la plateforme).
+- **Région suggérée** : `GET /regions?organization_id=<uuid>` marque `suggested` la région associée au pays de l'organisation (`organizations.country`, voir [organizations.md](organizations.md)) dans la table pays → région (`country_regions`, tenue dans le back-office, jamais en dur) et la met en tête ; les autres gardent leur ordre (défaut d'abord, puis code). Aucune suggestion (tout à `false`, sans erreur) si le paramètre manque, si l'appelant ne peut pas voir l'organisation (`resourcemanager.organizations.get` : rien n'est révélé d'une organisation d'autrui), si son pays est inconnu, sans association, ou si la région associée n'est plus proposée. Identifiant mal formé : `400`. `default` ne change pas : la suggestion n'est qu'un ordre d'affichage, le placement reste celui ci-dessous.
+- **Mesure de latence** : chaque région peut avoir une adresse https (`region_settings.probe_url`, `""` si non réglée) que la console appelle depuis le navigateur pour afficher le temps de réponse. Elle doit répondre vite et sans données, sans authentification ni effet (par ex. une route `/healthz` publique d'un point d'entrée de la région), et accepter l'appel d'une autre origine (CORS) si la console lit la réponse ; une simple mesure du temps de réponse n'en a pas besoin.
 - **Choix** (`domain.Place`) parmi les clusters `active`, joignables (accès déposé ou configuration) et pas en panne (jamais relevé : seulement le défaut) :
   - région demandée : celui qui n'est pas sous pression CPU/mémoire, puis le plus de CPU libre, puis le moins de projets, puis l'identifiant ; aucun : `409 NO_CAPACITY_IN_REGION` avant toute écriture ;
   - sans région : le défaut s'il peut recevoir, sinon le meilleur ; aucun : le défaut quand même (installation à un seul cluster).
@@ -111,6 +125,8 @@ Les clés des watchers se gèrent sous `/admin/cluster-keys` (module `iamapi`, v
 |-------|------|
 | `clusters` | cluster_id (unique), version, last_seen_at, enrolled_at (vide : déclaré), registre (name, provider, distribution, region, state, is_default, notes), accès chiffré (kubeconfig_ciphertext, api_server, kubeconfig_set_at) |
 | `cluster_health` | dernier relevé de santé de chaque cluster (migration 000069) |
+| `country_regions` | pays (ISO 3166-1 alpha-2, clé) → région suggérée, `updated_at`, `updated_by` (migration 000080) |
+| `region_settings` | réglages d'une région : `probe_url` (adresse de mesure du temps de réponse), `updated_at`, `updated_by` (migration 000080) |
 
 Schéma : [migrations/000001_init.up.sql](../../migrations/000001_init.up.sql).
 

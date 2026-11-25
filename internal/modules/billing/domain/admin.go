@@ -16,10 +16,12 @@ var (
 
 // OrgSummary : une organisation dans la liste de l'administration.
 type OrgSummary struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Kind     string `json:"kind"`
-	Owner    string `json:"owner,omitempty"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Kind  string `json:"kind"`
+	Owner string `json:"owner,omitempty"`
+	// Country : pays du client (ISO 3166-1 alpha-2), "" si inconnu.
+	Country  string `json:"country"`
 	Projects int    `json:"projects"`
 	// MaxProjects : plafond de projets (changé par PATCH /admin/organizations/:id/limits).
 	MaxProjects int    `json:"max_projects"`

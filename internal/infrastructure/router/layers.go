@@ -20,6 +20,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/iamapi"
 	identityCtrl "github.com/thekrauss/kubemanager/internal/modules/identity"
 	identitySvc "github.com/thekrauss/kubemanager/internal/modules/identity/service"
+	orgRepo "github.com/thekrauss/kubemanager/internal/modules/organizations/repository"
 	projectCtrl "github.com/thekrauss/kubemanager/internal/modules/projects"
 	projectDomain "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 	projectSvc "github.com/thekrauss/kubemanager/internal/modules/projects/service"
@@ -131,6 +132,13 @@ func (a *App) initDomainLayers() error {
 	clustersController := clusters.NewController(clustersService)
 	clustersController.Registry = a.clusterRegistry()
 	clustersController.Agents = a.clusterAgents()
+	// Région suggérée : pays d'une organisation que l'appelant peut voir.
+	if a.IAM != nil {
+		clustersController.Access = a.IAM
+		clustersController.OrgCountry = func(ctx context.Context, orgID uuid.UUID) (string, error) {
+			return orgRepo.Country(ctx, a.DB, orgID)
+		}
+	}
 
 	// Sites statiques : actifs seulement si l'object store est configuré.
 	var siteService sitesSvc.ISiteService

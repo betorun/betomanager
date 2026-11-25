@@ -3174,5 +3174,61 @@
  {
   "fr": "Ports internes supplémentaires (5 au plus), joignables par les autres conteneurs du projet seulement (nom-du-conteneur:port), jamais publiés ; pas pour un cron",
   "en": "Extra internal ports (at most 5), reachable only by the project's other containers (container-name:port), never published; not for a cron"
+ },
+ {
+  "fr": "Régions où créer un projet, région suggérée selon le pays de l'organisation et adresse de mesure du temps de réponse.",
+  "en": "Regions where a project can be created, region suggested from the organization's country and response-time probe address."
+ },
+ {
+  "fr": "Régions où créer un projet (disponibles maintenant ou non), avec l'adresse de mesure du temps de réponse de chacune ; avec organization_id, la région associée au pays de l'organisation est suggérée et passe en tête. La région choisie se passe à la création du projet",
+  "en": "Regions where a project can be created (available now or not), each with its response-time probe address; with organization_id, the region associated with the organization's country is suggested and listed first. The chosen region is passed when creating the project"
+ },
+ {
+  "fr": "Organisation du futur projet (facultatif) : la région associée à son pays est suggérée et passe en tête",
+  "en": "Organization of the future project (optional): the region associated with its country is suggested and listed first"
+ },
+ {
+  "fr": "Région suggérée pour le pays de l'organisation demandée (organization_id)",
+  "en": "Region suggested for the country of the requested organization (organization_id)"
+ },
+ {
+  "fr": "Adresse https à appeler depuis le navigateur pour mesurer le temps de réponse de la région ; vide si non réglée",
+  "en": "https address to call from the browser to measure the region's response time; empty if not set"
+ },
+ {
+  "fr": "Organisation : nom, pays et politique de sécurité.",
+  "en": "The organization: name, country and security policy."
+ },
+ {
+  "fr": "Organisation : nom, type (personnelle ou d'équipe) et pays",
+  "en": "Get the organization: name, type (personal or team) and country"
+ },
+ {
+  "fr": "Modifier l'organisation : pays du client (il désigne la région suggérée à la création d'un projet)",
+  "en": "Update the organization: the customer's country (it determines the region suggested when creating a project)"
+ },
+ {
+  "fr": "Pays du client (code ISO 3166-1 à deux lettres, ex. GA ; vide : inconnu). Il désigne la région suggérée à la création d'un projet.",
+  "en": "Customer's country (two-letter ISO 3166-1 code, e.g. GA; empty: unknown). It determines the region suggested when creating a project."
+ },
+ {
+  "fr": "Nom affiché",
+  "en": "Display name"
+ },
+ {
+  "fr": "PERSONAL (organisation personnelle) ou TEAM",
+  "en": "PERSONAL (personal organization) or TEAM"
+ },
+ {
+  "fr": "Pays (code ISO 3166-1 à deux lettres, ex. GA) ; vide si inconnu",
+  "en": "Country (two-letter ISO 3166-1 code, e.g. GA); empty if unknown"
+ },
+ {
+  "fr": "Pays de l'organisation (code ISO 3166-1 à deux lettres) ; vide si inconnu",
+  "en": "Organization's country (two-letter ISO 3166-1 code); empty if unknown"
+ },
+ {
+  "fr": "Pays (code ISO 3166-1 à deux lettres, ex. GA), facultatif : porté par l'organisation personnelle, il désigne la région suggérée",
+  "en": "Country (two-letter ISO 3166-1 code, e.g. GA), optional: carried by the personal organization, it determines the suggested region"
  }
 ]
