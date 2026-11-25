@@ -21,9 +21,11 @@ type OrgSummary struct {
 	Kind     string `json:"kind"`
 	Owner    string `json:"owner,omitempty"`
 	Projects int    `json:"projects"`
-	Currency string `json:"currency"`
-	Charging bool   `json:"charging"`
-	Balance  int64  `json:"balance"`
+	// MaxProjects : plafond de projets (changé par PATCH /admin/organizations/:id/limits).
+	MaxProjects int    `json:"max_projects"`
+	Currency    string `json:"currency"`
+	Charging    bool   `json:"charging"`
+	Balance     int64  `json:"balance"`
 	// MonthEstimate : coût estimé du mois en cours (après offre gratuite).
 	MonthEstimate int64     `json:"month_estimate"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -55,7 +57,7 @@ type OrgDetail struct {
 
 // AdminOrgsRequest : recherche.
 type AdminOrgsRequest struct {
-	Query string `query:"q" description:"Recherche dans le nom de l'organisation, l'e-mail du propriétaire ou un nom de projet"`
+	Query string `query:"q" description:"Recherche dans le nom de l'organisation, l'e-mail du propriétaire ou un nom de projet ; un identifiant d'organisation ou de projet exact"`
 	Limit int    `query:"limit" description:"Nombre de résultats (défaut 50, au plus 200)"`
 }
 

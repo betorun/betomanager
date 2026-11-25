@@ -90,7 +90,7 @@ var operatorDecisions = map[string]operatorDecision{
 	"DELETE /admin/support/macros/:macroID":                       opOut("réponses types : rédigées par l'équipe"),
 
 	// ── Commercial ─────────────────────────────────────────────────────
-	"GET /admin/billing/organizations":                   opTool("search_organizations", "Search by name, owner e-mail or project."),
+	"GET /admin/billing/organizations":                   opTool("search_organizations", "Search by name, owner e-mail, project name, or exact organization or project ID."),
 	"GET /admin/billing/organizations/:id":               opTool("get_organization_account", "Balance, month cost, movements and top-ups of one organization."),
 	"GET /admin/billing/revenue":                         opTool("get_revenue"),
 	"GET /admin/billing/plans":                           opTool("list_all_plans"),
