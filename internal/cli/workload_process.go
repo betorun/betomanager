@@ -30,6 +30,8 @@ type processFlags struct {
 	schedule    string
 	timeZone    string
 	maxDuration time.Duration
+	// extraPorts : --extra-port nom=port (répétable).
+	extraPorts []string
 }
 
 func (p *processFlags) addCreateFlags(f *pflag.FlagSet) {
@@ -38,6 +40,7 @@ func (p *processFlags) addCreateFlags(f *pflag.FlagSet) {
 	f.StringVar(&p.schedule, "schedule", "", i18n.T("flag.wl.schedule"))
 	f.StringVar(&p.timeZone, "timezone", "", i18n.T("flag.wl.timezone"))
 	f.DurationVar(&p.maxDuration, "max-duration", 0, i18n.T("flag.wl.max_duration"))
+	f.StringArrayVar(&p.extraPorts, "extra-port", nil, i18n.T("flag.wl.extra_port"))
 }
 
 func (p *processFlags) addUpdateFlags(f *pflag.FlagSet) {
@@ -85,7 +88,41 @@ func (p *processFlags) applyCreate(cmd *cobra.Command, req *api.CreateWorkloadRe
 	}
 	req.Schedule, req.TimeZone = strings.TrimSpace(p.schedule), strings.TrimSpace(p.timeZone)
 	req.MaxDurationSeconds = int(p.maxDuration / time.Second)
+	if len(p.extraPorts) > 0 {
+		if kind == kindCron {
+			return errors.New(i18n.T("wl.extra_port.cron"))
+		}
+		ports, err := parseExtraPorts(p.extraPorts)
+		if err != nil {
+			return err
+		}
+		req.ExtraPorts = ports
+	}
 	return nil
+}
+
+// parseExtraPorts : --extra-port nom=port (ex. smtp=1025). Les règles (nom,
+// doublons, port principal) sont vérifiées par l'API.
+func parseExtraPorts(list []string) ([]api.ExtraPort, error) {
+	out := make([]api.ExtraPort, 0, len(list))
+	for _, v := range list {
+		name, port, ok := strings.Cut(v, "=")
+		n, err := strconv.Atoi(strings.TrimSpace(port))
+		if !ok || strings.TrimSpace(name) == "" || err != nil {
+			return nil, errors.New(i18n.T("wl.extra_port.invalid", v))
+		}
+		out = append(out, api.ExtraPort{Name: strings.TrimSpace(name), Port: n})
+	}
+	return out, nil
+}
+
+// internalAddresses : adresses nom:port des ports supplémentaires (rendues
+// par l'API ; sinon relues de la spec).
+func internalAddresses(w *api.Workload) []string {
+	if len(w.InternalAddresses) > 0 {
+		return w.InternalAddresses
+	}
+	return workloadsdomain.InternalAddresses(w.Name, workloadsdomain.SpecExtraPorts(w.Spec))
 }
 
 // applyUpdate : --command "" rend la commande de l'image.

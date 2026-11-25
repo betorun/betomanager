@@ -117,11 +117,20 @@ spec:
         - name: http
           containerPort: {{ .Values.service.targetPort | default 8080 }}
           protocol: {{ .Values.service.protocol | default "TCP" }}
+        {{- if .Values.extraPorts }}
+        {{- include "standard-app.extraContainerPorts" . | nindent 8 }}
+        {{- end }}
       {{- else if eq (include "standard-app.kind" .) "service" }}
       ports:
         - name: tcp
           containerPort: {{ .Values.service.targetPort }}
           protocol: TCP
+        {{- if .Values.extraPorts }}
+        {{- include "standard-app.extraContainerPorts" . | nindent 8 }}
+        {{- end }}
+      {{- else if and (eq (include "standard-app.kind" .) "worker") .Values.extraPorts }}
+      ports:
+        {{- include "standard-app.extraContainerPorts" . | nindent 8 }}
       {{- end }}
 
       # Env depuis le Secret (buildé par EnsureSecret côté Go).

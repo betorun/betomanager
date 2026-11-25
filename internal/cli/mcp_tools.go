@@ -136,7 +136,9 @@ func (e mcpEnv) toolList() []mcp.Tool {
 				`,"kind":{"type":"string","enum":["web","worker","cron","service"],"description":"web (default, HTTP service with a URL), worker (long-running, no port), cron (scheduled task) or service (internal TCP port reachable only inside the project, e.g. Redis on 6379; needs port)"}`+
 				`,"command":{"type":"array","items":{"type":"string"},"description":"Start command replacing the image's, e.g. [\"node\",\"queue.js\"] (optional)"}`+
 				`,"schedule":{"type":"string","description":"cron only: 5 fields (\"0 2 * * *\") or @hourly, @daily, @weekly, @monthly"}`+
-				`,"time_zone":{"type":"string","description":"cron only: IANA time zone of the schedule, e.g. Africa/Dakar (default UTC)"}`, "path"),
+				`,"time_zone":{"type":"string","description":"cron only: IANA time zone of the schedule, e.g. Africa/Dakar (default UTC)"}`+
+				`,"extra_ports":{"type":"array","maxItems":5,"items":{"type":"object","properties":{"name":{"type":"string","description":"Port name, 1-15 lowercase letters, digits, hyphens, e.g. smtp"},"port":{"type":"integer","minimum":1,"maximum":65535}},"required":["name","port"]},`+
+				`"description":"Extra internal TCP ports reachable only by the project's other containers at <name>:<port> (e.g. Mailpit SMTP 1025), never public; not for cron. On an existing container: replaces the list ([] removes all), omitted keeps it"}`, "path"),
 			Annotations: mcp.Annotations{Title: "Deploy", OpenWorldHint: true}, Handler: e.deploy},
 		{Name: "list_databases", Description: "Managed Postgres databases of a project, with their state.",
 			InputSchema: schema(projectProp), Annotations: readOnly("List databases"), Handler: e.listDatabases},
@@ -240,6 +242,23 @@ func signInHint(err error) error {
 func str(v any) string {
 	s, _ := v.(string)
 	return strings.TrimSpace(s)
+}
+
+// portList : ports supplémentaires [{name, port}] ; nil si absent (liste
+// vide si donnée vide : tout retirer). Les règles sont vérifiées par l'API.
+func portList(v any) ([]api.ExtraPort, error) {
+	if v == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	out := []api.ExtraPort{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, errors.New(`extra_ports must be an array of {"name": string, "port": integer}`)
+	}
+	return out, nil
 }
 
 // strList : tableau de chaînes ; nil si absent.
@@ -516,6 +535,10 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 		return mcp.Result{}, err
 	}
 	schedule, timeZone := strings.TrimSpace(str(in["schedule"])), strings.TrimSpace(str(in["time_zone"]))
+	extraPorts, err := portList(in["extra_ports"])
+	if err != nil {
+		return mcp.Result{}, err
+	}
 	res := DeployResult{Name: name}
 
 	// Sorte et horaire vérifiés avant le build : inutile de construire pour
@@ -608,6 +631,9 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 		if command != nil {
 			req.Command = &command
 		}
+		if extraPorts != nil {
+			req.ExtraPorts = &extraPorts
+		}
 		if len(env) > 0 {
 			// env_vars REMPLACE les variables simples du conteneur : on part des
 			// existantes pour n'en perdre aucune (les secrets ne sont pas touchés).
@@ -626,7 +652,7 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 	} else {
 		created, err := m.cl.CreateWorkload(ctx, api.CreateWorkloadRequest{ProjectID: m.project, Name: name, Image: build.Image,
 			EnvVars: env, Replicas: 1, TargetPort: port, CPULimit: defaultCPULimit, MemoryLimit: defaultMemoryLimit,
-			Kind: kind, Command: command, Schedule: schedule, TimeZone: timeZone})
+			Kind: kind, Command: command, Schedule: schedule, TimeZone: timeZone, ExtraPorts: extraPorts})
 		if err != nil {
 			return mcp.Result{}, err
 		}

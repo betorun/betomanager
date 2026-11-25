@@ -71,6 +71,11 @@ type CreateWorkloadRequest struct {
 	// base ou d'un service ; jamais bloquant (60 s au plus par adresse).
 	WaitFor []string `json:"wait_for,omitempty" description:"Adresses nom:port du projet à attendre avant de démarrer (ex. cache:6379), 8 au plus ; posées au branchement d'une base ou d'un service"`
 
+	// ExtraPorts : ports internes supplémentaires (Mailpit : SMTP 1025 en
+	// plus du web 8025), joignables par les conteneurs du projet seulement,
+	// jamais publiés. Pas de cron (aucune adresse réseau).
+	ExtraPorts []ExtraPort `json:"extra_ports,omitempty" description:"Ports internes supplémentaires (5 au plus), joignables par les autres conteneurs du projet seulement (nom-du-conteneur:port), jamais publiés ; pas pour un cron"`
+
 	// ManagedBy : module qui gère ce conteneur (jamais lu de la requête).
 	ManagedBy string `json:"-"`
 
@@ -144,6 +149,9 @@ type UpdateWorkloadRequest struct {
 	Command  *[]string `json:"command" description:"Commande de démarrage (liste vide : celle de l'image)"`
 	Args     *[]string `json:"args" description:"Arguments (liste vide : ceux de l'image)"`
 	Schedule string    `json:"schedule" description:"Nouvel horaire (cron)"`
+	// ExtraPorts : absent = inchangés ; liste vide = tous retirés ; sinon
+	// remplace la liste.
+	ExtraPorts *[]ExtraPort `json:"extra_ports" description:"Ports internes supplémentaires (absent : inchangés ; liste vide : tous retirés ; sinon remplace la liste)"`
 }
 
 // ── Observabilité ────────────────────────────────────────────────────────
@@ -159,7 +167,11 @@ type LiveStatus struct {
 	// InternalURL : adresse dans le réseau privé du projet (conteneur web) :
 	// les autres conteneurs du projet le joignent par elle, sans passer par
 	// Internet.
-	InternalURL       string      `json:"internal_url,omitempty"`
+	InternalURL string `json:"internal_url,omitempty"`
+	// ExtraPorts / InternalAddresses : ports internes supplémentaires et leur
+	// adresse nom:port (jamais null).
+	ExtraPorts        []ExtraPort `json:"extra_ports"`
+	InternalAddresses []string    `json:"internal_addresses"`
 	Image             string      `json:"image"`
 	Replicas          int32       `json:"replicas"`       // desired
 	ReadyReplicas     int32       `json:"ready_replicas"` // K8s runtime

@@ -65,10 +65,28 @@ type projectFile struct {
 	HealthPath string `yaml:"health_path,omitempty"`
 	// StartupTimeout : délai de démarrage toléré (ex. 5m) pour une application
 	// lente (Keycloak, JVM) ; défaut 150 s, 10 min au plus.
-	StartupTimeout string            `yaml:"startup_timeout,omitempty"`
-	Env            map[string]string `yaml:"env,omitempty"`
+	StartupTimeout string `yaml:"startup_timeout,omitempty"`
+	// ExtraPorts : ports internes supplémentaires, joignables par les
+	// conteneurs du projet seulement (ex. [{name: smtp, port: 1025}]). Le
+	// fichier fait foi : absents = retirés à la mise à jour.
+	ExtraPorts []fileExtraPort   `yaml:"extra_ports,omitempty"`
+	Env        map[string]string `yaml:"env,omitempty"`
 	// Secrets : noms ; chaque valeur est lue dans l'environnement au déploiement.
 	Secrets []string `yaml:"secrets,omitempty"`
+}
+
+type fileExtraPort struct {
+	Name string `yaml:"name"`
+	Port int    `yaml:"port"`
+}
+
+// extraPorts : ports du fichier pour l'API (jamais nil : liste vide = aucun).
+func (pf *projectFile) extraPorts() []api.ExtraPort {
+	out := make([]api.ExtraPort, 0, len(pf.ExtraPorts))
+	for _, p := range pf.ExtraPorts {
+		out = append(out, api.ExtraPort{Name: p.Name, Port: p.Port})
+	}
+	return out
 }
 
 type fileBuild struct {
@@ -228,6 +246,8 @@ func newDeploy() *cobra.Command {
 				// Le fichier fait foi : sans commande, celle de l'image.
 				command, cmdArgs := append([]string{}, pf.Command...), append([]string{}, pf.Args...)
 				req.Command, req.Args = &command, &cmdArgs
+				ports := pf.extraPorts()
+				req.ExtraPorts = &ports
 				printer(cmd).Title(i18n.T("wl.update.sending", pf.Name), image)
 				if err := cl.UpdateWorkload(ctx, id, req); err != nil {
 					return err
@@ -256,6 +276,9 @@ func newDeploy() *cobra.Command {
 			}
 			req.ImageFrom = pf.ImageFrom
 			req.HealthCommand = pf.HealthCommand
+			if len(pf.ExtraPorts) > 0 {
+				req.ExtraPorts = pf.extraPorts()
+			}
 			printer(cmd).Title(i18n.T("wl.deploy.sending", pf.Name, image), "")
 			res, err := cl.CreateWorkload(ctx, req)
 			if err != nil {

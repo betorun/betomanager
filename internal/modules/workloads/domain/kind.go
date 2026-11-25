@@ -153,6 +153,12 @@ func NormalizeProcess(in *CreateWorkloadRequest) error {
 		in.HealthPath, in.ReadinessPath = "", ""
 		in.Replicas, in.Autoscaling, in.PDBEnabled = 1, nil, false
 	}
+	if err := ValidateExtraPorts(kind, in.TargetPort, in.ExtraPorts); err != nil {
+		return err
+	}
+	if len(in.ExtraPorts) == 0 {
+		in.ExtraPorts = nil
+	}
 	if kind != KindWorker && kind != KindService {
 		in.HealthCommand = nil // web : sondes HTTP ; cron : une exécution se juge à sa fin
 	}

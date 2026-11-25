@@ -135,6 +135,8 @@ var sentinelErrors = []sentinelMapping{
 	{workloadsDomain.ErrMaxDuration, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrStartupTimeout, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{workloadsDomain.ErrInvalidHealthPath, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	// Le détail dit quel port pose problème.
+	{workloadsDomain.ErrInvalidExtraPorts, http.StatusBadRequest, betoerrors.CodeInvalidInput, true},
 	{githubDomain.ErrDisabled, http.StatusNotFound, "GITHUB_DISABLED", false},
 	{githubDomain.ErrStateInvalid, http.StatusBadRequest, "GITHUB_STATE_INVALID", false},
 	{githubDomain.ErrCodeRequired, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},

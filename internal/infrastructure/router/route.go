@@ -305,10 +305,11 @@ func addWorkloadRoutes(app *App) {
 	WorkloadGroup.AddRoute("", http.MethodPost, "Déployer un nouveau conteneur",
 		g.Perm(iam.WorkloadsCreate, security.ProjectJSONBody("project_id")), tonic.Handler(r.CreateWorkload, http.StatusAccepted)).
 		ForCopilot(CopilotTool{Name: "create_workload", Write: true, Risk: tools.RiskLow,
-			Only: []string{"project_id", "name", "image", "target_port", "env_vars", "replicas", "health_path", "kind", "command", "args", "schedule", "time_zone", "max_duration_seconds"},
+			Only: []string{"project_id", "name", "image", "target_port", "env_vars", "replicas", "health_path", "kind", "command", "args", "schedule", "time_zone", "max_duration_seconds", "extra_ports"},
 			Hint: "Deploys a new container from an image. For an image built by betorun, use the build's image field and target_port 8080 (betorun builds listen on 8080). " +
 				"kind: web (default, HTTP service with a URL), worker (long-running process without a port: queue consumer, bot) or cron (scheduled task: schedule required, e.g. \"0 2 * * *\" or \"@daily\", time_zone optional, one run at a time). " +
 				"Worker and cron take no target_port or health_path. command/args replace the image's start command (e.g. command [\"node\",\"queue.js\"]): use them to run a worker or a job from the same image as the web app. " +
+				"extra_ports: extra internal TCP ports, reachable only by the project's other containers at <name>:<port> and never public (e.g. Mailpit: target_port 8025 plus [{\"name\":\"smtp\",\"port\":1025}]; gRPC next to HTTP); at most 5, not for cron. " +
 				"The kind cannot change later. Secrets are set by the person in the console."})
 	WorkloadGroup.AddRoute("", http.MethodGet, "Lister les conteneurs d'un projet",
 		g.Perm(iam.WorkloadsList, security.ProjectQuery("project_id")), tonic.Handler(r.ListWorkloads, http.StatusOK)).

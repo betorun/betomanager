@@ -36,6 +36,10 @@ service:
   targetPort: 8080
   protocol: TCP
 
+# Ports internes supplémentaires ([{name: smtp, port: 1025}]) : ajoutés au
+# Service du conteneur (même nom) et au conteneur, TCP ; jamais publiés.
+extraPorts: []
+
 # Ingress + TLS. En prod, activer cert-manager pour auto-provisionner les certs
 # via Let's Encrypt (ClusterIssuer typique : "letsencrypt-prod").
 ingress:

@@ -84,7 +84,7 @@ Colonne `workloads.kind` (migration 000028), **immuable** après la création. R
 - Cron, côté service ([service/cron.go](../../internal/modules/workloads/service/cron.go)) : `LiveStatus.cron` (horaire, suspendu, exécutions en cours, dernière exécution, dernier succès) ; les journaux montrent le pod le plus récent ; `revisionBehind` lit l'annotation `checksum/env` du gabarit du CronJob.
 - Surveillance des crons ([service/recover.go](../../internal/modules/workloads/service/recover.go), `SweepCrons`, chaque minute) : un cron RUNNING dont le **dernier Job** (planifié ou manuel, même image que le conteneur) est `Failed` passe `RUN_FAILED`, phase `POD_<raison>` (`BackoffLimitExceeded`, `DeadlineExceeded`…), avec alerte email aux owners. Le watcher ne peut pas le signaler : un Job échoué ne laisse qu'un pod terminé. Le Recoverer remet RUNNING dès que le dernier Job réussit. Un Job d'une image précédente est ignoré (un redéploiement ne réveille pas un ancien échec).
 - RBAC de l'API : `batch/cronjobs` (deploy/k8s/rbac.yaml).
-- Clients : CLI `--kind --command --schedule --timezone --max-duration`, `betorun workloads run <nom>` ; `betorun.yaml` (`kind`, `command`, `args`, `schedule`, `timezone`, `max_duration`) ; MCP `deploy` (`kind`, `command`, `schedule`, `time_zone`) ; Copilot `create_workload`.
+- Clients : CLI `--kind --command --schedule --timezone --max-duration --extra-port`, `betorun workloads run <nom>` ; `betorun.yaml` (`kind`, `command`, `args`, `schedule`, `timezone`, `max_duration`, `extra_ports`) ; MCP `deploy` (`kind`, `command`, `schedule`, `time_zone`) ; Copilot `create_workload`.
 
 ## Variables et secrets
 
@@ -96,7 +96,17 @@ Les conteneurs d'un même projet se joignent directement ([network-policy.yaml](
 
 Vue du client : `GET /projects/:id/network` ([network.md](network.md)), indépendante du système qui applique les règles.
 
-Adresse interne d'un conteneur web : `http://<nom>` (Service, port 80 ; les conteneurs d'un projet partagent son espace, le nom court suffit, la forme longue `http://<nom>.<espace>.svc` marche aussi), renvoyée par `LiveStatus.internal_url` et affichée par la CLI et la console. Worker et cron n'en ont pas. Un conteneur existant reçoit les règles à son prochain déploiement.
+Adresse interne d'un conteneur web : `http://<nom>` (Service, port 80 ; les conteneurs d'un projet partagent son espace, le nom court suffit, la forme longue `http://<nom>.<espace>.svc` marche aussi), renvoyée par `LiveStatus.internal_url` et affichée par la CLI et la console. Worker et cron n'en ont pas. Ports supplémentaires : voir « Ports internes supplémentaires ». Un conteneur existant reçoit les règles à son prochain déploiement.
+
+## Ports internes supplémentaires (`extra_ports`)
+
+Un conteneur a un port principal (`target_port`) ; il peut déclarer jusqu'à **5 ports internes supplémentaires**, joignables **seulement** par les autres conteneurs du projet et jamais publiés (aucun Ingress, aucun domaine, aucune adresse automatique). Cas réels : Mailpit (web 8025 + SMTP 1025), syk-ia (HTTP 8080 + gRPC 9090), Keycloak (management 9000).
+
+- Contrat : `"extra_ports": [{"name": "smtp", "port": 1025}]` sur `POST /workloads`, `POST /projects/:id/github/workloads`, `PATCH /workloads/:id` (absent = inchangés ; `[]` = tous retirés ; sinon remplace la liste). Règles ([domain/ports.go](../../internal/modules/workloads/domain/ports.go), `ValidateExtraPorts`) : nom de 1 à 15 caractères `^[a-z]([a-z0-9-]*[a-z0-9])?$`, unique, ni `http` ni `tcp` (noms du port principal) ; port 1 à 65535, unique, différent de `target_port` (vérifié aussi quand un PATCH change `target_port`) et, pour un web, différent de 80 (port de son adresse interne `http://<nom>`) ; TCP seulement ; refusé pour un cron (aucune adresse réseau). Erreur : 400 `INVALID_INPUT`, message détaillé (`ErrInvalidExtraPorts`). Aucun effet sur les quotas.
+- Stockage : dans la spec déclarative (`workloads.spec`, jsonb), comme `command`, `args` ou `health_command` : aucune colonne ni migration. Rejoué à chaque déploiement (`deployInput` → `ProcessSpec.ExtraPorts`) : une nouvelle image, un changement de variables ou un retour de build ne perd rien.
+- Chart : `extraPorts` ajoute un port nommé au Service du conteneur (même nom DNS, `port` = `targetPort` = le numéro) et un `containerPort` ; un worker, qui n'a pas de Service, en reçoit un pour ses seuls ports supplémentaires. La politique réseau ne change pas : le réseau privé du projet ouvre déjà tous les ports entre conteneurs du projet, et la règle du contrôleur d'entrée ne vise que `target_port`.
+- Lecture : fiche et liste (`extra_ports`, `internal_addresses`, rendus depuis la spec par `Workload.MarshalJSON`, jamais `null`) et état en direct (`LiveStatus.extra_ports`, `internal_addresses`) ; `internal_addresses` = `nom:port` pour chaque port (ex. `mailpit:1025`), en plus de `internal_url` (inchangée).
+- Clients : CLI `betorun workloads deploy --extra-port smtp=1025` (répétable) ; `betorun.yaml` `extra_ports: [{name: smtp, port: 1025}]` (le fichier fait foi : retirés de la mise à jour s'ils n'y sont plus) ; `betorun workloads status` affiche « Ports internes » ; MCP `deploy` (`extra_ports`, absent = inchangés) ; Copilot `create_workload` et `update_workload`.
 
 ## Retours du test Bomba (19/11)
 

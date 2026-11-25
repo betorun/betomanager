@@ -81,7 +81,13 @@ pdb:
 securityContext:
   runAsUser:  {{ RunAsUser }}
   runAsGroup: {{ RunAsGroup }}
+extraPorts:   # Process.ExtraPorts (spec.extra_ports), absent si vide
+  - { name: smtp, port: 1025 }
 ```
+
+`extraPorts` : ports internes supplémentaires, ajoutés au Service du conteneur
+(même nom DNS ; Service dédié pour un worker) et au conteneur, jamais à un
+Ingress. Voir docs/modules/workloads.md, « Ports internes supplémentaires ».
 
 Le chart standard-app est **PSA restricted-compliant** (voir guide `interne-helm-hardening`).
 

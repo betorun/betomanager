@@ -79,3 +79,25 @@ continu sans port) ou cron (CronJob). Absente : web (conteneurs antérieurs).
 {{- define "standard-app.kind" -}}
 {{- .Values.kind | default "web" -}}
 {{- end -}}
+
+{{/*
+Ports internes supplémentaires (extraPorts : [{name, port}]) : TCP, joignables
+par les conteneurs du projet seulement (réseau privé du projet) ; jamais dans
+un Ingress. Rien si la liste est vide.
+*/}}
+{{- define "standard-app.extraServicePorts" -}}
+{{- range .Values.extraPorts }}
+- name: {{ .name }}
+  port: {{ .port }}
+  targetPort: {{ .name }}
+  protocol: TCP
+{{- end }}
+{{- end -}}
+
+{{- define "standard-app.extraContainerPorts" -}}
+{{- range .Values.extraPorts }}
+- name: {{ .name }}
+  containerPort: {{ .port }}
+  protocol: TCP
+{{- end }}
+{{- end -}}
