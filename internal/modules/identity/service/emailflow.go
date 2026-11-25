@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -12,7 +11,6 @@ import (
 	"github.com/thekrauss/kubemanager/internal/audit"
 	"github.com/thekrauss/kubemanager/internal/auth"
 	"github.com/thekrauss/kubemanager/internal/core/country"
-	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	keycloakadmin "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 	identitytypes "github.com/thekrauss/kubemanager/internal/modules/identity/types"
 )
@@ -83,7 +81,7 @@ func (s *service) RegisterAccount(ctx context.Context, req identitytypes.Registe
 		return nil, err
 	}
 	kcUser, err := s.keycloak.CreateUser(ctx, keycloakadmin.CreateUserInput{
-		Email: email, Password: req.Password, FullName: fullName, PhoneNumber: strings.TrimSpace(req.PhoneNumber), Enabled: true,
+		Email: email, Password: req.Password, FullName: fullName, PhoneNumber: strings.TrimSpace(req.PhoneNumber), Country: cc, Enabled: true,
 	})
 	if errors.Is(err, keycloakadmin.ErrPasswordRejected) {
 		return nil, ErrWeakPassword
@@ -92,38 +90,10 @@ func (s *service) RegisterAccount(ctx context.Context, req identitytypes.Registe
 		return nil, err
 	}
 	_ = s.limit(ctx, "mail:acct:"+emailKey(email), mailPerAccount, mailWindow)
-	s.rememberCountry(ctx, kcUser.ID, email, fullName, cc)
 	if err := s.sendVerification(ctx, kcUser.ID, email, fullName); err != nil {
 		return nil, err
 	}
 	return accepted, nil
-}
-
-// rememberCountry : pays donné à l'inscription, gardé sur le profil local
-// (créé ici plutôt qu'à la première connexion) ; l'organisation personnelle
-// le reprend à sa création. Un échec n'empêche pas l'inscription : la
-// console demandera le pays.
-func (s *service) rememberCountry(ctx context.Context, subject, email, fullName, cc string) {
-	if cc == "" || s.users == nil {
-		return
-	}
-	if u, err := s.users.FindByKeycloakUserID(ctx, subject); err == nil && u != nil {
-		if strings.TrimSpace(u.Country) == "" { // char(2) : "  " vide
-			u.Country = cc
-			_ = s.users.UpdateUser(ctx, u)
-		}
-		return
-	}
-	now := time.Now().UTC()
-	id, err := uuid.Parse(subject)
-	if err != nil {
-		id = uuid.New()
-	}
-	u := &domain.User{ID: id, KeycloakUserID: subject, Email: email, FullName: firstNonEmpty(fullName, deriveDisplayName(email)),
-		Country: cc, Role: domain.RoleTypes.User, Status: "active", IsActive: true, CreatedAt: now, UpdatedAt: now}
-	if err := s.users.CreateUser(ctx, u); err != nil && s.logger != nil {
-		s.logger.Warnw("signup country not kept", zap.Error(err))
-	}
 }
 
 // VerifyEmail : lien de confirmation d'adresse.

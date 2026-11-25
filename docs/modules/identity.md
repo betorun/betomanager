@@ -22,7 +22,7 @@ Tous sous `/kmanager/v1/identity`. Déclarés dans `addIdentityRoutes` et `addAu
 
 | Méthode | Chemin | Description |
 |---------|--------|-------------|
-| `POST` | `/register` | Crée un compte + email de vérification (réponse identique si l'adresse a déjà un compte). `country` facultatif (ISO 3166-1 alpha-2, sinon `400 INVALID_INPUT`) : gardé sur le profil local, créé dès l'inscription dans ce cas, puis repris par l'organisation personnelle à sa création (voir [organizations.md](organizations.md)) |
+| `POST` | `/register` | Crée un compte + email de vérification (réponse identique si l'adresse a déjà un compte). `country` facultatif (ISO 3166-1 alpha-2, sinon `400 INVALID_INPUT`) : gardé dans Keycloak (attribut `country` du compte, déclaré dans le profil utilisateur du realm par `scripts/keycloak/bootstrap_platform.sh`, réservé à l'administration) ; aucun profil local n'est créé à l'inscription. À la première connexion (adresse confirmée), le profil local le reprend (`users.country`), puis l'organisation personnelle à sa création (voir [organizations.md](organizations.md)). Au mieux : un realm sans l'attribut déclaré l'ignore, une lecture en échec donne un pays vide (la console le demandera), jamais un refus d'inscription ou de connexion |
 | `POST` | `/login` | Email/mot de passe → session, ou `{mfa_required, challenge}` |
 | `POST` | `/login/mfa` | Code du second facteur (application ou code de secours) → session |
 | `POST` | `/refresh` | Renouvelle la session via refresh_token |

@@ -364,12 +364,21 @@ ensure_password_policy() {
 # Profil utilisateur : betorun gère les profils (nom complet, pays…) ;
 # l'annuaire n'exige ni prénom ni nom. Sinon (Keycloak 24+), un compte au nom
 # d'un seul mot est « pas entièrement configuré » et ne peut pas se connecter.
+# « country » (pays donné à l'inscription) est déclaré, lisible et modifiable
+# par l'administration seulement : Keycloak 24+ ignore sans erreur un attribut
+# non déclaré, et le backend le relit à la première connexion pour le profil
+# local (docs/modules/clusters.md, région suggérée). Pas de validateur : le
+# backend n'envoie qu'un code ISO déjà contrôlé, un refus bloquerait
+# l'inscription.
 ensure_user_profile() {
   local realm="$1" profile
-  log "Relaxing user profile (first/last name optional)"
+  log "Relaxing user profile (first/last name optional, country attribute)"
   profile="$(api GET "/admin/realms/${realm}/users/profile")"
   api PUT "/admin/realms/${realm}/users/profile" "$(echo "$profile" | jq '
-    .attributes |= map(if (.name == "firstName" or .name == "lastName") then del(.required) else . end)')" >/dev/null
+    .attributes |= map(if (.name == "firstName" or .name == "lastName") then del(.required) else . end)
+    | if any(.attributes[]; .name == "country") then .
+      else .attributes += [{name: "country", displayName: "Country", multivalued: false,
+        permissions: {view: ["admin"], edit: ["admin"]}}] end')" >/dev/null
   api PUT "/admin/realms/${realm}/authentication/required-actions/VERIFY_PROFILE" \
     "$(api GET "/admin/realms/${realm}/authentication/required-actions/VERIFY_PROFILE" | jq '.enabled = false')" >/dev/null
 }

@@ -77,6 +77,8 @@ type Registry struct {
 
 	mu    sync.Mutex
 	cache map[string]cachedReader
+	// probes : origines des adresses de mesure (ProbeOrigins).
+	probes probeCache
 }
 
 type cachedReader struct {
@@ -126,7 +128,11 @@ func (r *Registry) EnsureDefault(ctx context.Context) error {
 	if strings.TrimSpace(r.DefaultID) == "" {
 		return nil
 	}
-	return r.Store.EnsureDefault(ctx, r.DefaultID)
+	if err := r.Store.EnsureDefault(ctx, r.DefaultID); err != nil {
+		return err
+	}
+	r.invalidateProbeOrigins()
+	return nil
 }
 
 // List : registre et derniers relevés.
@@ -205,6 +211,7 @@ func (r *Registry) Declare(ctx context.Context, in DeclareInput, by string) (*do
 	if err := r.Store.Declare(ctx, c); err != nil {
 		return nil, err
 	}
+	r.invalidateProbeOrigins()
 	return r.Get(ctx, id)
 }
 
@@ -253,6 +260,7 @@ func (r *Registry) Update(ctx context.Context, clusterID string, in UpdateInput)
 		if err := r.Store.Update(ctx, clusterID, fields); err != nil {
 			return nil, err
 		}
+		r.invalidateProbeOrigins()
 	}
 	return r.Get(ctx, clusterID)
 }
@@ -335,6 +343,7 @@ func (r *Registry) Delete(ctx context.Context, clusterID string) error {
 	r.mu.Lock()
 	delete(r.cache, clusterID)
 	r.mu.Unlock()
+	r.invalidateProbeOrigins()
 	return nil
 }
 

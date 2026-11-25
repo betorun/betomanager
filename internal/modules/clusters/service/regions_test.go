@@ -3,7 +3,10 @@ package service
 import (
 	"context"
 	"sort"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -185,15 +188,13 @@ func TestRegions_WithoutGeo(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoRegionStore)
 }
 
-// Origines des adresses de mesure : https seulement, sans chemin ni doublon,
-// triées ; aucune sans magasin.
+// Origines des adresses de mesure : régions proposées seulement (comme
+// GET /regions), https, sans chemin ni doublon, triées ; aucune sans magasin.
 func TestProbeOrigins(t *testing.T) {
 	ctx := context.Background()
 	r, geo := geoRegistry(t)
 	geo.probes["af-central"] = "https://Probe.LBV.example.com/healthz"
 	geo.probes["eu-west-gra"] = "https://probe.gra.example.com:8443/ping?x=1"
-	geo.probes["af-west"] = "https://probe.lbv.example.com/autre"
-	geo.probes["bad"] = "http://insecure.example.com/healthz"
 	o, err := r.ProbeOrigins(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"https://probe.gra.example.com:8443", "https://probe.lbv.example.com"}, o)
@@ -203,4 +204,157 @@ func TestProbeOrigins(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, o)
 	assert.NotNil(t, o, "liste vide, jamais null")
+}
+
+// Région connue mais pas proposée (cluster fermé, supprimé, région de
+// personne) : son adresse n'est pas publiée ; doublon fusionné.
+func TestProbeOrigins_OnlyOfferedRegions(t *testing.T) {
+	ctx := context.Background()
+	r, geo := geoRegistry(t)
+	geo.probes["af-central"] = "https://probe.lbv.example.com/healthz"
+	geo.probes["eu-west-gra"] = "https://probe.lbv.example.com/autre"
+	geo.probes["af-west"] = "https://probe.dkr.example.com/healthz"
+	geo.probes["ap-south"] = "https://probe.ap.example.com/healthz"
+	o, err := r.ProbeOrigins(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://probe.lbv.example.com"}, o)
+
+	// Cluster supprimé : sa région disparaît au prochain calcul.
+	require.NoError(t, r.Delete(ctx, "lbv-1"))
+	o, err = r.ProbeOrigins(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://probe.lbv.example.com"}, o, "toujours celle d'eu-west-gra")
+	delete(geo.probes, "eu-west-gra")
+	r.invalidateProbeOrigins()
+	o, err = r.ProbeOrigins(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, o)
+}
+
+// Défense en profondeur : une ligne invalide en base (écrite avant le
+// contrôle strict) est ignorée, jamais publiée.
+func TestProbeOrigins_SkipsInvalidRows(t *testing.T) {
+	ctx := context.Background()
+	r, geo := geoRegistry(t)
+	geo.probes["af-central"] = "https://a.com;sandbox/x"
+	geo.probes["eu-west-gra"] = "http://insecure.example.com/healthz"
+	o, err := r.ProbeOrigins(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, o)
+
+	geo.probes["eu-west-gra"] = "https://*"
+	r.invalidateProbeOrigins()
+	o, err = r.ProbeOrigins(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, o)
+}
+
+// countingGeo : compte les lectures des adresses de mesure.
+type countingGeo struct {
+	*memGeo
+	reads int
+}
+
+func (c *countingGeo) RegionProbes(ctx context.Context) (map[string]string, error) {
+	c.reads++
+	return c.memGeo.RegionProbes(ctx)
+}
+
+// Cache de ProbeOrigins : une lecture par probeOriginsTTL, relue après
+// SetRegionProbe ou une écriture du registre.
+func TestProbeOrigins_Cache(t *testing.T) {
+	ctx := context.Background()
+	r, mem := geoRegistry(t)
+	geo := &countingGeo{memGeo: mem}
+	r.Geo = geo
+	now := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+	r.Now = func() time.Time { return now }
+	mem.probes["af-central"] = "https://probe.lbv.example.com/healthz"
+
+	for range 3 {
+		o, err := r.ProbeOrigins(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"https://probe.lbv.example.com"}, o)
+	}
+	assert.Equal(t, 1, geo.reads, "servies par le cache")
+
+	// La copie rendue ne touche pas au cache.
+	o, _ := r.ProbeOrigins(ctx)
+	o[0] = "https://altered.example.com"
+	o, _ = r.ProbeOrigins(ctx)
+	assert.Equal(t, []string{"https://probe.lbv.example.com"}, o)
+
+	// Changement direct en base : invisible avant l'expiration.
+	mem.probes["af-central"] = "https://probe2.lbv.example.com/healthz"
+	now = now.Add(probeOriginsTTL - time.Second)
+	o, _ = r.ProbeOrigins(ctx)
+	assert.Equal(t, []string{"https://probe.lbv.example.com"}, o)
+	now = now.Add(time.Second)
+	o, _ = r.ProbeOrigins(ctx)
+	assert.Equal(t, []string{"https://probe2.lbv.example.com"}, o, "expiré : relu")
+	assert.Equal(t, 2, geo.reads)
+
+	// SetRegionProbe invalide le cache.
+	_, err := r.SetRegionProbe(ctx, "eu-west-gra", "https://probe.gra.example.com/healthz", "user:staff")
+	require.NoError(t, err)
+	o, _ = r.ProbeOrigins(ctx)
+	assert.Equal(t, []string{"https://probe.gra.example.com", "https://probe2.lbv.example.com"}, o)
+	assert.Equal(t, 3, geo.reads)
+
+	// Cluster fermé (Update) : sa région n'est plus proposée.
+	lbv := r.Store.(*memRegistry).cs["lbv-1"]
+	lbv.Provider, lbv.Distribution, lbv.Name = domain.ProviderProxmox, domain.DistributionK8s, "lbv-1"
+	closed := domain.StateClosed
+	_, err = r.Update(ctx, "lbv-1", UpdateInput{State: &closed})
+	require.NoError(t, err)
+	o, _ = r.ProbeOrigins(ctx)
+	assert.Equal(t, []string{"https://probe.gra.example.com"}, o)
+
+	// Nouveau cluster (Declare) : sa région est proposée.
+	mem.probes["af-west-2"] = "https://probe.abj.example.com/healthz"
+	_, err = r.Declare(ctx, DeclareInput{ClusterID: "abj-1", Provider: domain.ProviderProxmox, Distribution: domain.DistributionK8s, Region: "af-west-2"}, "user:staff")
+	require.NoError(t, err)
+	o, _ = r.ProbeOrigins(ctx)
+	assert.Equal(t, []string{"https://probe.abj.example.com", "https://probe.gra.example.com"}, o)
+}
+
+// Appels simultanés sur cache vide : un seul calcul.
+func TestProbeOrigins_Singleflight(t *testing.T) {
+	ctx := context.Background()
+	r, mem := geoRegistry(t)
+	release := make(chan struct{})
+	geo := &blockingGeo{memGeo: mem, release: release}
+	r.Geo = geo
+	mem.probes["af-central"] = "https://probe.lbv.example.com/healthz"
+
+	var wg sync.WaitGroup
+	results := make([][]string, 8)
+	for i := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], _ = r.ProbeOrigins(ctx)
+		}()
+	}
+	// Laisse les appels rejoindre le calcul en cours avant de le débloquer.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	for _, o := range results {
+		assert.Equal(t, []string{"https://probe.lbv.example.com"}, o)
+	}
+	assert.Equal(t, int32(1), geo.reads.Load())
+}
+
+// blockingGeo : RegionProbes attend release.
+type blockingGeo struct {
+	*memGeo
+	release chan struct{}
+	reads   atomic.Int32
+}
+
+func (b *blockingGeo) RegionProbes(ctx context.Context) (map[string]string, error) {
+	b.reads.Add(1)
+	<-b.release
+	return b.memGeo.RegionProbes(ctx)
 }

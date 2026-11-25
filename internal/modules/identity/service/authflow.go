@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/thekrauss/kubemanager/internal/audit"
 	"github.com/thekrauss/kubemanager/internal/auth"
+	"github.com/thekrauss/kubemanager/internal/core/country"
 	"github.com/thekrauss/kubemanager/internal/modules/auth/domain"
 	keycloakadmin "github.com/thekrauss/kubemanager/internal/modules/identity/keycloak"
 	identitytypes "github.com/thekrauss/kubemanager/internal/modules/identity/types"
@@ -252,13 +254,35 @@ func (s *service) RevokeOtherSessions(ctx context.Context, userID, current uuid.
 	return s.sessions.RevokeAll(ctx, userID, current, "signout_others")
 }
 
-// localUser : profil local du compte (créé à la première connexion).
+// localUser : profil local du compte (créé à la première connexion, donc
+// après confirmation de l'adresse : jamais à l'inscription).
 func (s *service) localUser(ctx context.Context, subject, email, name string) (*domain.User, error) {
 	user, err := s.users.FindByKeycloakUserID(ctx, subject)
 	if err == nil && user != nil {
 		return user, nil
 	}
-	return s.syncLocalUser(ctx, subject, email, name, "")
+	return s.syncLocalUser(ctx, subject, email, name, "", s.signupCountry(ctx, subject))
+}
+
+// signupCountry : pays donné à l'inscription, gardé dans l'annuaire
+// (attribut « country ») jusqu'à la création du profil local ; l'organisation
+// personnelle le reprend à sa création. Au mieux : un échec ou un code
+// invalide donne "" (la console demandera le pays).
+func (s *service) signupCountry(ctx context.Context, subject string) string {
+	if s.keycloak == nil {
+		return ""
+	}
+	kc, err := s.keycloak.GetUserByID(ctx, subject)
+	if err != nil || kc == nil {
+		if err != nil && s.logger != nil {
+			s.logger.Warnw("signup country not read", zap.Error(err))
+		}
+		return ""
+	}
+	if cc := country.Normalize(kc.Country); country.Valid(cc) {
+		return cc
+	}
+	return ""
 }
 
 func randomID() (string, error) {
