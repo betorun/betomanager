@@ -627,6 +627,9 @@ services:
       PORT: "3000"
       HOSTNAME: 0.0.0.0
       NODE_OPTIONS: --max-old-space-size=256
+      # Politique de contenu (kweb proxy.ts) : origines joignables en plus de
+      # l'API, lues au démarrage. Le temps réel est sur son propre hôte.
+      CSP_CONNECT_SRC: wss://${REALTIME_HOST:?}
     # Le BFF appelle l'API par son nom public : via Caddy, sur le réseau interne.
     extra_hosts:
       - ${API_HOST:?}:172.30.0.10
