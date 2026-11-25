@@ -48,7 +48,7 @@ func listTar(t *testing.T, path string) []string {
 func TestTarGz_DefaultExcludesSecrets(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
-		"Dockerfile": "FROM x", "src/app.js": "1", ".env": "SECRET=1", ".env.prod": "S=2", "src/.env": "S=3", "tls.key": "k", "certs/a.pem": "p",
+		"Dockerfile": "FROM x", "src/app.js": "1", ".env": "SECRET=1", ".env.prod": "S=2", "src/.env": "S=3", "tls.key": "k", "certs/a.pem": "p", "secrets.env": "S=4", "conf/prod.env": "S=5",
 		"node_modules/a/b.js": "x", "web/node_modules/c.js": "x", ".git/config": "x",
 	})
 	res, err := TarGz(dir)
@@ -64,13 +64,13 @@ func TestTarGz_DockerIgnore(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		"Dockerfile": "FROM x", ".dockerignore": "*.log\ndocs\n!docs/keep.md\n", "a.log": "x", "b.txt": "x",
-		"docs/x.md": "x", "docs/keep.md": "x", ".env": "SECRET=1", ".git/HEAD": "x",
+		"docs/x.md": "x", "docs/keep.md": "x", ".env": "SECRET=1", "secrets.env": "S=1", ".git/HEAD": "x",
 	})
 	res, err := TarGz(dir)
 	require.NoError(t, err)
 	defer os.Remove(res.Path)
-	assert.Equal(t, []string{".dockerignore", ".env", "Dockerfile", "b.txt", "docs/keep.md"}, listTar(t, res.Path))
-	assert.Equal(t, []string{".env"}, res.Sensitive)
+	assert.Equal(t, []string{".dockerignore", ".env", "Dockerfile", "b.txt", "docs/keep.md", "secrets.env"}, listTar(t, res.Path))
+	assert.Equal(t, []string{".env", "secrets.env"}, res.Sensitive)
 }
 
 // Un lien symbolique reste un lien : son contenu n'est jamais lu.

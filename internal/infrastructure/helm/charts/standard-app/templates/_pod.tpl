@@ -19,6 +19,11 @@ spec:
   {{- end }}
   serviceAccountName: {{ include "standard-app.serviceAccountName" . }}
   automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
+  # Pas de variables <SERVICE>_PORT/_HOST des Services voisins : un conteneur
+  # nommé comme son logiciel (centrifugo, redis…) recevrait par exemple
+  # CENTRIFUGO_PORT=tcp://10.43.x.x:80 et le lirait comme son propre réglage.
+  # Les voisins se joignent par leur nom DNS.
+  enableServiceLinks: false
 
   {{- with .Values.image.pullSecrets }}
   imagePullSecrets:

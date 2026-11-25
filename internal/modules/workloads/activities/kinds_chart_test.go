@@ -253,3 +253,17 @@ func TestChart_ExtraPorts(t *testing.T) {
 		t.Fatalf("worker sans port : Service rendu\n%s", y)
 	}
 }
+
+// Un conteneur nommé comme son logiciel ne doit pas recevoir les variables
+// <SERVICE>_PORT de Kubernetes (Centrifugo lit CENTRIFUGO_PORT=tcp://… et plante).
+func TestChart_NoServiceLinks(t *testing.T) {
+	for _, kind := range []string{"web", "worker", "service", "cron"} {
+		in := baseInput(kind)
+		if kind == "cron" {
+			in.Process.Schedule = "*/5 * * * *"
+		}
+		if y := renderKind(t, in); !strings.Contains(y, "enableServiceLinks: false") {
+			t.Errorf("%s : enableServiceLinks: false absent du pod", kind)
+		}
+	}
+}
