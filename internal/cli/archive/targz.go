@@ -22,13 +22,15 @@ const dockerIgnoreFile = ".dockerignore"
 
 // defaultIgnore : sans .dockerignore, ni dépendances ni secrets locaux ne
 // partent avec le code.
-var defaultIgnore = []string{"node_modules", "**/node_modules", ".env", ".env.*", "**/.env", "**/.env.*", "*.pem", "*.key", "**/*.pem", "**/*.key"}
+var defaultIgnore = []string{"node_modules", "**/node_modules", ".env", ".env.*", "**/.env", "**/.env.*", "*.env", "**/*.env", "*.pem", "*.key", "**/*.pem", "**/*.key"}
 
 // sensitiveFile : fichier qui ressemble à un secret, envoyé parce que le
 // .dockerignore du projet ne l'exclut pas.
 func sensitiveFile(rel string) bool {
 	base := path.Base(rel)
-	return base == ".env" || strings.HasPrefix(base, ".env.") || strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key")
+	// « secrets.env », « prod.env » : fichiers dotenv nommés, aussi sensibles que .env.
+	return base == ".env" || strings.HasPrefix(base, ".env.") || strings.HasSuffix(base, ".env") ||
+		strings.HasSuffix(base, ".pem") || strings.HasSuffix(base, ".key")
 }
 
 // SourceResult : archive du code, à supprimer par l'appelant.
