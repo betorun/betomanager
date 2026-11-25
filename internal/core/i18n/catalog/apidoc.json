@@ -1,5 +1,13 @@
 [
  {
+  "fr": "Origines (https://hôte) des adresses de mesure du temps de réponse des régions",
+  "en": "Origins (https://host) of the regions' response-time probe addresses"
+ },
+ {
+  "fr": "Origines des adresses de mesure du temps de réponse des régions (lues par la console pour sa politique de contenu) ; sans connexion, rien d'autre que les origines",
+  "en": "Origins of the regions' response-time probe addresses (read by the console for its content policy); no sign-in, nothing but the origins"
+ },
+ {
   "fr": "Adresse professionnelle : son domaine désigne l'organisation",
   "en": "Work email address: its domain identifies the organization"
  },
