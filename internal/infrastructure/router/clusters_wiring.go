@@ -25,6 +25,7 @@ func (a *App) clusterRegistry() *clustersSvc.Registry {
 	}
 	r := &clustersSvc.Registry{
 		Store:     &clustersRepo.RegistryStore{DB: a.DB},
+		Geo:       &clustersRepo.RegionStore{DB: a.DB},
 		DefaultID: strings.TrimSpace(a.Config.Kubernetes.ClusterID),
 		Observer:  clustersSvc.MetricsObserver{Logger: a.Logger.With("component", "cluster-health")},
 		Logger:    a.Logger.With("component", "cluster-registry"),

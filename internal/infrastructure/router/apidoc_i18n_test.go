@@ -20,6 +20,8 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/alerts"
 	"github.com/thekrauss/kubemanager/internal/modules/billing"
 	"github.com/thekrauss/kubemanager/internal/modules/clusters"
+	clustersRepo "github.com/thekrauss/kubemanager/internal/modules/clusters/repository"
+	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 	"github.com/thekrauss/kubemanager/internal/modules/databases"
 	"github.com/thekrauss/kubemanager/internal/modules/diskresize"
 	"github.com/thekrauss/kubemanager/internal/modules/diskusage"
@@ -77,9 +79,9 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				Realtime: struct {
 					realtimeCtrl.IRealtimeController
 				}{},
-				Clusters: struct {
-					clusters.IClusterController
-				}{},
+				// Registre présent : GET /regions est documenté (les routes du
+				// back-office, internes, ne le sont pas).
+				Clusters:       &clusters.Controller{Registry: &clustersSvc.Registry{Geo: &clustersRepo.RegionStore{}}},
 				Site:           struct{ sites.ISiteController }{},
 				IAM:            &iamapi.Controller{},
 				Builds:         &builds.Controller{},

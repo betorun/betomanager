@@ -194,5 +194,21 @@
  {
   "fr": "Nom d'interface trop long pour étiqueter les adresses",
   "en": "interface name too long to label addresses"
+ },
+ {
+  "fr": "Pays invalide : code ISO 3166-1 à deux lettres (ex. GA)",
+  "en": "invalid country: two-letter ISO 3166-1 code (e.g. GA)"
+ },
+ {
+  "fr": "Adresse de mesure invalide : une URL https est exigée",
+  "en": "invalid probe address: an https URL is required"
+ },
+ {
+  "fr": "Réglages des régions indisponibles",
+  "en": "region settings unavailable"
+ },
+ {
+  "fr": "Région inconnue : aucun cluster enregistré n'est dans cette région",
+  "en": "unknown region: no registered cluster is in this region"
  }
 ]

@@ -1,10 +1,15 @@
 package clusters
 
 import (
+	"context"
 	"strings"
+
+	"github.com/google/uuid"
 
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
 
+	"github.com/thekrauss/kubemanager/internal/audit"
+	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 
 	"github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
@@ -27,6 +32,15 @@ type Controller struct {
 	Registry *service.Registry
 	// Agents : installation des agents (nil : routes non montées).
 	Agents *service.Agents
+	// Access, OrgCountry : région suggérée selon le pays d'une organisation
+	// que l'appelant peut voir (nil : aucune suggestion).
+	Access     OrgAccess
+	OrgCountry func(ctx context.Context, orgID uuid.UUID) (string, error)
+}
+
+// OrgAccess : droit de voir une organisation (iam.Engine).
+type OrgAccess interface {
+	Check(ctx context.Context, p iam.Principal, perm iam.Permission, r iam.ResourceName) (iam.Decision, error)
 }
 
 func NewController(s service.IClusterService) *Controller {
@@ -165,7 +179,92 @@ func (ctrl *Controller) AgentState(c *gin.Context, in *ClusterPath) (*domain.Age
 	return ctrl.Agents.State(c.Request.Context(), in.ClusterID)
 }
 
+// RegionsQuery : organisation dont le pays désigne la région suggérée.
+type RegionsQuery struct {
+	OrganizationID string `query:"organization_id" description:"Organisation du futur projet (facultatif) : la région associée à son pays est suggérée et passe en tête"`
+}
+
 // Regions : régions proposées à la création d'un projet (clients).
-func (ctrl *Controller) Regions(c *gin.Context) ([]domain.Region, error) {
-	return ctrl.Registry.Regions(c.Request.Context())
+func (ctrl *Controller) Regions(c *gin.Context, in *RegionsQuery) ([]domain.Region, error) {
+	cc, err := ctrl.suggestionCountry(c, in.OrganizationID)
+	if err != nil {
+		return nil, err
+	}
+	return ctrl.Registry.Regions(c.Request.Context(), cc)
+}
+
+// suggestionCountry : pays de l'organisation, si l'appelant peut la voir ;
+// sinon "" (aucune suggestion, rien n'est révélé de l'organisation).
+func (ctrl *Controller) suggestionCountry(c *gin.Context, raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || ctrl.Access == nil || ctrl.OrgCountry == nil {
+		return "", nil
+	}
+	orgID, err := uuid.Parse(raw)
+	if err != nil {
+		return "", betoerrors.New(betoerrors.CodeInvalidInput, "invalid organization id")
+	}
+	p, ok := security.PrincipalFromContext(c)
+	if !ok {
+		return "", nil
+	}
+	ctx := c.Request.Context()
+	dec, err := ctrl.Access.Check(ctx, p, iam.OrganizationsGet, iam.OrganizationName(orgID))
+	if err != nil || !dec.Allowed {
+		return "", nil
+	}
+	return ctrl.OrgCountry(ctx, orgID)
+}
+
+// ── Pays → région et adresses de mesure (back-office) ─────────────────────
+
+// CountryPath : pays visé.
+type CountryPath struct {
+	Country string `path:"country" binding:"required" description:"Pays (code ISO 3166-1 à deux lettres, ex. GA)"`
+}
+
+// SetCountryRegionInput : région suggérée aux clients du pays.
+type SetCountryRegionInput struct {
+	Country string `path:"country" binding:"required" description:"Pays (code ISO 3166-1 à deux lettres, ex. GA)"`
+	Region  string `json:"region" binding:"required" description:"Code d'une région portée par au moins un cluster enregistré"`
+}
+
+// RegionCodePath : région visée.
+type RegionCodePath struct {
+	Code string `path:"code" binding:"required" description:"Code de la région"`
+}
+
+// SetRegionProbeInput : adresse de mesure de la région.
+type SetRegionProbeInput struct {
+	Code     string `path:"code" binding:"required" description:"Code de la région"`
+	ProbeURL string `json:"probe_url" description:"Adresse https qui répond vite et sans données (ex. route /healthz publique d'un point d'entrée de la région) ; vide : retirée"`
+}
+
+func (ctrl *Controller) CountryRegions(c *gin.Context) ([]domain.CountryRegion, error) {
+	return ctrl.Registry.CountryRegions(c.Request.Context())
+}
+
+func (ctrl *Controller) SetCountryRegion(c *gin.Context, in *SetCountryRegionInput) (*domain.CountryRegion, error) {
+	e, err := ctrl.Registry.SetCountryRegion(c.Request.Context(), in.Country, in.Region, principal(c))
+	if err == nil {
+		audit.Annotate(c.Request.Context(), "country", e.Country)
+		audit.Annotate(c.Request.Context(), "region", e.Region)
+	}
+	return e, err
+}
+
+func (ctrl *Controller) DeleteCountryRegion(c *gin.Context, in *CountryPath) error {
+	return ctrl.Registry.DeleteCountryRegion(c.Request.Context(), in.Country)
+}
+
+func (ctrl *Controller) RegionSettings(c *gin.Context) ([]domain.RegionSetting, error) {
+	return ctrl.Registry.RegionSettings(c.Request.Context())
+}
+
+func (ctrl *Controller) SetRegionProbe(c *gin.Context, in *SetRegionProbeInput) (*domain.RegionSetting, error) {
+	e, err := ctrl.Registry.SetRegionProbe(c.Request.Context(), in.Code, in.ProbeURL, principal(c))
+	if err == nil {
+		audit.Annotate(c.Request.Context(), "probe_url", e.ProbeURL)
+	}
+	return e, err
 }

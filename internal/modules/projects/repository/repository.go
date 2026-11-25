@@ -198,6 +198,7 @@ func (r *pgProjectRepo) UpdateProject(ctx context.Context, id uuid.UUID, name, d
 type OrgQuota struct {
 	ID          uuid.UUID
 	DisplayName string
+	Country     string
 	Projects    int
 	MaxProjects int
 }
@@ -208,7 +209,7 @@ func (r *pgProjectRepo) OrganizationQuotas(ctx context.Context, orgIDs []uuid.UU
 	}
 	var out []OrgQuota
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT o.id, o.display_name, o.max_projects,
+		SELECT o.id, o.display_name, o.country, o.max_projects,
 		       (SELECT count(*) FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL) AS projects
 		FROM organizations o WHERE o.id IN ? AND o.deleted_at IS NULL
 		ORDER BY o.display_name, o.id`, orgIDs).Scan(&out).Error

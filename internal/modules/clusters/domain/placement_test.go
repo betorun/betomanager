@@ -68,3 +68,16 @@ func TestRegions(t *testing.T) {
 	assert.True(t, ValidSetting("traefik") && ValidSetting("lb.example.com") && ValidSetting(""))
 	assert.False(t, ValidSetting("Traefik Class"))
 }
+
+func TestNormalizeProbeURL(t *testing.T) {
+	for in, want := range map[string]string{"": "", "  ": "", " https://lbv.example.test/healthz ": "https://lbv.example.test/healthz",
+		"https://lbv.example.test:8443/ping?x=1": "https://lbv.example.test:8443/ping?x=1"} {
+		got, err := NormalizeProbeURL(in)
+		assert.NoError(t, err, in)
+		assert.Equal(t, want, got, in)
+	}
+	for _, in := range []string{"http://lbv.example.test", "lbv.example.test", "https://", "https://u:p@lbv.example.test", "https://lbv.example.test/#x", "ftp://x"} {
+		_, err := NormalizeProbeURL(in)
+		assert.ErrorIs(t, err, ErrInvalidProbeURL, in)
+	}
+}

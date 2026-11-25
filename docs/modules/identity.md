@@ -22,7 +22,7 @@ Tous sous `/kmanager/v1/identity`. Déclarés dans `addIdentityRoutes` et `addAu
 
 | Méthode | Chemin | Description |
 |---------|--------|-------------|
-| `POST` | `/register` | Crée un compte + email de vérification (réponse identique si l'adresse a déjà un compte) |
+| `POST` | `/register` | Crée un compte + email de vérification (réponse identique si l'adresse a déjà un compte). `country` facultatif (ISO 3166-1 alpha-2, sinon `400 INVALID_INPUT`) : gardé sur le profil local, créé dès l'inscription dans ce cas, puis repris par l'organisation personnelle à sa création (voir [organizations.md](organizations.md)) |
 | `POST` | `/login` | Email/mot de passe → session, ou `{mfa_required, challenge}` |
 | `POST` | `/login/mfa` | Code du second facteur (application ou code de secours) → session |
 | `POST` | `/refresh` | Renouvelle la session via refresh_token |

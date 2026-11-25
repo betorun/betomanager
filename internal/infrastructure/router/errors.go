@@ -5,8 +5,10 @@ import (
 	"net/http"
 
 	"github.com/thekrauss/kubemanager/internal/core/apierr"
+	"github.com/thekrauss/kubemanager/internal/core/country"
 	egressDomain "github.com/thekrauss/kubemanager/internal/modules/egress/domain"
 	egressRepo "github.com/thekrauss/kubemanager/internal/modules/egress/repository"
+	orgDomain "github.com/thekrauss/kubemanager/internal/modules/organizations/domain"
 
 	clustersDomain "github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
 	clustersRepo "github.com/thekrauss/kubemanager/internal/modules/clusters/repository"
@@ -298,6 +300,11 @@ var sentinelErrors = []sentinelMapping{
 	{clustersDomain.ErrAccessDenied, http.StatusUnprocessableEntity, "CLUSTER_ACCESS_DENIED", false},
 	{clustersDomain.ErrNoClusterInRegion, http.StatusConflict, "NO_CAPACITY_IN_REGION", false},
 	{clustersDomain.ErrInvalidRegionCode, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersDomain.ErrUnknownRegion, http.StatusBadRequest, "UNKNOWN_REGION", false},
+	{clustersDomain.ErrInvalidProbeURL, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{clustersSvc.ErrNoRegionStore, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", false},
+	{country.ErrInvalid, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{orgDomain.ErrNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{clustersDomain.ErrClusterHasProjects, http.StatusConflict, "CLUSTER_HAS_PROJECTS", false},
 	{clustersDomain.ErrInvalidSetting, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{clustersDomain.ErrInvalidEgressGateway, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},

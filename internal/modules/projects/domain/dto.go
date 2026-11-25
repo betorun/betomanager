@@ -94,6 +94,7 @@ type ListProjectsResponse struct {
 type OrganizationQuota struct {
 	OrganizationID string `json:"organization_id"`
 	DisplayName    string `json:"display_name"`
+	Country        string `json:"country" description:"Pays de l'organisation (code ISO 3166-1 à deux lettres) ; vide si inconnu"`
 	Projects       int    `json:"projects"`
 	MaxProjects    int    `json:"max_projects"`
 }

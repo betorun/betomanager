@@ -29,6 +29,7 @@ type OrgRow struct {
 	Name     string
 	Kind     string
 	Owner    string
+	Country  string
 	Projects int
 	// MaxProjects : plafond de projets de l'organisation.
 	MaxProjects int
@@ -46,7 +47,7 @@ func NewAdmin(db *gorm.DB) Admin { return &adminStore{db: db} }
 // orgSelect : propriétaire = celui d'une organisation personnelle, sinon le
 // premier owner de la policy de l'organisation.
 const orgSelect = `
-	SELECT o.id, o.display_name AS name, o.kind,
+	SELECT o.id, o.display_name AS name, o.kind, o.country,
 		COALESCE(pu.email, (
 			SELECT u.email FROM iam_bindings b JOIN users u ON b.principal = @user || u.id::text
 			WHERE b.resource_name = 'organizations/' || o.id::text AND b.role = @owner ORDER BY u.email LIMIT 1), '') AS owner,

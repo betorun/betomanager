@@ -7,6 +7,8 @@ type RegisterRequest struct {
 	Password    string `json:"password" validate:"required,min=8"`
 	FullName    string `json:"full_name" validate:"required"`
 	PhoneNumber string `json:"phone_number,omitempty"`
+	// Country : pays du client, posé sur son organisation personnelle.
+	Country string `json:"country,omitempty" description:"Pays (code ISO 3166-1 à deux lettres, ex. GA), facultatif : porté par l'organisation personnelle, il désigne la région suggérée"`
 }
 
 // RegisterResponse : identique que l'adresse ait déjà un compte ou non

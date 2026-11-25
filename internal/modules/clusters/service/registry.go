@@ -69,8 +69,11 @@ type Registry struct {
 	DefaultID string
 	Default   Reader
 	Observer  HealthObserver
-	Logger    *zap.SugaredLogger
-	Now       func() time.Time
+	// Geo : table pays → région et adresses de mesure (nil : ni suggestion
+	// ni adresse de mesure).
+	Geo    RegionStore
+	Logger *zap.SugaredLogger
+	Now    func() time.Time
 
 	mu    sync.Mutex
 	cache map[string]cachedReader
@@ -538,13 +541,4 @@ func (r *Registry) Place(ctx context.Context, region string) (string, error) {
 		return "", err
 	}
 	return domain.Place(cs, region)
-}
-
-// Regions : régions proposées à la création d'un projet.
-func (r *Registry) Regions(ctx context.Context) ([]domain.Region, error) {
-	cs, err := r.candidates(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return domain.Regions(cs), nil
 }
