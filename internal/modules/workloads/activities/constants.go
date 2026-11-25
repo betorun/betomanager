@@ -78,6 +78,9 @@ const (
 const (
 	startupProbePeriodSeconds    = 5
 	startupProbeFailureThreshold = 30
+	// startupProbeTimeoutSeconds : sans valeur, Kubernetes prend 1 s ; un
+	// premier rendu lent (Next.js, JVM) échouait alors à tort.
+	startupProbeTimeoutSeconds = 3
 
 	readinessProbeInitialDelaySeconds = 5
 	readinessProbePeriodSeconds       = 10

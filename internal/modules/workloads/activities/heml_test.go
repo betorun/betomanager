@@ -90,6 +90,13 @@ func TestBuildHelmValues_StartupTimeout(t *testing.T) {
 	assert.Equal(t, 21, probe(buildHelmValues(InstallWorkloadInput{ReleaseName: "auth", StartupTimeoutSeconds: 101})))
 }
 
+// Sonde de démarrage : délai explicite (Kubernetes prendrait 1 s).
+func TestBuildHelmValues_StartupProbeTimeout(t *testing.T) {
+	v := buildHelmValues(InstallWorkloadInput{ReleaseName: "api"})
+	assert.Equal(t, startupProbeTimeoutSeconds, v["probes"].(map[string]any)["startup"].(map[string]any)["timeoutSeconds"])
+	assert.Equal(t, startupProbeTimeoutSeconds, serviceProbes(nil, 0)["startup"].(map[string]any)["timeoutSeconds"])
+}
+
 // Worker avec commande de santé : sondes « exec » (pas de port), sans readiness.
 func TestBuildHelmValues_WorkerHealthCommand(t *testing.T) {
 	cmd := []string{"/app/bomba", "healthcheck"}
