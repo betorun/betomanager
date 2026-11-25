@@ -109,7 +109,7 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "svc"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "svc", "Dockerfile"), []byte("FROM x"), 0o644))
 	file := filepath.Join(dir, "betorun.yaml")
-	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\nhealth_path: /healthz\nreplicas: 2\ncpu: 300m\ntls: true\nextra_ports:\n  - {name: grpc, port: 9090}\nenv:\n  A: b\n"), 0o644))
+	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\nhealth_path: /healthz\nstartup_timeout: 5m\nreplicas: 2\ncpu: 300m\ntls: true\nextra_ports:\n  - {name: grpc, port: 9090}\nenv:\n  A: b\n"), 0o644))
 
 	_, err := run(t, "deploy", "-f", file, "--no-wait")
 	require.NoError(t, err)
@@ -134,6 +134,8 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	assert.EqualValues(t, 3000, updated["target_port"])
 	assert.Equal(t, map[string]any{"A": "b"}, updated["env_vars"])
 	assert.Equal(t, []any{map[string]any{"name": "grpc", "port": float64(9090)}}, updated["extra_ports"], "ports du fichier appliqués à la mise à jour")
+	assert.EqualValues(t, 300, updated["startup_timeout_seconds"], "délai de démarrage du fichier appliqué à la mise à jour")
+	assert.Equal(t, "/healthz", updated["health_path"], "chemin de santé du fichier appliqué à la mise à jour")
 
 	// Le fichier fait foi : sans extra_ports, la mise à jour les retire.
 	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\n"), 0o644))
@@ -141,6 +143,8 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	_, err = run(t, "deploy", "-f", file, "--no-wait")
 	require.NoError(t, err)
 	assert.Equal(t, []any{}, updated["extra_ports"])
+	assert.EqualValues(t, 0, updated["startup_timeout_seconds"], "sans startup_timeout : délai par défaut")
+	assert.Nil(t, updated["health_path"], "sans health_path : chemin inchangé")
 }
 
 func TestProjectFile_ExtraPorts(t *testing.T) {
