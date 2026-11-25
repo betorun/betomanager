@@ -38,7 +38,7 @@ func e2e(t *testing.T) (*gorm.DB, uuid.UUID, uuid.UUID) {
 	org, project := uuid.New(), uuid.New()
 	exec := func(q string, args ...any) { require.NoError(t, db.Exec(q, args...).Error, q) }
 	exec(`INSERT INTO organizations (id, display_name) VALUES (?, 'e2e')`, org)
-	exec(`INSERT INTO projects (id, name, organization_id) VALUES (?, ?, ?)`, project, "e2e-"+project.String()[:8], org)
+	exec(`INSERT INTO projects (id, name, organization_id, namespace) VALUES (?, ?, ?, ?)`, project, "e2e-"+project.String()[:8], org, "p-"+project.String()[:8])
 	exec(`INSERT INTO workloads (project_id, name, namespace, chart_name, version, image, status, replicas, cpu_limit, memory_limit)
 		VALUES (?, 'api', 'ns', 'standard-app', '1', 'img', 'RUNNING', 2, '500m', '512Mi')`, project)
 	exec(`INSERT INTO workloads (project_id, name, namespace, chart_name, version, image, status, replicas, cpu_limit, memory_limit, persistence_enabled, storage_size)

@@ -90,7 +90,7 @@ func TestE2E_Plans(t *testing.T) {
 	// Un nouveau projet de l'organisation reçoit les limites du plan au
 	// rapprochement suivant.
 	second := uuid.New()
-	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, organization_id) VALUES (?, ?, ?)`, second, "e2e-second-"+second.String()[:8], org).Error)
+	require.NoError(t, db.Exec(`INSERT INTO projects (id, name, organization_id, namespace) VALUES (?, ?, ?, ?)`, second, "e2e-second-"+second.String()[:8], org, "p-"+second.String()[:8]).Error)
 	limiter.set = map[uuid.UUID]string{}
 	_, missed, err := s.ReconcileLimits(ctx, &org, nil)
 	require.NoError(t, err)

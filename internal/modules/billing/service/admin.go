@@ -41,7 +41,7 @@ func (s *Service) Orgs(ctx context.Context, query string, limit int) (*domain.Or
 }
 
 func (s *Service) orgSummary(ctx context.Context, r repository.OrgRow) (domain.OrgSummary, error) {
-	sum := domain.OrgSummary{ID: r.ID.String(), Name: r.Name, Kind: r.Kind, Owner: r.Owner, Projects: r.Projects,
+	sum := domain.OrgSummary{ID: r.ID.String(), Name: r.Name, Kind: r.Kind, Owner: r.Owner, Projects: r.Projects, MaxProjects: r.MaxProjects,
 		Currency: r.Currency, Charging: r.Charging, Balance: domain.Milli(r.Balance).Units(), CreatedAt: r.CreatedAt}
 	e, err := s.Estimate(ctx, r.ID, "")
 	if err != nil {

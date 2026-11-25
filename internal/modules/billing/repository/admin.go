@@ -25,15 +25,17 @@ type Admin interface {
 
 // OrgRow : organisation et son compte.
 type OrgRow struct {
-	ID        uuid.UUID
-	Name      string
-	Kind      string
-	Owner     string
-	Projects  int
-	Currency  string
-	Charging  bool
-	Balance   int64 // millièmes : argent + crédits
-	CreatedAt time.Time
+	ID       uuid.UUID
+	Name     string
+	Kind     string
+	Owner    string
+	Projects int
+	// MaxProjects : plafond de projets de l'organisation.
+	MaxProjects int
+	Currency    string
+	Charging    bool
+	Balance     int64 // millièmes : argent + crédits
+	CreatedAt   time.Time
 }
 
 type adminStore struct{ db *gorm.DB }
@@ -49,6 +51,7 @@ const orgSelect = `
 			SELECT u.email FROM iam_bindings b JOIN users u ON b.principal = @user || u.id::text
 			WHERE b.resource_name = 'organizations/' || o.id::text AND b.role = @owner ORDER BY u.email LIMIT 1), '') AS owner,
 		(SELECT COUNT(*) FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL) AS projects,
+		o.max_projects,
 		COALESCE(a.currency, @currency) AS currency, COALESCE(a.charging, FALSE) AS charging,
 		(SELECT COALESCE(SUM(e.amount), 0) FROM billing_ledger_entries e
 			WHERE e.account IN ('customer:' || o.id::text || ':cash', 'customer:' || o.id::text || ':credit')) AS balance,
@@ -68,7 +71,8 @@ func (s *adminStore) SearchOrgs(ctx context.Context, query string, limit int) ([
 	if query = strings.TrimSpace(query); query != "" {
 		args["q"] = "%" + strings.ToLower(query) + "%"
 		q += ` AND (LOWER(o.display_name) LIKE @q OR LOWER(COALESCE(pu.email, '')) LIKE @q
-			OR EXISTS (SELECT 1 FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL AND LOWER(p.name) LIKE @q)
+			OR EXISTS (SELECT 1 FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL
+				AND (LOWER(p.name) LIKE @q OR p.id::text = @exact))
 			OR o.id::text = @exact)`
 		args["exact"] = strings.ToLower(query)
 	}
