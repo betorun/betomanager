@@ -32,10 +32,17 @@ const (
 	// conteneur resté STARTING compterait dans le quota sans jamais démarrer.
 	finalStatusMaximumAttempts = 9
 
-	// installActivityTimeout : Helm s'arrête de lui-même bien avant : Temporal
-	// ne relance jamais une tentative pendant que la précédente tourne.
-	installActivityTimeout = activities.HelmInstallTimeout + 2*time.Minute
+	// installActivityMargin : Helm s'arrête de lui-même bien avant la fin de
+	// l'activité : Temporal ne relance jamais une tentative pendant que la
+	// précédente tourne.
+	installActivityMargin = 2 * time.Minute
 	// installHeartbeatTimeout : Temporal transmet les heartbeats à 80 % de ce
 	// délai, et l'annulation n'arrive à l'activité qu'avec eux.
 	installHeartbeatTimeout = 10 * time.Second
 )
+
+// installActivityTimeout : délai de l'activité InstallChart, au-delà de
+// l'attente de Helm (qui suit le délai de démarrage du conteneur).
+func installActivityTimeout(startupTimeoutSeconds int) time.Duration {
+	return activities.HelmWaitTimeout(startupTimeoutSeconds) + installActivityMargin
+}

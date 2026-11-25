@@ -179,8 +179,9 @@ func helmLog(format string, v ...interface{}) {
 
 func (a *WorkloadActivities) InstallChart(ctx context.Context, input InstallWorkloadInput) error {
 	start := time.Now()
+	wait := HelmWaitTimeout(input.StartupTimeoutSeconds)
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, input,
-		idempotency.ActivityOptions{ProcessingTTL: InstallChartProcessingTTL, RetakeOnRetry: true},
+		idempotency.ActivityOptions{ProcessingTTL: InstallProcessingTTL(input.StartupTimeoutSeconds), RetakeOnRetry: true},
 		func() (struct{}, error) {
 			kube, err := a.forProject(ctx, input.ProjectID, input.Namespace)
 			if err != nil {
@@ -202,14 +203,14 @@ func (a *WorkloadActivities) InstallChart(ctx context.Context, input InstallWork
 			// pour morte par Temporal (délai de heartbeat ou d'activité).
 			retried := activity.GetInfo(ctx).Attempt > 1
 			if err := heartbeat.While(ctx, installHeartbeatEvery, func() error {
-				return upgradeOrInstall(ctx, actionConfig, input.Namespace, input.ReleaseName, chart, vals, retried)
+				return upgradeOrInstall(ctx, actionConfig, input.Namespace, input.ReleaseName, chart, vals, retried, wait)
 			}); err != nil {
 				return struct{}{}, fmt.Errorf("helm release failed: %w", err)
 			}
 			return struct{}{}, nil
 		},
 	)
-	return classifyInstallError(ctx, err, time.Since(start))
+	return classifyInstallError(ctx, err, time.Since(start), wait)
 }
 
 // classifyInstallError : application qui ne démarre pas dans le délai de Helm :
@@ -217,8 +218,8 @@ func (a *WorkloadActivities) InstallChart(ctx context.Context, input InstallWork
 // Toute autre erreur reste relancée par Temporal : infrastructure, ou délai plus
 // court qu'une attente complète (appel à l'API du cluster). L'erreur reste la plus
 // externe : Temporal ne lit que le type de celle-ci.
-func classifyInstallError(ctx context.Context, err error, elapsed time.Duration) error {
-	if err == nil || ctx.Err() != nil || elapsed < HelmInstallTimeout || !errors.Is(err, context.DeadlineExceeded) {
+func classifyInstallError(ctx context.Context, err error, elapsed, wait time.Duration) error {
+	if err == nil || ctx.Err() != nil || elapsed < wait || !errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
 	return temporal.NewNonRetryableApplicationError(err.Error(), errTypeWorkloadNotReady, err)
@@ -228,13 +229,13 @@ func classifyInstallError(ctx context.Context, err error, elapsed time.Duration)
 // Upgrade.Install n'a aucun effet (la logique est dans la commande helm) :
 // sans ce choix explicite, le premier déploiement d'un conteneur échouait
 // toujours (« has no deployed releases »).
-func upgradeOrInstall(ctx context.Context, cfg *action.Configuration, namespace, name string, ch *chart.Chart, vals map[string]any, retried bool) error {
+func upgradeOrInstall(ctx context.Context, cfg *action.Configuration, namespace, name string, ch *chart.Chart, vals map[string]any, retried bool, wait time.Duration) error {
 	history := action.NewHistory(cfg)
 	history.Max = 1
 	releases, err := history.Run(name)
 	switch {
 	case errors.Is(err, driver.ErrReleaseNotFound) || (err == nil && len(releases) == 0):
-		return install(ctx, cfg, namespace, name, ch, vals, false)
+		return install(ctx, cfg, namespace, name, ch, vals, false, wait)
 	case err != nil:
 		return err
 	}
@@ -244,11 +245,11 @@ func upgradeOrInstall(ctx context.Context, cfg *action.Configuration, namespace,
 	upgrade := action.NewUpgrade(cfg)
 	upgrade.Namespace = namespace
 	upgrade.Wait = true
-	upgrade.Timeout = HelmInstallTimeout
+	upgrade.Timeout = wait
 	_, err = upgrade.RunWithContext(ctx, name, ch, vals)
 	if err != nil && strings.Contains(err.Error(), helmErrNoDeployedReleases) {
 		// Seulement des tentatives en échec : on réinstalle par-dessus.
-		return install(ctx, cfg, namespace, name, ch, vals, true)
+		return install(ctx, cfg, namespace, name, ch, vals, true, wait)
 	}
 	return err
 }
@@ -274,12 +275,12 @@ func releasePendingLock(cfg *action.Configuration, name string, retried bool) er
 	return cfg.Releases.Update(last)
 }
 
-func install(ctx context.Context, cfg *action.Configuration, namespace, name string, ch *chart.Chart, vals map[string]any, replace bool) error {
+func install(ctx context.Context, cfg *action.Configuration, namespace, name string, ch *chart.Chart, vals map[string]any, replace bool, wait time.Duration) error {
 	in := action.NewInstall(cfg)
 	in.Namespace = namespace
 	in.ReleaseName = name
 	in.Wait = true
-	in.Timeout = HelmInstallTimeout
+	in.Timeout = wait
 	in.Replace = replace
 	_, err := in.RunWithContext(ctx, ch, vals)
 	return err

@@ -38,13 +38,13 @@ func TestUpgradeOrInstall(t *testing.T) {
 	cfg := fakeHelm()
 	vals := buildHelmValues(InstallWorkloadInput{ReleaseName: "web", ImageRepo: "nginx", ImageTag: "1", TargetPort: 8080, Replicas: 1})
 
-	require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false))
+	require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false, HelmInstallTimeout))
 	rel, err := cfg.Releases.Last("web")
 	require.NoError(t, err)
 	assert.Equal(t, 1, rel.Version)
 	assert.Equal(t, release.StatusDeployed, rel.Info.Status)
 
-	require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false))
+	require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false, HelmInstallTimeout))
 	rel, _ = cfg.Releases.Last("web")
 	assert.Equal(t, 2, rel.Version, "deuxième déploiement : mise à jour")
 
@@ -52,7 +52,7 @@ func TestUpgradeOrInstall(t *testing.T) {
 	failedCfg := fakeHelm()
 	require.NoError(t, failedCfg.Releases.Create(&release.Release{Name: "api", Namespace: "km-test", Version: 1,
 		Info: &release.Info{Status: release.StatusFailed}, Chart: ch}))
-	require.NoError(t, upgradeOrInstall(context.Background(), failedCfg, "km-test", "api", ch, vals, false))
+	require.NoError(t, upgradeOrInstall(context.Background(), failedCfg, "km-test", "api", ch, vals, false, HelmInstallTimeout))
 	rel, _ = failedCfg.Releases.Last("api")
 	assert.Equal(t, release.StatusDeployed, rel.Info.Status)
 }
@@ -72,7 +72,7 @@ func TestUpgradeOrInstall_CancelInterruptsWait(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 		start := time.Now()
-		err := upgradeOrInstall(ctx, cfg, "km-test", "web", ch, vals, false)
+		err := upgradeOrInstall(ctx, cfg, "km-test", "web", ch, vals, false, HelmInstallTimeout)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Less(t, time.Since(start), 3*time.Second)
 	}
@@ -84,7 +84,7 @@ func TestUpgradeOrInstall_CancelInterruptsWait(t *testing.T) {
 	})
 	t.Run("mise à jour", func(t *testing.T) {
 		cfg := fakeHelm()
-		require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false))
+		require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false, HelmInstallTimeout))
 		slow(cfg)
 		run(t, cfg)
 	})
@@ -103,15 +103,15 @@ func TestUpgradeOrInstall_WaitTimeoutIsRecognized(t *testing.T) {
 	t.Run("installation", func(t *testing.T) {
 		cfg := fakeHelm()
 		timeout(cfg)
-		err := upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false)
-		assertNotRetried(t, classifyInstallError(context.Background(), err, HelmInstallTimeout))
+		err := upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false, HelmInstallTimeout)
+		assertNotRetried(t, classifyInstallError(context.Background(), err, HelmInstallTimeout, HelmInstallTimeout))
 	})
 	t.Run("mise à jour", func(t *testing.T) {
 		cfg := fakeHelm()
-		require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false))
+		require.NoError(t, upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false, HelmInstallTimeout))
 		timeout(cfg)
-		err := upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false)
-		assertNotRetried(t, classifyInstallError(context.Background(), err, HelmInstallTimeout))
+		err := upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, false, HelmInstallTimeout)
+		assertNotRetried(t, classifyInstallError(context.Background(), err, HelmInstallTimeout, HelmInstallTimeout))
 	})
 }
 
@@ -141,11 +141,11 @@ func TestClassifyInstallError_KeepsRetries(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := classifyInstallError(c.ctx, c.err, c.elapsed)
+			got := classifyInstallError(c.ctx, c.err, c.elapsed, HelmInstallTimeout)
 			assert.Equal(t, c.err, got, "erreur transmise telle quelle : Temporal la relance")
 		})
 	}
-	assert.NoError(t, classifyInstallError(context.Background(), nil, HelmInstallTimeout))
+	assert.NoError(t, classifyInstallError(context.Background(), nil, HelmInstallTimeout, HelmInstallTimeout))
 }
 
 // Release restée pending-* : débloquée à la nouvelle tentative ou une fois trop
@@ -174,7 +174,7 @@ func TestUpgradeOrInstall_PendingRelease(t *testing.T) {
 			cfg := fakeHelm()
 			require.NoError(t, cfg.Releases.Create(&release.Release{Name: "web", Namespace: "km-test", Version: 1,
 				Info: &release.Info{Status: c.status, LastDeployed: c.at}, Chart: ch, Config: map[string]any{}}))
-			err := upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, c.retried)
+			err := upgradeOrInstall(context.Background(), cfg, "km-test", "web", ch, vals, c.retried, HelmInstallTimeout)
 			if !c.wantOK {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "another operation")

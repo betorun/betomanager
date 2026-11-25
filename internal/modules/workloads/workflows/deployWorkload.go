@@ -93,7 +93,7 @@ func DeployWorkloadWorkflow(ctx workflow.Context, input DeployWorkloadInput) err
 	}
 	ctx = workflow.WithActivityOptions(ctx, options)
 	install := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		StartToCloseTimeout: installActivityTimeout,
+		StartToCloseTimeout: installActivityTimeout(input.StartupTimeoutSeconds),
 		HeartbeatTimeout:    installHeartbeatTimeout,
 		WaitForCancellation: true,
 		RetryPolicy:         retry,

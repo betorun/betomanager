@@ -14,6 +14,10 @@ const (
 	uninstallChartProcessingTTL = 5 * time.Minute
 	ensureSecretProcessingTTL   = 2 * time.Minute
 
+	// helmWaitMargin : au-delà de la sonde de démarrage, le temps de planifier
+	// le pod et de tirer l'image.
+	helmWaitMargin = 2 * time.Minute
+
 	// installHeartbeatEvery : bien en dessous du délai de heartbeat du workflow.
 	installHeartbeatEvery = 3 * time.Second
 
@@ -98,3 +102,20 @@ const (
 
 // defaultImageTag : tag retenu quand l'image n'en précise pas (usage Docker).
 const defaultImageTag = "latest"
+
+// HelmWaitTimeout : attente des pods par Helm, jamais plus courte que le délai
+// de démarrage toléré (sonde de démarrage) plus une marge. Sinon le déploiement
+// est déclaré en échec alors que le conteneur a encore le droit de démarrer.
+func HelmWaitTimeout(startupTimeoutSeconds int) time.Duration {
+	d := time.Duration(startupTimeoutSeconds)*time.Second + helmWaitMargin
+	if d < HelmInstallTimeout {
+		return HelmInstallTimeout
+	}
+	return d
+}
+
+// InstallProcessingTTL : marque « en cours » d'InstallChart, plus longue que
+// l'activité elle-même (HelmWaitTimeout + marge du workflow).
+func InstallProcessingTTL(startupTimeoutSeconds int) time.Duration {
+	return HelmWaitTimeout(startupTimeoutSeconds) + (InstallChartProcessingTTL - HelmInstallTimeout)
+}
