@@ -73,6 +73,15 @@ type ProcessSpec struct {
 	// HealthCommand : sonde par commande d'un worker ou d'un service (vide :
 	// aucune sonde pour un worker, sonde TCP sur le port pour un service).
 	HealthCommand []string `json:",omitempty"`
+	// ExtraPorts : ports internes supplémentaires (Service du conteneur et
+	// containerPort), jamais publiés.
+	ExtraPorts []NamedPort `json:",omitempty"`
+}
+
+// NamedPort : port interne supplémentaire (TCP).
+type NamedPort struct {
+	Name string
+	Port int
 }
 
 // IsWeb : conteneur web (y compris sorte absente des entrées antérieures).
@@ -487,6 +496,15 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 	}
 	if len(proc.WaitFor) > 0 {
 		vals["waitFor"] = map[string]any{"targets": strings.Join(proc.WaitFor, " "), "image": waitForImage}
+	}
+	if len(proc.ExtraPorts) > 0 && proc.Kind != "cron" {
+		// Ports internes supplémentaires : ajoutés au Service du conteneur
+		// (même nom DNS) et au conteneur ; jamais à un Ingress.
+		ports := make([]map[string]any, 0, len(proc.ExtraPorts))
+		for _, p := range proc.ExtraPorts {
+			ports = append(ports, map[string]any{"name": p.Name, "port": p.Port})
+		}
+		vals["extraPorts"] = ports
 	}
 	if !web {
 		vals["customDomains"] = []any{}

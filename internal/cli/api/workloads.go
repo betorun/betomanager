@@ -18,6 +18,7 @@ type (
 	CreateWorkloadRequest = workloadsdomain.CreateWorkloadRequest
 	WorkloadResponse      = workloadsdomain.WorkloadResponse
 	UpdateWorkloadRequest = workloadsdomain.UpdateWorkloadRequest
+	ExtraPort             = workloadsdomain.ExtraPort
 )
 
 func (c *Client) ListWorkloads(ctx context.Context, project string) ([]Workload, error) {
@@ -179,6 +180,10 @@ type WorkloadJSON struct {
 	CreatedAt      time.Time    `json:"created_at"`
 	UpdatedAt      time.Time    `json:"updated_at"`
 	PullFailure    *PullFailure `json:"pull_failure,omitempty"`
+	// ExtraPorts / InternalAddresses : ports internes supplémentaires et leur
+	// adresse nom:port (jamais null).
+	ExtraPorts        []ExtraPort `json:"extra_ports"`
+	InternalAddresses []string    `json:"internal_addresses"`
 }
 
 // ToJSON : vue --json d'un conteneur.
@@ -187,6 +192,14 @@ func ToJSON(w Workload) WorkloadJSON {
 		ID: w.ID.String(), ProjectID: w.ProjectID.String(), Name: w.Name, Kind: w.Kind, Image: w.Image,
 		Status: w.Status, Phase: w.CurrentPhase, Replicas: w.Replicas, URL: w.ExternalURL, Port: w.TargetPort,
 		CPULimit: w.CPULimit, MemoryLimit: w.MemoryLimit, CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt,
+		ExtraPorts: w.ExtraPorts, InternalAddresses: w.InternalAddresses,
+	}
+	if len(w.Spec) > 0 || out.ExtraPorts == nil {
+		out.ExtraPorts = workloadsdomain.SpecExtraPorts(w.Spec)
+		out.InternalAddresses = workloadsdomain.InternalAddresses(w.Name, out.ExtraPorts)
+	}
+	if out.InternalAddresses == nil {
+		out.InternalAddresses = []string{}
 	}
 	if w.ServiceAccountID != nil {
 		out.ServiceAccount = w.ServiceAccountID.String()

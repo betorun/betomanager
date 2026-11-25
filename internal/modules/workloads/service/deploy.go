@@ -551,6 +551,9 @@ func (s *WorkloadService) update(ctx context.Context, id string, req domain.Upda
 	if err != nil {
 		return err
 	}
+	if err := applyExtraPorts(&spec, req); err != nil {
+		return err
+	}
 	if req.StorageSize != "" {
 		current.StorageSize, spec.StorageSize = req.StorageSize, req.StorageSize
 	}
@@ -889,7 +892,7 @@ func (s *WorkloadService) deployInput(w *domain.Workload, spec domain.CreateWork
 		Process: activities.ProcessSpec{
 			Kind: kindOf(w), Command: spec.Command, Args: spec.Args, HealthCommand: spec.HealthCommand,
 			Schedule: spec.Schedule, TimeZone: spec.TimeZone, MaxDurationSeconds: spec.MaxDurationSeconds,
-			WaitFor: spec.WaitFor,
+			WaitFor: spec.WaitFor, ExtraPorts: processPorts(spec.ExtraPorts),
 			// Cron arrêté : reste suspendu à chaque déploiement (mise à jour,
 			// variables, retour arrière).
 			Suspend: kindOf(w) == domain.KindCron && w.Status == utils.WorkloadStopped,
@@ -1032,6 +1035,39 @@ func applyProcess(w *domain.Workload, spec *domain.CreateWorkloadRequest, req *d
 		spec.Schedule = strings.TrimSpace(req.Schedule)
 	}
 	return nil
+}
+
+// applyExtraPorts : ports internes supplémentaires demandés (absents :
+// inchangés ; liste vide : tous retirés), vérifiés contre le port principal
+// final (un changement de target_port ne doit pas créer de doublon).
+func applyExtraPorts(spec *domain.CreateWorkloadRequest, req domain.UpdateWorkloadRequest) error {
+	if req.ExtraPorts == nil && req.TargetPort == 0 {
+		return nil
+	}
+	ports := spec.ExtraPorts
+	if req.ExtraPorts != nil {
+		ports = *req.ExtraPorts
+	}
+	if err := domain.ValidateExtraPorts(spec.Kind, spec.TargetPort, ports); err != nil {
+		return err
+	}
+	if len(ports) == 0 {
+		ports = nil
+	}
+	spec.ExtraPorts = ports
+	return nil
+}
+
+// processPorts : ports supplémentaires transmis au workflow de déploiement.
+func processPorts(ports []domain.ExtraPort) []activities.NamedPort {
+	if len(ports) == 0 {
+		return nil
+	}
+	out := make([]activities.NamedPort, len(ports))
+	for i, p := range ports {
+		out[i] = activities.NamedPort{Name: p.Name, Port: p.Port}
+	}
+	return out
 }
 
 func publicRoute(name string, projectID uuid.UUID, tls bool, prof profile) route {

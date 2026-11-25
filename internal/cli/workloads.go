@@ -129,7 +129,9 @@ func newWorkloadsDeploy() *cobra.Command {
 			"# " + i18n.T("ex.wl.worker") + "\n" +
 			"betorun workloads deploy -n queue --source . --kind worker --command \"node queue.js\"\n" +
 			"# " + i18n.T("ex.wl.cron") + "\n" +
-			"betorun workloads deploy -n nightly --source . --kind cron --schedule \"0 2 * * *\" --timezone Africa/Dakar --command \"python backup.py\"",
+			"betorun workloads deploy -n nightly --source . --kind cron --schedule \"0 2 * * *\" --timezone Africa/Dakar --command \"python backup.py\"\n" +
+			"# " + i18n.T("ex.wl.extra_port") + "\n" +
+			"betorun workloads deploy -n mailpit -i axllent/mailpit:v1.21 --port 8025 --extra-port smtp=1025",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if req.Name == "" || src.count(req.Image) != 1 {
@@ -386,6 +388,7 @@ func newWorkloadsStatus() *cobra.Command {
 				[2]string{i18n.T("wl.col.kind"), kindLabel(w.Kind)},
 				[2]string{i18n.T("wl.col.url"), url},
 				[2]string{i18n.T("wl.col.internal"), internalURL(w)},
+				[2]string{i18n.T("wl.col.internal_ports"), strings.Join(internalAddresses(w), ", ")},
 				[2]string{i18n.T("wl.col.identity"), identity},
 			)
 			if spec := workloadSpec(w); spec.Schedule != "" {

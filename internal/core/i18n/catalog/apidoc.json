@@ -3150,5 +3150,29 @@
  {
   "fr": "Ticket concerné",
   "en": "Related ticket"
+ },
+ {
+  "fr": "Nom du port (1 à 15 caractères : minuscules, chiffres et -, commence par une lettre), ex. smtp",
+  "en": "Port name (1 to 15 characters: lowercase letters, digits and -, starting with a letter), e.g. smtp"
+ },
+ {
+  "fr": "Numéro du port (1 à 65535), différent du port principal",
+  "en": "Port number (1 to 65535), different from the main port"
+ },
+ {
+  "fr": "Ports internes supplémentaires, joignables par les conteneurs du projet seulement",
+  "en": "Extra internal ports, reachable by the project's containers only"
+ },
+ {
+  "fr": "Adresses internes nom:port des ports supplémentaires (ex. mailpit:1025)",
+  "en": "Internal name:port addresses of the extra ports (e.g. mailpit:1025)"
+ },
+ {
+  "fr": "Ports internes supplémentaires (absent : inchangés ; liste vide : tous retirés ; sinon remplace la liste)",
+  "en": "Extra internal ports (omitted: unchanged; empty list: all removed; otherwise replaces the list)"
+ },
+ {
+  "fr": "Ports internes supplémentaires (5 au plus), joignables par les autres conteneurs du projet seulement (nom-du-conteneur:port), jamais publiés ; pas pour un cron",
+  "en": "Extra internal ports (at most 5), reachable only by the project's other containers (container-name:port), never published; not for a cron"
  }
 ]

@@ -13,6 +13,9 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: {{ .Values.service.protocol | default "TCP" }}
+    {{- if .Values.extraPorts }}
+    {{- include "standard-app.extraServicePorts" . | nindent 4 }}
+    {{- end }}
   selector:
     {{- include "standard-app.selectorLabels" . | nindent 4 }}
 {{- else if eq (include "standard-app.kind" .) "service" }}
@@ -32,6 +35,25 @@ spec:
       port: {{ .Values.service.targetPort }}
       targetPort: tcp
       protocol: TCP
+    {{- if .Values.extraPorts }}
+    {{- include "standard-app.extraServicePorts" . | nindent 4 }}
+    {{- end }}
+  selector:
+    {{- include "standard-app.selectorLabels" . | nindent 4 }}
+{{- else if and (eq (include "standard-app.kind" .) "worker") .Values.extraPorts }}
+{{- /* Worker avec ports internes supplémentaires : un Service pour eux seuls,
+       joignable par son nom depuis les conteneurs du projet. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "standard-app.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    {{- include "standard-app.extraServicePorts" . | nindent 4 }}
   selector:
     {{- include "standard-app.selectorLabels" . | nindent 4 }}
 {{- end }}

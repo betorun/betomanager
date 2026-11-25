@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/thekrauss/kubemanager/internal/cli/api"
 )
 
 func writeFile(t *testing.T, content string) string {
@@ -100,7 +102,7 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "svc"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "svc", "Dockerfile"), []byte("FROM x"), 0o644))
 	file := filepath.Join(dir, "betorun.yaml")
-	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\nhealth_path: /healthz\nreplicas: 2\ncpu: 300m\ntls: true\nenv:\n  A: b\n"), 0o644))
+	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\nhealth_path: /healthz\nreplicas: 2\ncpu: 300m\ntls: true\nextra_ports:\n  - {name: grpc, port: 9090}\nenv:\n  A: b\n"), 0o644))
 
 	_, err := run(t, "deploy", "-f", file, "--no-wait")
 	require.NoError(t, err)
@@ -112,6 +114,7 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	assert.Equal(t, true, created["tls_enabled"])
 	assert.Equal(t, "/healthz", created["health_path"])
 	assert.Equal(t, "/healthz", created["readiness_path"])
+	assert.Equal(t, []any{map[string]any{"name": "grpc", "port": float64(9090)}}, created["extra_ports"])
 	assert.Nil(t, updated)
 
 	existing = []map[string]any{{"ID": wid.String(), "Name": "api"}}
@@ -123,6 +126,34 @@ func TestDeploy_CreateThenUpdate(t *testing.T) {
 	assert.EqualValues(t, 2, updated["replicas"])
 	assert.EqualValues(t, 3000, updated["target_port"])
 	assert.Equal(t, map[string]any{"A": "b"}, updated["env_vars"])
+	assert.Equal(t, []any{map[string]any{"name": "grpc", "port": float64(9090)}}, updated["extra_ports"], "ports du fichier appliqués à la mise à jour")
+
+	// Le fichier fait foi : sans extra_ports, la mise à jour les retire.
+	require.NoError(t, os.WriteFile(file, []byte("name: api\nproject: "+projectID+"\nbuild:\n  context: svc\nport: 3000\n"), 0o644))
+	updated = nil
+	_, err = run(t, "deploy", "-f", file, "--no-wait")
+	require.NoError(t, err)
+	assert.Equal(t, []any{}, updated["extra_ports"])
+}
+
+func TestProjectFile_ExtraPorts(t *testing.T) {
+	t.Setenv("BETORUN_LANG", "fr")
+	pf, err := loadProjectFile(writeFile(t, "name: mailpit\nimage: axllent/mailpit\nport: 8025\nextra_ports:\n  - name: smtp\n    port: 1025\n"))
+	require.NoError(t, err)
+	assert.Equal(t, []api.ExtraPort{{Name: "smtp", Port: 1025}}, pf.extraPorts())
+	_, err = loadProjectFile(writeFile(t, "name: mailpit\nimage: axllent/mailpit\nextra_ports:\n  - {name: smtp, prot: 1025}\n"))
+	require.Error(t, err, "lecture stricte : faute de frappe refusée")
+}
+
+func TestParseExtraPorts(t *testing.T) {
+	t.Setenv("BETORUN_LANG", "fr")
+	ports, err := parseExtraPorts([]string{"smtp=1025", " grpc = 9090 "})
+	require.NoError(t, err)
+	assert.Equal(t, []api.ExtraPort{{Name: "smtp", Port: 1025}, {Name: "grpc", Port: 9090}}, ports)
+	for _, bad := range []string{"smtp", "=1025", "smtp=abc", "smtp:1025"} {
+		_, err := parseExtraPorts([]string{bad})
+		assert.Error(t, err, bad)
+	}
 }
 
 func TestInit(t *testing.T) {

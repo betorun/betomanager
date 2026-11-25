@@ -71,6 +71,11 @@ type Workload struct {
 	// d'un service). Vide : conteneur du client. Fixé à la création.
 	ManagedBy string `gorm:"type:varchar(80);not null;default:''"`
 
+	// ExtraPorts / InternalAddresses : rendus à la lecture depuis la spec
+	// (MarshalJSON, ports.go) ; jamais en colonne.
+	ExtraPorts        []ExtraPort `gorm:"-" json:"extra_ports" description:"Ports internes supplémentaires, joignables par les conteneurs du projet seulement"`
+	InternalAddresses []string    `gorm:"-" json:"internal_addresses" description:"Adresses internes nom:port des ports supplémentaires (ex. mailpit:1025)"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

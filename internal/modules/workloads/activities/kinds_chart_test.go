@@ -1,6 +1,7 @@
 package activities
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -216,5 +217,39 @@ func TestChart_ProjectPrivateNetwork(t *testing.T) {
 	y := renderKind(t, baseInput("web"))
 	if strings.Contains(y, "Réseau privé du projet") {
 		t.Fatal("règle projet rendue sans projet")
+	}
+}
+
+// Ports internes supplémentaires : ajoutés au Service (même nom) et au
+// conteneur, jamais à l'Ingress ; un worker reçoit un Service pour eux seuls.
+func TestChart_ExtraPorts(t *testing.T) {
+	ports := []NamedPort{{Name: "smtp", Port: 1025}, {Name: "grpc", Port: 9090}}
+	for _, kind := range []string{"web", "service", "worker"} {
+		in := baseInput(kind)
+		if kind == "service" {
+			in.TargetPort = 6379
+		}
+		in.Process.ExtraPorts = ports
+		y := renderKind(t, in)
+		for _, want := range []string{`kind: Service\n`, `name: smtp\s+port: 1025\s+targetPort: smtp\s+protocol: TCP`,
+			`name: grpc\s+port: 9090\s+targetPort: grpc`, `name: smtp\s+containerPort: 1025\s+protocol: TCP`,
+			`name: grpc\s+containerPort: 9090`} {
+			if !regexp.MustCompile(want).MatchString(y) {
+				t.Fatalf("%s : %q absent\n%s", kind, want, y)
+			}
+		}
+		if strings.Contains(y, "number: 1025") || strings.Contains(y, "number: 9090") {
+			t.Fatalf("%s : port supplémentaire publié par un Ingress\n%s", kind, y)
+		}
+	}
+	// Cron : aucun port, même demandé (refusé en amont).
+	in := baseInput("cron")
+	in.Process.Schedule, in.Process.ExtraPorts = "0 2 * * *", ports
+	if y := renderKind(t, in); strings.Contains(y, "containerPort") || strings.Contains(y, "kind: Service\n") {
+		t.Fatalf("cron : port rendu\n%s", y)
+	}
+	// Sans port supplémentaire : le worker reste sans Service.
+	if y := renderKind(t, baseInput("worker")); strings.Contains(y, "kind: Service\n") {
+		t.Fatalf("worker sans port : Service rendu\n%s", y)
 	}
 }

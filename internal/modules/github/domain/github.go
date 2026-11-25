@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	buildsDomain "github.com/thekrauss/kubemanager/internal/modules/builds/domain"
+	workloadsDomain "github.com/thekrauss/kubemanager/internal/modules/workloads/domain"
 )
 
 // Pourquoi un lien ne fonctionne plus : codes stables, traduits par les clients.
@@ -199,6 +200,8 @@ type CreateWorkloadRequest struct {
 	TimeZone              string            `json:"time_zone,omitempty" description:"Fuseau de l'horaire (ex. Africa/Dakar ; défaut UTC)"`
 	MaxDurationSeconds    int               `json:"max_duration_seconds,omitempty" description:"Durée maximale d'une exécution, en secondes (défaut 3600)"`
 	StartupTimeoutSeconds int               `json:"startup_timeout_seconds,omitempty" description:"Délai de démarrage toléré, en secondes (défaut 150, 600 au plus), pour une application lente à démarrer"`
+	// ExtraPorts : ports internes supplémentaires (voir workloads).
+	ExtraPorts []workloadsDomain.ExtraPort `json:"extra_ports,omitempty" description:"Ports internes supplémentaires (5 au plus), joignables par les autres conteneurs du projet seulement (nom-du-conteneur:port), jamais publiés ; pas pour un cron"`
 }
 
 // CreateWorkloadResponse : conteneur créé, première construction lancée.

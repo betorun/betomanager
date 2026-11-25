@@ -190,5 +190,45 @@
  {
   "fr": "health_path : un chemin commençant par /, 256 caractères au plus, sans espace",
   "en": "health_path: a path starting with /, at most 256 characters, without spaces"
+ },
+ {
+  "fr": "extra_ports invalide",
+  "en": "invalid extra_ports"
+ },
+ {
+  "fr": "%w : un cron n'a pas d'adresse réseau, il ne peut écouter aucun port",
+  "en": "%w: a cron container has no network address, it cannot listen on a port"
+ },
+ {
+  "fr": "%w : %d ports au plus",
+  "en": "%w: at most %d ports"
+ },
+ {
+  "fr": "%w : %q n'est pas un nom de port valide (1 à 15 caractères : minuscules, chiffres et -, commençant par une lettre)",
+  "en": "%w: %q is not a valid port name (1 to 15 characters: lowercase letters, digits and -, starting with a letter)"
+ },
+ {
+  "fr": "%w : le nom %q est réservé au port principal",
+  "en": "%w: the name %q is reserved for the main port"
+ },
+ {
+  "fr": "%w : le nom %q est utilisé deux fois",
+  "en": "%w: the name %q is used twice"
+ },
+ {
+  "fr": "%w : le port %d doit être compris entre 1 et 65535",
+  "en": "%w: port %d must be between 1 and 65535"
+ },
+ {
+  "fr": "%w : le port %d est déjà le port principal (target_port)",
+  "en": "%w: port %d is already the main port (target_port)"
+ },
+ {
+  "fr": "%w : le port 80 est déjà l'adresse interne d'un conteneur web",
+  "en": "%w: port 80 is already the internal address of a web container"
+ },
+ {
+  "fr": "%w : le port %d est utilisé deux fois",
+  "en": "%w: port %d is used twice"
  }
 ]
