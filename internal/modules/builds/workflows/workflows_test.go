@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ func runWorkflow(t *testing.T, runErr error, wantStatus, wantFailure, wantDigest
 		got = in
 		return nil
 	})
+	env.OnActivity(acts.Cleanup, mock.Anything, mock.Anything).Return(nil)
 	env.ExecuteWorkflow(BuildImageWorkflow, BuildInput{BuildRef: activities.BuildRef{BuildID: "b", ProjectID: "p"}, Deadline: time.Minute})
 	require.True(t, env.IsWorkflowCompleted())
 	assert.Equal(t, wantStatus, got.Status)
@@ -70,6 +72,7 @@ func runDeployWorkflow(t *testing.T, runErr, deployErr error) deployRun {
 		env.OnActivity(acts.RunBuild, mock.Anything, mock.Anything).Return(&activities.BuildResult{}, nil)
 	}
 	env.OnActivity(acts.Finish, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(acts.Cleanup, mock.Anything, mock.Anything).Return(nil)
 	env.OnActivity(acts.DeployBuilt, mock.Anything, mock.Anything).Return(func(context.Context, activities.BuildRef) error {
 		out.deployed++
 		return deployErr
@@ -114,4 +117,40 @@ func TestBuildWorkflow_RefusalNotRetried(t *testing.T) {
 	got := runDeployWorkflow(t, nil, temporal.NewNonRetryableApplicationError("refused", domain.DeployFailed, nil))
 	assert.Equal(t, 1, got.deployed)
 	assert.Equal(t, domain.DeployFailed, got.recorded)
+}
+
+// Coupure du cluster : RunBuild est repris (même Job) au lieu d'échouer à la
+// deuxième tentative, et le ménage est réessayé jusqu'à ce qu'il passe.
+func TestBuildWorkflow_SurvivesClusterOutage(t *testing.T) {
+	var s testsuite.WorkflowTestSuite
+	env := s.NewTestWorkflowEnvironment()
+	var acts *activities.Activities
+	env.RegisterActivity(acts)
+	env.OnActivity(acts.MarkBuilding, mock.Anything, mock.Anything).Return(nil)
+	runs, cleanups := 0, 0
+	env.OnActivity(acts.RunBuild, mock.Anything, mock.Anything).Return(func(context.Context, activities.BuildRef) (*activities.BuildResult, error) {
+		runs++
+		if runs < 4 {
+			return nil, errors.New("http2: client connection lost")
+		}
+		return &activities.BuildResult{Digest: "sha256:abc"}, nil
+	})
+	var got activities.FinishInput
+	env.OnActivity(acts.Finish, mock.Anything, mock.Anything).Return(func(_ context.Context, in activities.FinishInput) error {
+		got = in
+		return nil
+	})
+	env.OnActivity(acts.Cleanup, mock.Anything, mock.Anything).Return(func(context.Context, activities.BuildRef) error {
+		cleanups++
+		if cleanups < 3 {
+			return errors.New("TLS handshake timeout")
+		}
+		return nil
+	})
+	env.ExecuteWorkflow(BuildImageWorkflow, BuildInput{BuildRef: activities.BuildRef{BuildID: "b", ProjectID: "p"}, Deadline: time.Minute})
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	assert.Equal(t, 4, runs, "RunBuild repris après la coupure")
+	assert.Equal(t, domain.StatusSucceeded, got.Status)
+	assert.Equal(t, 3, cleanups, "ménage réessayé jusqu'à réussite")
 }
