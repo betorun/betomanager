@@ -16,6 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"github.com/thekrauss/kubemanager/internal/infrastructure/objectstore"
 )
 
 // L'activité se signale dès la préparation du cluster : un cluster distant lent
@@ -85,4 +87,39 @@ func TestLogTail(t *testing.T) {
 		assert.True(t, strings.HasSuffix(string(tail.Bytes()), string(line)))
 		assert.LessOrEqual(t, len(tail.Bytes()), 80+len(savedLogCutMarker))
 	})
+}
+
+// fakeStore : seul Delete sert au ménage.
+type fakeStore struct {
+	objectstore.Store
+	deleted []string
+}
+
+func (f *fakeStore) Delete(_ context.Context, key string) error {
+	f.deleted = append(f.deleted, key)
+	return objectstore.ErrNotFound
+}
+
+// Cleanup signale ce qui n'a pas pu être supprimé (Temporal réessaie), et
+// ignore ce qui n'existe déjà plus : un nouvel essai est sans effet.
+func TestCleanup_ReportsLeftoversAndIsIdempotent(t *testing.T) {
+	k8s := fake.NewClientset()
+	down := true
+	k8s.PrependReactor("delete", "jobs", func(k8stesting.Action) (bool, runtime.Object, error) {
+		if down {
+			return true, nil, errors.New("TLS handshake timeout")
+		}
+		return false, nil, nil
+	})
+	store := &fakeStore{}
+	a := &Activities{K8s: k8s, Store: store, Job: JobConfig{Namespace: "builds"}, Logger: zap.NewNop().Sugar()}
+	ref := BuildRef{BuildID: "b", ProjectID: "p"}
+
+	err := a.Cleanup(context.Background(), ref)
+	require.Error(t, err, "Job non supprimé : erreur, donc nouvel essai")
+	assert.Contains(t, err.Error(), "build job")
+
+	down = false
+	require.NoError(t, a.Cleanup(context.Background(), ref), "déjà supprimé ou absent : sans effet")
+	assert.Equal(t, []string{SourceKey("p", "b"), SourceKey("p", "b")}, store.deleted)
 }

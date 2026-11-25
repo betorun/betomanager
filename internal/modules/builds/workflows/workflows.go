@@ -22,8 +22,20 @@ const (
 	// et l'annulation n'arrive à l'activité qu'avec eux : à une minute, annuler
 	// un build prenait 48 s.
 	heartbeatTimeout = 10 * time.Second
-	runMaxAttempts   = 2
-	finishTimeout    = 5 * time.Minute
+	// RunBuild : une nouvelle tentative se rattache au même Job (création
+	// idempotente). Espacées, elles couvrent une coupure du cluster de
+	// quelques minutes au lieu de quelques secondes.
+	runMaxAttempts  = 5
+	runRetryInitial = 10 * time.Second
+	runRetryMaximum = time.Minute
+	// Cleanup : environ dix minutes d'essais pour supprimer Job, secrets et sources.
+	cleanupRetryInitial = 10 * time.Second
+	cleanupRetryMaximum = 2 * time.Minute
+	cleanupMaxAttempts  = 8
+	// cleanupVersion : l'activité Cleanup après Finish (les builds lancés avant
+	// gardent l'ancien déroulé au rejeu).
+	cleanupVersion = "build-cleanup-activity"
+	finishTimeout  = 5 * time.Minute
 
 	// Déploiement enchaîné : un déploiement en cours peut durer quelques
 	// minutes (Helm attend les pods). Environ dix minutes d'essais, puis l'état
@@ -54,7 +66,10 @@ func BuildImageWorkflow(ctx workflow.Context, in BuildInput) error {
 		StartToCloseTimeout: in.Deadline + stepTimeout,
 		HeartbeatTimeout:    heartbeatTimeout,
 		WaitForCancellation: true,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: runMaxAttempts},
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval: runRetryInitial, BackoffCoefficient: 2,
+			MaximumInterval: runRetryMaximum, MaximumAttempts: runMaxAttempts,
+		},
 	})
 
 	var res activities.BuildResult
@@ -75,6 +90,18 @@ func BuildImageWorkflow(ctx workflow.Context, in BuildInput) error {
 	})
 	if finishErr := workflow.ExecuteActivity(cleanup, acts.Finish, final).Get(cleanup, nil); finishErr != nil && err == nil {
 		return finishErr
+	}
+	if workflow.GetVersion(cleanup, cleanupVersion, workflow.DefaultVersion, 1) == 1 {
+		retried := workflow.WithActivityOptions(cleanup, workflow.ActivityOptions{
+			StartToCloseTimeout: stepTimeout,
+			RetryPolicy: &temporal.RetryPolicy{
+				InitialInterval: cleanupRetryInitial, BackoffCoefficient: 2,
+				MaximumInterval: cleanupRetryMaximum, MaximumAttempts: cleanupMaxAttempts,
+			},
+		})
+		// Échec au bout des essais : journalisé par Temporal ; le Job finit
+		// de toute façon à son échéance (ActiveDeadlineSeconds).
+		_ = workflow.ExecuteActivity(retried, acts.Cleanup, in.BuildRef).Get(retried, nil)
 	}
 	if in.Deploy {
 		deployAfterBuild(cleanup, in, final)

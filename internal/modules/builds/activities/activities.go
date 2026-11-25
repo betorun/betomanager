@@ -30,6 +30,11 @@ import (
 
 const pollEvery = 3 * time.Second
 
+// pollTimeout : borne de chaque lecture de l'état du Job. Pendant une coupure du
+// cluster, un appel sans borne bloquait au-delà du délai de heartbeat : Temporal
+// tenait la tentative pour morte alors que le Job tournait encore.
+const pollTimeout = 5 * time.Second
+
 // maxSavedLogBytes : taille maximale du journal conservé d'un build.
 const maxSavedLogBytes = 32 << 20
 
@@ -171,7 +176,9 @@ func (a *Activities) RunBuild(ctx context.Context, ref BuildRef) (*BuildResult, 
 	defer ticker.Stop()
 	for {
 		activity.RecordHeartbeat(ctx)
-		job, err := a.K8s.BatchV1().Jobs(a.Job.Namespace).Get(ctx, jobName(ref.BuildID), metav1.GetOptions{})
+		getCtx, cancel := context.WithTimeout(ctx, pollTimeout)
+		job, err := a.K8s.BatchV1().Jobs(a.Job.Namespace).Get(getCtx, jobName(ref.BuildID), metav1.GetOptions{})
+		cancel()
 		if err != nil {
 			if ctx.Err() == nil && !apierrors.IsNotFound(err) {
 				a.Logger.Warnw("build job status unavailable", "build", ref.BuildID, "error", err)
@@ -477,8 +484,19 @@ func (a *Activities) Finish(ctx context.Context, in FinishInput) error {
 			a.Alerts.BuildFailed(ctx, project, id, in.Failure)
 		}
 	}
-	a.cleanup(ctx, in.BuildRef)
+	// Ménage au mieux ici ; l'activité Cleanup, réessayée, termine ce qui reste.
+	if err := a.cleanup(ctx, in.BuildRef); err != nil {
+		a.Logger.Warnw("build cleanup incomplete", "build", in.BuildRef.BuildID, "error", err)
+	}
 	return nil
+}
+
+// Cleanup : supprime le Job, ses secrets et les sources du build. Idempotent ;
+// renvoie une erreur tant qu'il reste quelque chose à supprimer, pour que
+// Temporal réessaie (cluster ou stockage momentanément injoignable). Sans
+// cela, un Job resté après une coupure tournait jusqu'à son échéance.
+func (a *Activities) Cleanup(ctx context.Context, ref BuildRef) error {
+	return a.cleanup(ctx, ref)
 }
 
 // savedLogOptions : le journal est lu en entier : logTail n'en garde que la fin.
@@ -548,18 +566,20 @@ func (a *Activities) saveLog(ctx context.Context, ref BuildRef) {
 	}
 }
 
-func (a *Activities) cleanup(ctx context.Context, ref BuildRef) {
+func (a *Activities) cleanup(ctx context.Context, ref BuildRef) error {
+	var errs []error
 	propagation := metav1.DeletePropagationBackground
 	if err := a.K8s.BatchV1().Jobs(a.Job.Namespace).Delete(ctx, jobName(ref.BuildID), metav1.DeleteOptions{PropagationPolicy: &propagation}); err != nil && !apierrors.IsNotFound(err) {
-		a.Logger.Warnw("build job not deleted", "build", ref.BuildID, "error", err)
+		errs = append(errs, fmt.Errorf("build job: %w", err))
 	}
 	if err := a.K8s.CoreV1().Secrets(a.Job.Namespace).Delete(ctx, secretName(ref.BuildID), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-		a.Logger.Warnw("build secret not deleted", "build", ref.BuildID, "error", err)
+		errs = append(errs, fmt.Errorf("build secret: %w", err))
 	}
 	if err := a.K8s.CoreV1().Secrets(a.Job.Namespace).Delete(ctx, gitSecretName(ref.BuildID), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-		a.Logger.Warnw("build git secret not deleted", "build", ref.BuildID, "error", err)
+		errs = append(errs, fmt.Errorf("build git secret: %w", err))
 	}
 	if err := a.Store.Delete(ctx, SourceKey(ref.ProjectID, ref.BuildID)); err != nil && !errors.Is(err, objectstore.ErrNotFound) {
-		a.Logger.Warnw("build source not deleted", "build", ref.BuildID, "error", err)
+		errs = append(errs, fmt.Errorf("build source: %w", err))
 	}
+	return errors.Join(errs...)
 }
