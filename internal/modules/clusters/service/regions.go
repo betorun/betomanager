@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -144,4 +145,33 @@ func (r *Registry) SetRegionProbe(ctx context.Context, code, rawURL, by string) 
 		return nil, err
 	}
 	return e, nil
+}
+
+// ProbeOrigins : origines (https://hôte[:port]) des adresses de mesure des
+// régions, sans doublon, triées. La console les autorise dans sa politique de
+// contenu (connect-src) pour mesurer le temps de réponse depuis le navigateur.
+// Rien d'autre n'en sort : ni code de région, ni chemin.
+func (r *Registry) ProbeOrigins(ctx context.Context) ([]string, error) {
+	out := []string{}
+	if r.Geo == nil {
+		return out, nil
+	}
+	probes, err := r.Geo.RegionProbes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, raw := range probes {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "https" || u.Host == "" {
+			continue
+		}
+		o := "https://" + strings.ToLower(u.Host)
+		if !seen[o] {
+			seen[o] = true
+			out = append(out, o)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }

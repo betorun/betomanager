@@ -184,3 +184,23 @@ func TestRegions_WithoutGeo(t *testing.T) {
 	_, err = r.CountryRegions(ctx)
 	assert.ErrorIs(t, err, ErrNoRegionStore)
 }
+
+// Origines des adresses de mesure : https seulement, sans chemin ni doublon,
+// triées ; aucune sans magasin.
+func TestProbeOrigins(t *testing.T) {
+	ctx := context.Background()
+	r, geo := geoRegistry(t)
+	geo.probes["af-central"] = "https://Probe.LBV.example.com/healthz"
+	geo.probes["eu-west-gra"] = "https://probe.gra.example.com:8443/ping?x=1"
+	geo.probes["af-west"] = "https://probe.lbv.example.com/autre"
+	geo.probes["bad"] = "http://insecure.example.com/healthz"
+	o, err := r.ProbeOrigins(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://probe.gra.example.com:8443", "https://probe.lbv.example.com"}, o)
+
+	r.Geo = nil
+	o, err = r.ProbeOrigins(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, o)
+	assert.NotNil(t, o, "liste vide, jamais null")
+}

@@ -310,6 +310,7 @@ var copilotDecisions = map[string]copilotDecision{
 	"DELETE /projects/:id/denyPolicies/:policyID":        asGuide("/deny-policies"),
 	"GET /organizations/:id":                             asTool(CopilotTool{Name: "get_organization"}),
 	"PATCH /organizations/:id":                           asGuide("/settings", "le pays de l'organisation se règle dans les paramètres"),
+	"GET /regions/probes":                                outOfCopilot(outTechnics),
 	"GET /regions":                                       asGuide("/projects/new", "la région suggérée selon le pays de l'organisation y est proposée en tête"),
 	"GET /organizations/:id/securityPolicy":              asTool(CopilotTool{Name: "get_security_policy"}),
 	"PUT /organizations/:id/securityPolicy":              asGuide("/settings"),

@@ -94,11 +94,14 @@ func addClusterRoutes(app *App) {
 			list, tonic.Handler(r.ListClusters, http.StatusOK))
 		return
 	}
-	RootGroup.NewGroup("/regions", "Régions").
-		Named("Régions", "Régions où créer un projet, région suggérée selon le pays de l'organisation et adresse de mesure du temps de réponse.").
-		AddRoute("", http.MethodGet,
-			"Régions où créer un projet (disponibles maintenant ou non), avec l'adresse de mesure du temps de réponse de chacune ; avec organization_id, la région associée au pays de l'organisation est suggérée et passe en tête. La région choisie se passe à la création du projet",
-			Authenticated(), tonic.Handler(reg.Regions, http.StatusOK))
+	regions := RootGroup.NewGroup("/regions", "Régions").
+		Named("Régions", "Régions où créer un projet, région suggérée selon le pays de l'organisation et adresse de mesure du temps de réponse.")
+	regions.AddRoute("", http.MethodGet,
+		"Régions où créer un projet (disponibles maintenant ou non), avec l'adresse de mesure du temps de réponse de chacune ; avec organization_id, la région associée au pays de l'organisation est suggérée et passe en tête. La région choisie se passe à la création du projet",
+		Authenticated(), tonic.Handler(reg.Regions, http.StatusOK))
+	regions.AddRoute("/probes", http.MethodGet,
+		"Origines des adresses de mesure du temps de réponse des régions (lues par la console pour sa politique de contenu) ; sans connexion, rien d'autre que les origines",
+		Public(), tonic.Handler(reg.ProbeOrigins, http.StatusOK))
 	if reg.Registry.Geo != nil {
 		cr := RootGroup.NewGroup("/admin/country-regions", "Admin — région suggérée selon le pays du client").Internal()
 		cr.AddRoute("", http.MethodGet, "Table pays → région suggérée, triée par pays",

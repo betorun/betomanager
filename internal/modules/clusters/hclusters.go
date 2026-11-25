@@ -193,6 +193,22 @@ func (ctrl *Controller) Regions(c *gin.Context, in *RegionsQuery) ([]domain.Regi
 	return ctrl.Registry.Regions(c.Request.Context(), cc)
 }
 
+// ProbeOriginsResponse : origines des adresses de mesure des régions.
+type ProbeOriginsResponse struct {
+	Origins []string `json:"origins" description:"Origines (https://hôte) des adresses de mesure du temps de réponse des régions"`
+}
+
+// ProbeOrigins : origines des adresses de mesure (public : la console les lit
+// côté serveur pour sa politique de contenu, avant toute connexion).
+func (ctrl *Controller) ProbeOrigins(c *gin.Context) (*ProbeOriginsResponse, error) {
+	o, err := ctrl.Registry.ProbeOrigins(c.Request.Context())
+	if err != nil {
+		return nil, err
+	}
+	c.Header("Cache-Control", "public, max-age=300")
+	return &ProbeOriginsResponse{Origins: o}, nil
+}
+
 // suggestionCountry : pays de l'organisation, si l'appelant peut la voir ;
 // sinon "" (aucune suggestion, rien n'est révélé de l'organisation).
 func (ctrl *Controller) suggestionCountry(c *gin.Context, raw string) (string, error) {
