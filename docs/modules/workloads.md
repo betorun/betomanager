@@ -111,7 +111,7 @@ Un conteneur a un port principal (`target_port`) ; il peut déclarer jusqu'à **
 ## Retours du test Bomba (19/11)
 
 - **Déploiement en délai dépassé** : un conteneur `FAILED` / `HELM_ERROR` dont les pods finissent par démarrer (application lente) repasse `RUNNING` par la passe de récupération, à condition que le Deployment porte la version voulue (image et révision des variables) ; sinon l'échec reste.
-- **Délai de démarrage** : `startup_timeout_seconds` (création, mise à jour, GitHub, console, `betorun.yaml` `startup_timeout`), 10 à 600 s, défaut 150 s (0 = défaut) ; règle le seuil de la sonde de démarrage (essais de 5 s).
+- **Délai de démarrage** : `startup_timeout_seconds` (création, mise à jour, GitHub, console, `betorun.yaml` `startup_timeout`), 10 à 600 s, défaut 150 s (0 = défaut) ; règle le seuil de la sonde de démarrage (essais de 5 s, 3 s de délai de réponse chacun).
 - **Événements** : date prise dans `FirstTimestamp`, sinon `EventTime`, sinon la création de l'objet (les événements récents du planificateur laissaient « 1 janv. 1 »).
 - **Échec démenti à la lecture** : `GET /:id/status` lève aussi un `FAILED` / `HELM_ERROR` quand la version voulue tourne entièrement (`recoverOnRead`, même écriture conditionnelle que la passe du worker) : « Échec » ne reste plus affiché à côté de « Prêts 1/1 ».
 - **Dupliquer** : `POST /:id/duplicate` `{name}` (permissions `workloads.workloads.create`, `workloads.workloads.update`, `workloads.variables.update` sur la source). Même image et même spec ; variables et secrets recopiés côté serveur ([service/duplicate.go](../../internal/modules/workloads/service/duplicate.go)). Ni domaines ni données du disque. Console : menu du conteneur, « Dupliquer ».

@@ -441,6 +441,7 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 				"enabled":          web,
 				"httpGet":          map[string]any{"path": healthPath, "port": containerPortName},
 				"periodSeconds":    startupProbePeriodSeconds,
+				"timeoutSeconds":   startupProbeTimeoutSeconds,
 				"failureThreshold": startupFailureThreshold(input.StartupTimeoutSeconds),
 			},
 			"readiness": map[string]any{
@@ -567,7 +568,7 @@ func serviceProbes(health []string, startupTimeout int) map[string]any {
 	live["failureThreshold"] = livenessProbeFailureThreshold
 	return map[string]any{
 		"startup": map[string]any{"enabled": true, "tcpSocket": tcp, "httpGet": nil, "periodSeconds": startupProbePeriodSeconds,
-			"failureThreshold": startupFailureThreshold(startupTimeout)},
+			"timeoutSeconds": startupProbeTimeoutSeconds, "failureThreshold": startupFailureThreshold(startupTimeout)},
 		"readiness": map[string]any{"enabled": true, "tcpSocket": tcp, "httpGet": nil, "periodSeconds": readinessProbePeriodSeconds,
 			"timeoutSeconds": readinessProbeTimeoutSeconds, "failureThreshold": readinessProbeFailureThreshold},
 		"liveness": live,
