@@ -206,6 +206,8 @@ var messages = map[string][2]string{
 	"st.attach.short":            {"Brancher un bucket sur un conteneur", "Attach a bucket to a container"},
 	"st.attach.long":             {"Crée une clé propre au conteneur, limitée à ce bucket, et pose ses variables : S3_ENDPOINT, S3_REGION et S3_BUCKET (visibles), S3_ACCESS_KEY_ID et S3_SECRET_ACCESS_KEY (secrets). Le conteneur est redéployé. Révoquer la clé retire ces variables.", "Creates a key for this container only, limited to this bucket, and sets its variables: S3_ENDPOINT, S3_REGION and S3_BUCKET (plain), S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (secrets). The container is redeployed. Revoking the key removes these variables."},
 	"st.attach.ok":               {"%s branché sur %s ; variables posées :", "%s attached to %s; variables set:"},
+	"addon.attach.busy":          {"Un déploiement de %s est en cours ; nouvel essai dans quelques secondes…", "A deployment of %s is in progress; retrying in a few seconds…"},
+	"addon.attach.busy_timeout":  {"Le déploiement de %s ne se termine pas ; réessayez plus tard.", "The deployment of %s does not finish; try again later."},
 	"st.attach.busy":             {"Un déploiement de %s est en cours ; nouvel essai dans quelques secondes…", "A deployment of %s is in progress; retrying in a few seconds…"},
 	"st.attach.busy_timeout":     {"Le déploiement de %s ne se termine pas ; réessayez plus tard.", "The deployment of %s does not finish; try again later."},
 	"st.flag.prefix":             {"préfixe des variables (défaut S3)", "variable prefix (default S3)"},

@@ -414,11 +414,18 @@ func newAddonsAttach() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			msg, err := attachAddon(ctx, cl, project, a, w, variable)
+			// Juste après un déploiement (ou une base branchée) : l'API répond
+			// DEPLOY_IN_PROGRESS ; on attend comme pour les bases et le stockage.
+			var msg string
+			p := printer(cmd)
+			err = retryWhileDeploying(ctx, p, w.Name, "addon.attach.busy", "addon.attach.busy_timeout", func() (err error) {
+				msg, err = attachAddon(ctx, cl, project, a, w, variable)
+				return err
+			})
 			if err != nil {
 				return err
 			}
-			printer(cmd).Success(msg)
+			p.Success(msg)
 			return nil
 		},
 	}
