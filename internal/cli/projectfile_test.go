@@ -42,6 +42,13 @@ func TestProjectFile_Validation(t *testing.T) {
 	require.Error(t, err, "une seule origine")
 	_, err = loadProjectFile(filepath.Join(t.TempDir(), "absent.yaml"))
 	require.Error(t, err)
+
+	// Conteneur service : son port est obligatoire (l'API le refuse sans).
+	_, err = loadProjectFile(writeFile(t, "name: cache\nimage: redis\nkind: service\n"))
+	require.Error(t, err, "service sans port")
+	pf, err := loadProjectFile(writeFile(t, "name: cache\nimage: redis\nkind: service\nport: 6379\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 6379, pf.Port)
 }
 
 func TestProjectFile_EnvReferences(t *testing.T) {

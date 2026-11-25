@@ -91,6 +91,34 @@ func TestLimitRequestBody(t *testing.T) {
 	}
 }
 
+// Envois qui posent leur propre limite (dump, pièce jointe, fichier S3) : le
+// plafond global ne doit pas les couper (un dump de 10 Mo était refusé).
+func TestLimitRequestBody_UploadRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(limitRequestBody(16))
+	ok := func(c *gin.Context) { c.Status(http.StatusOK) }
+	routes := []string{
+		"/kmanager/v1/projects/:id/databases/:databaseID/import",
+		"/kmanager/v1/projects/:id/databases/:databaseID/import/inspect",
+		"/kmanager/v1/organizations/:id/support/tickets/:ticketID/attachments",
+		"/kmanager/v1/projects/:id/storage/:bucketID/objects",
+		"/kmanager/v1/projects/:id/builds/upload",
+	}
+	for _, r := range routes {
+		engine.POST(r, ok)
+	}
+	for _, r := range routes {
+		path := strings.NewReplacer(":id", "1", ":databaseID", "2", ":ticketID", "3", ":bucketID", "4").Replace(r)
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(strings.Repeat("x", 100)))
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s : code %d, le plafond global coupe un envoi à limite propre", r, rec.Code)
+		}
+	}
+}
+
 func TestSwaggerConfigured(t *testing.T) {
 	cases := []struct {
 		cfg  configs.SwaggerConfig

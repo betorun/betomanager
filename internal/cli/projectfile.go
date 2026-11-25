@@ -139,6 +139,9 @@ func loadProjectFile(path string) (*projectFile, error) {
 	if origins != 1 {
 		return nil, errors.New(i18n.T("file.need_origin", path))
 	}
+	if pf.Kind == kindService && pf.Port <= 0 {
+		return nil, errors.New(i18n.T("file.service_port", path))
+	}
 	for k, v := range pf.Env {
 		expanded, err := expandEnv(v)
 		if err != nil {
@@ -265,9 +268,12 @@ func newDeploy() *cobra.Command {
 			if req.StartupTimeoutSeconds, err = pf.startupTimeoutSeconds(); err != nil {
 				return err
 			}
-			if pf.Kind != "" && pf.Kind != kindWeb {
-				req.TargetPort = 0 // pas de port hors web
+			// Port : web et service (port TCP interne, obligatoire) ; aucun pour
+			// un worker ou un cron.
+			if pf.Kind != "" && pf.Kind != kindWeb && pf.Kind != kindService {
+				req.TargetPort = 0
 			}
+
 			if pf.TLS != nil {
 				req.TLSEnabled = *pf.TLS
 			}
