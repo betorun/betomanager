@@ -251,6 +251,16 @@ func newDeploy() *cobra.Command {
 				req.Command, req.Args = &command, &cmdArgs
 				ports := pf.extraPorts()
 				req.ExtraPorts = &ports
+				// Le fichier fait foi : sans startup_timeout, le délai par défaut.
+				startup, err := pf.startupTimeoutSeconds()
+				if err != nil {
+					return err
+				}
+				req.StartupTimeoutSeconds = &startup
+				if pf.HealthPath != "" {
+					healthPath := pf.HealthPath
+					req.HealthPath = &healthPath
+				}
 				printer(cmd).Title(i18n.T("wl.update.sending", pf.Name), image)
 				if err := cl.UpdateWorkload(ctx, id, req); err != nil {
 					return err
