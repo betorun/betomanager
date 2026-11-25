@@ -65,11 +65,18 @@ const (
 )
 
 // routesWithOwnBodyLimit : routes qui posent leur propre limite (archives,
-// webhooks de GitHub jusqu'à 25 Mio). Un plafond global plus bas la masquerait.
+// dumps pg_dump, pièces jointes, fichiers S3, webhooks de GitHub jusqu'à
+// 25 Mio). Un plafond global plus bas la masquerait : un dump de 10 Mo était
+// refusé avec « 2 GB at most ». Toute route qui lit un envoi avec son propre
+// http.MaxBytesReader doit figurer ici.
 var routesWithOwnBodyLimit = []string{
 	"/:siteID/deployments",
 	"/builds/upload",
 	"/github/webhook",
+	"/:databaseID/import",
+	"/:databaseID/import/inspect",
+	"/tickets/:ticketID/attachments",
+	"/:bucketID/objects",
 }
 
 // limitRequestBody : plafond des corps par défaut, avant l'authentification.

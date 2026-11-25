@@ -681,6 +681,7 @@ var messages = map[string][2]string{
 	// Fichier de projet.
 	"file.missing":              {"%s introuvable : créez-le avec betorun init", "%s not found: create it with betorun init"},
 	"file.need_name":            {"%s : précisez name", "%s: name is required"},
+	"file.service_port":         {"%s : un conteneur service a besoin de son port (port: 6379 par exemple)", "%s: a service container needs its port (port: 6379, for example)"},
 	"file.need_origin":          {"%s : précisez une seule origine parmi image, build et git", "%s: specify one origin among image, build and git"},
 	"file.env_missing":          {"variable d'environnement ${%s} absente", "environment variable ${%s} is not set"},
 	"deploy.image_from_missing": {"image_from : aucun conteneur %s déployé dans ce projet", "image_from: no deployed container %s in this project"},
