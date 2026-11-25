@@ -3,9 +3,13 @@ package service
 import (
 	"context"
 	"errors"
-	"net/url"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/thekrauss/kubemanager/internal/core/country"
 	"github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
@@ -144,29 +148,96 @@ func (r *Registry) SetRegionProbe(ctx context.Context, code, rawURL, by string) 
 	if err := r.Geo.SetRegionProbe(ctx, e); err != nil {
 		return nil, err
 	}
+	r.invalidateProbeOrigins()
 	return e, nil
 }
 
+// probeOriginsTTL : durée de vie du cache de ProbeOrigins (route publique,
+// lue à chaque chargement de la console).
+const probeOriginsTTL = time.Minute
+
+// probeCache : dernières origines calculées. gen change à chaque écriture qui
+// touche aux régions proposées ou à leurs adresses : un calcul lancé avant
+// n'est ni gardé ni partagé avec les appels suivants.
+type probeCache struct {
+	mu     sync.Mutex
+	gen    uint64
+	at     time.Time
+	vals   []string
+	flight singleflight.Group
+}
+
+// invalidateProbeOrigins : le prochain ProbeOrigins relit la base.
+func (r *Registry) invalidateProbeOrigins() {
+	r.probes.mu.Lock()
+	r.probes.gen++
+	r.probes.vals = nil
+	r.probes.mu.Unlock()
+}
+
 // ProbeOrigins : origines (https://hôte[:port]) des adresses de mesure des
-// régions, sans doublon, triées. La console les autorise dans sa politique de
-// contenu (connect-src) pour mesurer le temps de réponse depuis le navigateur.
-// Rien d'autre n'en sort : ni code de région, ni chemin.
+// régions proposées (celles de GET /regions), sans doublon, triées. La console
+// les autorise dans sa politique de contenu (connect-src) pour mesurer le
+// temps de réponse depuis le navigateur. Rien d'autre n'en sort : ni code de
+// région, ni chemin. Gardées en mémoire probeOriginsTTL (par instance de
+// l'API), calcul partagé entre appels simultanés.
 func (r *Registry) ProbeOrigins(ctx context.Context) ([]string, error) {
-	out := []string{}
 	if r.Geo == nil {
+		return []string{}, nil
+	}
+	c := &r.probes
+	c.mu.Lock()
+	if c.vals != nil && r.now().Sub(c.at) < probeOriginsTTL {
+		out := slices.Clone(c.vals)
+		c.mu.Unlock()
 		return out, nil
+	}
+	gen := c.gen
+	c.mu.Unlock()
+	v, err, _ := c.flight.Do(strconv.FormatUint(gen, 10), func() (any, error) {
+		// Sans l'annulation de l'appelant : le calcul sert aussi aux autres.
+		out, err := r.loadProbeOrigins(context.WithoutCancel(ctx))
+		if err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		if c.gen == gen {
+			c.vals, c.at = out, r.now()
+		}
+		c.mu.Unlock()
+		return out, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return slices.Clone(v.([]string)), nil
+}
+
+// loadProbeOrigins : calcul de ProbeOrigins. Chaque adresse repasse le
+// contrôle de SetRegionProbe : une ligne invalide en base est ignorée.
+func (r *Registry) loadProbeOrigins(ctx context.Context) ([]string, error) {
+	cs, err := r.candidates(ctx)
+	if err != nil {
+		return nil, err
 	}
 	probes, err := r.Geo.RegionProbes(ctx)
 	if err != nil {
 		return nil, err
 	}
+	out := []string{}
 	seen := map[string]bool{}
-	for _, raw := range probes {
-		u, err := url.Parse(raw)
-		if err != nil || u.Scheme != "https" || u.Host == "" {
+	for _, reg := range domain.Regions(cs) {
+		raw, ok := probes[reg.Code]
+		if !ok {
 			continue
 		}
-		o := "https://" + strings.ToLower(u.Host)
+		o, err := domain.ProbeOrigin(raw)
+		if err != nil {
+			if r.Logger != nil {
+				r.Logger.Warnw("invalid probe address skipped", "region", reg.Code)
+			}
+			continue
+		}
 		if !seen[o] {
 			seen[o] = true
 			out = append(out, o)

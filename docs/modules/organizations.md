@@ -12,7 +12,7 @@ Table `organizations` (migration 000003) :
 | `display_name` | Nom affiché (`Mon organisation` par défaut à la création par le code) |
 | `kind` | `PERSONAL` (une par utilisateur) ou `TEAM` (partagée, défaut de la colonne) |
 | `owner_user_id` | Utilisateur à l'origine d'une organisation `PERSONAL` ; **pas un droit** (les droits sont dans `iam_bindings`) |
-| `country` | Pays du client (ISO 3166-1 alpha-2, majuscules ; `''` si inconnu, migration 000080). La facturation étant par organisation, c'est lui qui désigne la région suggérée à la création d'un projet (`GET /regions?organization_id=`, voir [clusters.md](clusters.md#placement-des-projets-lot-2a)) |
+| `country` | Pays du client (ISO 3166-1 alpha-2, majuscules ; `''` si inconnu, migration 000080 ; contrainte `organizations_country_check` `^([A-Z]{2})?$`, migration 000081). La facturation étant par organisation, c'est lui qui désigne la région suggérée à la création d'un projet (`GET /regions?organization_id=`, voir [clusters.md](clusters.md#placement-des-projets-lot-2a)) |
 | `created_at`, `updated_at`, `deleted_at` | Suppression logique |
 
 - Index unique partiel `uq_organizations_personal_owner` sur `owner_user_id` quand `kind = 'PERSONAL'` : au plus une organisation personnelle par utilisateur.
@@ -26,7 +26,7 @@ Table `organizations` (migration 000003) :
 
 - renvoie l'organisation `PERSONAL` existante de l'utilisateur, sinon la crée, dans une transaction, avec un binding `roles/owner` pour `user:<id>` sur `organizations/<id>` (acteur système des organisations) ;
 - idempotente et sûre en concurrence : en cas de conflit sur l'index unique, elle relit l'organisation créée par l'autre requête ;
-- elle reprend le pays du profil local (`users.country`, donné à l'inscription `POST /identity/register` ou au bootstrap) s'il est un code ISO valide. Les comptes existants gardent `''` : la console demande le pays et le pose par `PATCH /organizations/:id`.
+- elle reprend le pays du profil local (`users.country`) s'il est un code ISO valide. Ce pays vient de l'inscription (`POST /identity/register`, gardé dans Keycloak jusqu'à la première connexion qui crée le profil local, voir [identity.md](identity.md)) ou du bootstrap. La migration 000081 a repris le pays des organisations existantes restées à `''` : celui du profil du propriétaire pour une organisation `PERSONAL`, sinon celui du compte de facturation (`billing_accounts.country`), seulement s'il a la forme `^[A-Z]{2}$` après mise en majuscules. Les autres gardent `''` : la console demande le pays et le pose par `PATCH /organizations/:id`.
 
 Appelant unique : `projects/repository.CreateProject`, quand le projet n'a pas d'organisation. À l'inscription, le bootstrap d'identité (`identity/service.ensureProject`) crée le premier projet, ce qui crée l'organisation personnelle dans la même transaction que le projet et son binding owner. La migration 000003 a créé rétroactivement une organisation `PERSONAL` par utilisateur existant (nom = nom complet ou email) et une organisation `TEAM` sans droit pour chaque projet sans owner.
 

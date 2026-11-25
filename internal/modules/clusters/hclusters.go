@@ -9,6 +9,7 @@ import (
 	betoerrors "github.com/thekrauss/beto-shared/pkg/errors"
 
 	"github.com/thekrauss/kubemanager/internal/audit"
+	"github.com/thekrauss/kubemanager/internal/core/country"
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
 
@@ -195,7 +196,7 @@ func (ctrl *Controller) Regions(c *gin.Context, in *RegionsQuery) ([]domain.Regi
 
 // ProbeOriginsResponse : origines des adresses de mesure des régions.
 type ProbeOriginsResponse struct {
-	Origins []string `json:"origins" description:"Origines (https://hôte) des adresses de mesure du temps de réponse des régions"`
+	Origins []string `json:"origins" description:"Origines (https://hôte[:port]) des adresses de mesure du temps de réponse des régions proposées"`
 }
 
 // ProbeOrigins : origines des adresses de mesure (public : la console les lit
@@ -253,7 +254,7 @@ type RegionCodePath struct {
 // SetRegionProbeInput : adresse de mesure de la région.
 type SetRegionProbeInput struct {
 	Code     string `path:"code" binding:"required" description:"Code de la région"`
-	ProbeURL string `json:"probe_url" description:"Adresse https qui répond vite et sans données (ex. route /healthz publique d'un point d'entrée de la région) ; vide : retirée"`
+	ProbeURL string `json:"probe_url" description:"Adresse https qui répond vite et sans données (ex. route /healthz publique d'un point d'entrée de la région) : hôte nom DNS ou IP, port 1 à 65535, ni identifiants ni fragment ; gardée normalisée (hôte en minuscules, nom internationalisé en punycode) ; vide : retirée"`
 }
 
 func (ctrl *Controller) CountryRegions(c *gin.Context) ([]domain.CountryRegion, error) {
@@ -270,7 +271,13 @@ func (ctrl *Controller) SetCountryRegion(c *gin.Context, in *SetCountryRegionInp
 }
 
 func (ctrl *Controller) DeleteCountryRegion(c *gin.Context, in *CountryPath) error {
-	return ctrl.Registry.DeleteCountryRegion(c.Request.Context(), in.Country)
+	err := ctrl.Registry.DeleteCountryRegion(c.Request.Context(), in.Country)
+	if err == nil {
+		// Le service n'accepte que des codes valides : Parse ne peut échouer ici.
+		cc, _ := country.Parse(in.Country)
+		audit.Annotate(c.Request.Context(), "country", cc)
+	}
+	return err
 }
 
 func (ctrl *Controller) RegionSettings(c *gin.Context) ([]domain.RegionSetting, error) {
@@ -280,6 +287,7 @@ func (ctrl *Controller) RegionSettings(c *gin.Context) ([]domain.RegionSetting, 
 func (ctrl *Controller) SetRegionProbe(c *gin.Context, in *SetRegionProbeInput) (*domain.RegionSetting, error) {
 	e, err := ctrl.Registry.SetRegionProbe(c.Request.Context(), in.Code, in.ProbeURL, principal(c))
 	if err == nil {
+		audit.Annotate(c.Request.Context(), "region", e.Code)
 		audit.Annotate(c.Request.Context(), "probe_url", e.ProbeURL)
 	}
 	return e, err

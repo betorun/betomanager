@@ -36,7 +36,7 @@ var cliRedirectRe = regexp.MustCompile(`^http://127\.0\.0\.1:[0-9]{1,5}/callback
 // l'INSERT perdant échoue avec unique_violation. On re-fetch pour retourner
 // le user créé par le concurrent gagnant — l'appelant voit un résultat
 // cohérent au lieu d'une 500.
-func (s *service) syncLocalUser(ctx context.Context, keycloakUserID, email, fullName, avatarURL string) (*domain.User, error) {
+func (s *service) syncLocalUser(ctx context.Context, keycloakUserID, email, fullName, avatarURL, country string) (*domain.User, error) {
 	now := time.Now().UTC()
 	var localID uuid.UUID
 	if parsed, err := uuid.Parse(keycloakUserID); err == nil {
@@ -50,6 +50,7 @@ func (s *service) syncLocalUser(ctx context.Context, keycloakUserID, email, full
 		Email:          email,
 		FullName:       firstNonEmpty(fullName, deriveDisplayName(email)),
 		AvatarURL:      avatarURL,
+		Country:        country,
 		Role:           domain.RoleTypes.User,
 		Status:         "active",
 		IsActive:       true,

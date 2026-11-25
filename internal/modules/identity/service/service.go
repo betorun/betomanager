@@ -227,6 +227,9 @@ func (s *service) Bootstrap(ctx context.Context, principal BootstrapPrincipal, r
 	fullName := firstNonEmpty(strings.TrimSpace(req.FullName), strings.TrimSpace(keycloakUser.FullName), deriveDisplayName(email))
 	phoneNumber := firstNonEmpty(strings.TrimSpace(req.PhoneNumber), strings.TrimSpace(keycloakUser.PhoneNumber))
 	country := normalizeCountry(req.Country)
+	if country == "" { // pays donné à l'inscription, gardé dans l'annuaire
+		country = keycloakUser.Country
+	}
 	user, err := s.users.FindByKeycloakUserID(ctx, keycloakUserID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err

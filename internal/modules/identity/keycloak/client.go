@@ -108,15 +108,20 @@ type CreateUserInput struct {
 	WithoutPassword bool
 	FullName        string
 	PhoneNumber     string
-	Enabled         bool
-	EmailVerified   bool
+	// Country : pays donné à l'inscription (code déjà validé), gardé dans
+	// l'annuaire jusqu'à la première connexion qui crée le profil local.
+	Country       string
+	Enabled       bool
+	EmailVerified bool
 }
 
 type UserProfile struct {
-	ID            string
-	Email         string
-	FullName      string
-	PhoneNumber   string
+	ID          string
+	Email       string
+	FullName    string
+	PhoneNumber string
+	// Country : attribut « country » posé à l'inscription ("" : aucun).
+	Country       string
 	AvatarURL     string
 	EmailVerified bool
 	Enabled       bool
@@ -275,7 +280,7 @@ func (c *Client) CreateUser(ctx context.Context, input CreateUserInput) (*UserPr
 	if !input.Enabled {
 		payload.Enabled = false
 	}
-	attributes := buildAttributes(fullName, phoneNumber)
+	attributes := buildAttributes(fullName, phoneNumber, strings.ToUpper(strings.TrimSpace(input.Country)))
 	if len(attributes) > 0 {
 		payload.Attributes = attributes
 	}
@@ -540,19 +545,27 @@ func mapUserProfile(user userRepresentation) *UserProfile {
 		Email:         strings.ToLower(strings.TrimSpace(user.Email)),
 		FullName:      fullName,
 		PhoneNumber:   firstAttributeValue(user.Attributes, "phone_number"),
+		Country:       strings.ToUpper(firstAttributeValue(user.Attributes, "country")),
 		AvatarURL:     avatarURL,
 		EmailVerified: user.EmailVerified,
 		Enabled:       user.Enabled,
 	}
 }
 
-func buildAttributes(fullName string, phoneNumber string) map[string][]string {
+// buildAttributes : attributs posés à la création. « country » est déclaré
+// dans le profil utilisateur du realm (scripts/keycloak/bootstrap_platform.sh,
+// ensure_user_profile) ; full_name et phone_number ne le sont pas : Keycloak
+// 24+ les ignore sans erreur (attributs non gérés).
+func buildAttributes(fullName, phoneNumber, country string) map[string][]string {
 	attributes := map[string][]string{}
 	if fullName != "" {
 		attributes["full_name"] = []string{fullName}
 	}
 	if phoneNumber != "" {
 		attributes["phone_number"] = []string{phoneNumber}
+	}
+	if country != "" {
+		attributes["country"] = []string{country}
 	}
 	if len(attributes) == 0 {
 		return nil

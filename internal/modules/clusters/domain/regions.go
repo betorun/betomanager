@@ -2,10 +2,14 @@ package domain
 
 import (
 	"errors"
+	"net/netip"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/idna"
 )
 
 // Région suggérée selon le pays du client : table pays → région tenue par
@@ -42,18 +46,153 @@ type RegionSetting struct {
 
 func (RegionSetting) TableName() string { return "region_settings" }
 
-// NormalizeProbeURL : adresse https absolue sans identifiants ; "" retire
-// l'adresse.
+// NormalizeProbeURL : adresse https absolue sans identifiants ni fragment ;
+// "" retire l'adresse. L'hôte est un nom DNS (lettres, chiffres, tirets ; un
+// nom internationalisé passe en punycode) ou une adresse IP littérale, le
+// port est vide ou numérique (1 à 65535). Rendue sous forme normalisée (hôte
+// en minuscules) : son origine part telle quelle dans la politique de contenu
+// de la console, aucun caractère de cette syntaxe (; , * ' ") ne doit passer.
 func NormalizeProbeURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
 	}
-	u, err := url.Parse(raw)
-	if err != nil || len(raw) > maxProbeURL || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
-		return "", ErrInvalidProbeURL
+	u, err := parseProbeURL(raw)
+	if err != nil {
+		return "", err
 	}
 	return u.String(), nil
+}
+
+// ProbeOrigin : origine (https://hôte[:port]) d'une adresse de mesure, après
+// le même contrôle que NormalizeProbeURL.
+func ProbeOrigin(raw string) (string, error) {
+	u, err := parseProbeURL(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	return "https://" + u.Host, nil
+}
+
+// parseProbeURL : adresse contrôlée, hôte et port normalisés.
+func parseProbeURL(raw string) (*url.URL, error) {
+	if raw == "" || len(raw) > maxProbeURL {
+		return nil, ErrInvalidProbeURL
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Opaque != "" || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return nil, ErrInvalidProbeURL
+	}
+	// Autorité brute (entre « https:// » et le chemin) : aucun échappement %,
+	// url.Parse les décoderait dans l'hôte (%3B → ;, %25 → zone IPv6).
+	authority := raw[len("https://"):]
+	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
+		authority = authority[:i]
+	}
+	if strings.Contains(authority, "%") {
+		return nil, ErrInvalidProbeURL
+	}
+	host, ok := probeHost(u.Host)
+	if !ok {
+		return nil, ErrInvalidProbeURL
+	}
+	u.Host = host
+	return u, nil
+}
+
+// probeHost : « hôte[:port] » normalisé ; false : hôte ou port refusé.
+func probeHost(hostport string) (string, bool) {
+	host, port := hostport, ""
+	if strings.HasPrefix(hostport, "[") {
+		end := strings.Index(hostport, "]")
+		if end < 0 {
+			return "", false
+		}
+		host, port = hostport[1:end], hostport[end+1:]
+		a, err := netip.ParseAddr(host)
+		if err != nil || !a.Is6() || a.Zone() != "" {
+			return "", false
+		}
+		host = "[" + a.String() + "]"
+	} else {
+		if i := strings.LastIndex(hostport, ":"); i >= 0 {
+			host, port = hostport[:i], hostport[i:]
+		}
+		if a, err := netip.ParseAddr(host); err == nil {
+			if !a.Is4() {
+				return "", false
+			}
+			host = a.String()
+		} else if host = probeDNSName(host); host == "" {
+			return "", false
+		}
+	}
+	if port != "" {
+		n, ok := probePort(port)
+		if !ok {
+			return "", false
+		}
+		return host + ":" + strconv.Itoa(n), true
+	}
+	return host, true
+}
+
+// probePort : « :n », n entre 1 et 65535 (« : » seul refusé).
+func probePort(p string) (int, bool) {
+	digits, ok := strings.CutPrefix(p, ":")
+	if !ok || digits == "" || len(digits) > 5 {
+		return 0, false
+	}
+	for _, c := range digits {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(digits)
+	return n, err == nil && n >= 1 && n <= 65535
+}
+
+// probeDNSName : nom DNS en ASCII minuscule (IDN → punycode, profil Lookup),
+// au moins deux labels [a-z0-9]([a-z0-9-]*[a-z0-9])?, 253 caractères au plus,
+// dernier label non entièrement numérique (une IPv4 invalide n'en est pas un) ;
+// "" : refusé.
+func probeDNSName(h string) string {
+	a, err := idna.Lookup.ToASCII(h)
+	if err != nil {
+		return ""
+	}
+	a = strings.ToLower(a)
+	if len(a) > 253 {
+		return ""
+	}
+	labels := strings.Split(a, ".")
+	if len(labels) < 2 {
+		return ""
+	}
+	for _, l := range labels {
+		if !ldhLabel(l) {
+			return ""
+		}
+	}
+	if strings.Trim(labels[len(labels)-1], "0123456789") == "" {
+		return ""
+	}
+	return a
+}
+
+// ldhLabel : label DNS strict (lettres minuscules, chiffres, tirets internes ;
+// 63 caractères au plus).
+func ldhLabel(l string) bool {
+	if l == "" || len(l) > 63 || l[0] == '-' || l[len(l)-1] == '-' {
+		return false
+	}
+	for i := 0; i < len(l); i++ {
+		c := l[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // Suggest : région suggérée (suggested, "" : aucune) et adresses de mesure

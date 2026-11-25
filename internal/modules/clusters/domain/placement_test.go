@@ -1,9 +1,11 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func healthOf(state string, alloc, req int64, reasons ...string) *Health {
@@ -71,13 +73,38 @@ func TestRegions(t *testing.T) {
 
 func TestNormalizeProbeURL(t *testing.T) {
 	for in, want := range map[string]string{"": "", "  ": "", " https://lbv.example.test/healthz ": "https://lbv.example.test/healthz",
-		"https://lbv.example.test:8443/ping?x=1": "https://lbv.example.test:8443/ping?x=1"} {
+		"https://lbv.example.test:8443/ping?x=1": "https://lbv.example.test:8443/ping?x=1",
+		"HTTPS://Probe.LBV.Example.TEST/Healthz": "https://probe.lbv.example.test/Healthz",
+		"https://bücher.example/healthz":         "https://xn--bcher-kva.example/healthz",
+		"https://BÜCHER.example":                 "https://xn--bcher-kva.example",
+		"https://xn--bcher-kva.example":          "https://xn--bcher-kva.example",
+		"https://a-b.c1.example.test:65535/":     "https://a-b.c1.example.test:65535/",
+		"https://lbv.example.test:00443/":        "https://lbv.example.test:443/",
+		"https://203.0.113.7/healthz":            "https://203.0.113.7/healthz",
+		"https://[2001:DB8::1]:8443/healthz":     "https://[2001:db8::1]:8443/healthz",
+		"https://lbv.example.test/a;b,c":         "https://lbv.example.test/a;b,c",
+	} {
 		got, err := NormalizeProbeURL(in)
 		assert.NoError(t, err, in)
 		assert.Equal(t, want, got, in)
 	}
-	for _, in := range []string{"http://lbv.example.test", "lbv.example.test", "https://", "https://u:p@lbv.example.test", "https://lbv.example.test/#x", "ftp://x"} {
+	for _, in := range []string{"http://lbv.example.test", "lbv.example.test", "https://", "https://u:p@lbv.example.test", "https://lbv.example.test/#x", "ftp://x",
+		// Caractères de la syntaxe de la politique de contenu dans l'hôte.
+		"https://a.com;sandbox/x", "https://a.com%3Bsandbox/x", "https://a%2Ccom", "https://a,b.com", "https://*", "https://*.example.com",
+		"https://a'b.com", "https://a\"b.com", "https://a&b.com", "https://a b.com", "https://a_b.example.com",
+		// Ports vides, non numériques ou hors plage.
+		"https://a.com:", "https://a.com:0", "https://a.com:65536", "https://a.com:99999999", "https://a.com:+80", "https://a.com:8a",
+		// Noms mal formés, IP invalides, zone IPv6.
+		"https://localhost", "https://-a.example.com", "https://a-.example.com", "https://a..example.com", "https://a.example.com.",
+		"https://999.1.1.1", "https://1.2.3", "https://[2001:db8::1%25eth0]", "https://[fe80::1%eth0]", "https://[1.2.3.4]", "https://[::1",
+		"https://" + strings.Repeat("a", 64) + ".example.com", "https:lbv.example.test",
+	} {
 		_, err := NormalizeProbeURL(in)
 		assert.ErrorIs(t, err, ErrInvalidProbeURL, in)
 	}
+	o, err := ProbeOrigin(" https://Probe.Example.TEST:8443/healthz?x=1 ")
+	require.NoError(t, err)
+	assert.Equal(t, "https://probe.example.test:8443", o)
+	_, err = ProbeOrigin("https://a.com;sandbox/x")
+	assert.ErrorIs(t, err, ErrInvalidProbeURL)
 }
