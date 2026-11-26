@@ -15,7 +15,7 @@ Réseau privé d'un projet, vu par le client : qui peut joindre qui, avec quelle
 
 Réponse (`domain.ProjectNetwork`) :
 
-- `members` : conteneurs (`web`, `service`, `worker`, `cron`) puis bases (`database`), triés par sorte puis nom.
+- `members` : conteneurs (`web`, `service`, `worker`, `cron`), bases (`database`), puis VPS rattachés au réseau privé (`vps`, [module vpc](vpc.md) ; `status` : `pending` ou `attached`, `internal` : `<nom>.internal`), triés par sorte puis nom.
   - `internal` : adresse dans le réseau du projet, nom court (`http://api`, `cache:6379`, `db-main-rw:5432`) ; absente pour un worker ou un cron (n'écoute rien).
   - `public` : adresses joignables depuis Internet, seulement pour un conteneur `web` : adresse automatique (`automatic`) et domaines **vérifiés** (`domain`, https sauf `kubernetes.custom_domain_insecure`). Un service ou une base n'est jamais public.
 - `links` : liens **déclarés** (le réseau permet aussi tout lien non déclaré entre membres) : base branchée (`database`, avec la variable qui porte l'adresse, jamais sa valeur) ; attente au démarrage (`waits_for`, depuis la spec `wait_for`, forme longue `nom.espace.svc` ramenée au nom). Une base branchée n'a qu'un lien. Une adresse attendue qui ne correspond à aucun membre est ignorée.

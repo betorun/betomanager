@@ -35,11 +35,17 @@ type Databases interface {
 	ListAttachments(ctx context.Context, databaseID uuid.UUID) ([]dbDomain.Attachment, error)
 }
 
-// Service : vue réseau d'un projet. Domains et Databases facultatifs.
+// VPCMembers : VPS rattachés au réseau privé du projet (module vpc).
+type VPCMembers interface {
+	NetworkMembers(ctx context.Context, projectID uuid.UUID) ([]domain.Member, error)
+}
+
+// Service : vue réseau d'un projet. Domains, Databases et VPC facultatifs.
 type Service struct {
 	Workloads Workloads
 	Domains   Domains
 	Databases Databases
+	VPC       VPCMembers
 	// DomainTLS : domaines servis en https (sinon http, développement).
 	DomainTLS bool
 	Now       func() time.Time
@@ -92,6 +98,14 @@ func (s *Service) Get(ctx context.Context, projectID uuid.UUID) (*domain.Project
 				attached[[2]string{from, id}] = true
 			}
 		}
+	}
+
+	if s.VPC != nil {
+		vms, err := s.VPC.NetworkMembers(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		members = append(members, vms...)
 	}
 
 	// Attentes au démarrage : un lien vers le membre qui porte l'adresse
@@ -201,7 +215,7 @@ func waitFor(w *wlDomain.Workload) []string {
 	return out
 }
 
-var kindOrder = map[string]int{domain.KindWeb: 0, domain.KindService: 1, domain.KindWorker: 2, domain.KindCron: 3, domain.KindDatabase: 4}
+var kindOrder = map[string]int{domain.KindWeb: 0, domain.KindService: 1, domain.KindWorker: 2, domain.KindCron: 3, domain.KindDatabase: 4, domain.KindVPS: 5}
 
 func sortMembers(ms []domain.Member) {
 	sort.SliceStable(ms, func(i, j int) bool {

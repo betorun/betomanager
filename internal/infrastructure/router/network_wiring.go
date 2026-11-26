@@ -19,12 +19,16 @@ func (a *App) newNetworkController() *network.Controller {
 	if a.Repos == nil || a.Repos.Workload == nil {
 		return nil
 	}
-	return &network.Controller{Service: &networkSvc.Service{
+	s := &networkSvc.Service{
 		Workloads: a.Repos.Workload,
 		Domains:   workloadsRepo.NewDomainStore(a.DB),
 		Databases: &databasesRepo.GormRepository{DB: a.DB},
 		DomainTLS: !a.Config.Kubernetes.CustomDomainInsecure,
-	}}
+	}
+	if v := a.vpcService(); v != nil {
+		s.VPC = v // VPS rattachés au réseau privé (ADR 0019)
+	}
+	return &network.Controller{Service: s}
 }
 
 func addNetworkRoutes(app *App) {

@@ -32,6 +32,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/network"
 	"github.com/thekrauss/kubemanager/internal/modules/registries"
 	"github.com/thekrauss/kubemanager/internal/modules/storages3"
+	"github.com/thekrauss/kubemanager/internal/modules/vpc"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -100,6 +101,7 @@ func documentedAPI(t *testing.T) *fizz.Fizz {
 				StorageS3:      &storages3.Controller{},
 				Network:        &network.Controller{},
 				Egress:         &egress.Controller{},
+				VPC:            &vpc.Controller{},
 				Addons:         &addons.Controller{},
 				DiskUsage:      &diskusage.Controller{},
 				Insights:       &insights.Controller{},

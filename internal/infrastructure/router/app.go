@@ -8,6 +8,7 @@ import (
 	clustersSvc "github.com/thekrauss/kubemanager/internal/modules/clusters/service"
 	egressSvc "github.com/thekrauss/kubemanager/internal/modules/egress/service"
 	storageActivities "github.com/thekrauss/kubemanager/internal/modules/storages3/activities"
+	vpcSvc "github.com/thekrauss/kubemanager/internal/modules/vpc/service"
 	"net/http"
 	"os"
 	"os/signal"
@@ -84,7 +85,9 @@ type App struct {
 	// kubeResolver : client du cluster de chaque projet (kube()).
 	kubeResolver k8sprovider.Resolver
 	// egress : IP de sortie dédiée (ADR 0014), partagé API et worker.
-	egress              *egressSvc.Service
+	egress *egressSvc.Service
+	// vpc : réseau privé des projets étendu à leurs VPS (ADR 0019).
+	vpc                 *vpcSvc.Service
 	Cache               cache.CacheRedis
 	AuthCache           cache.AuthCache
 	Temporal            TemporalComponents

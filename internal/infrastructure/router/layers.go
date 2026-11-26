@@ -246,6 +246,7 @@ func (a *App) initDomainLayers() error {
 		StorageS3:      a.newStorageS3Controller(),
 		Network:        a.newNetworkController(),
 		Egress:         a.newEgressController(),
+		VPC:            a.newVPCController(),
 		Addons:         a.newAddonsController(),
 		DiskUsage:      a.newDiskUsageController(),
 		DiskResize:     a.newDiskResizeController(),

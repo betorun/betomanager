@@ -9,6 +9,7 @@ import (
 	egressDomain "github.com/thekrauss/kubemanager/internal/modules/egress/domain"
 	egressRepo "github.com/thekrauss/kubemanager/internal/modules/egress/repository"
 	orgDomain "github.com/thekrauss/kubemanager/internal/modules/organizations/domain"
+	vpcDomain "github.com/thekrauss/kubemanager/internal/modules/vpc/domain"
 
 	clustersDomain "github.com/thekrauss/kubemanager/internal/modules/clusters/domain"
 	clustersRepo "github.com/thekrauss/kubemanager/internal/modules/clusters/repository"
@@ -312,6 +313,17 @@ var sentinelErrors = []sentinelMapping{
 	{clustersDomain.ErrClusterHasProjects, http.StatusConflict, "CLUSTER_HAS_PROJECTS", false},
 	{clustersDomain.ErrInvalidSetting, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{clustersDomain.ErrInvalidEgressGateway, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	// VPC (ADR 0019) : codes sans rien de la mise en œuvre.
+	{vpcDomain.ErrUnavailable, http.StatusServiceUnavailable, "VPC_UNAVAILABLE", false},
+	{vpcDomain.ErrRegionMismatch, http.StatusConflict, "VPC_REGION_MISMATCH", false},
+	{vpcDomain.ErrRangeExhausted, http.StatusConflict, "VPC_RANGE_EXHAUSTED", false},
+	{vpcDomain.ErrNotAttached, http.StatusNotFound, "VPC_NOT_ATTACHED", false},
+	{vpcDomain.ErrVPSNotReady, http.StatusConflict, "VPS_NOT_READY", false},
+	{vpcDomain.ErrInvalidEnrollment, http.StatusBadRequest, "VPC_ENROLLMENT_INVALID", false},
+	{vpcDomain.ErrNotEnrollable, http.StatusConflict, "VPC_ENROLLMENT_NOT_NEEDED", false},
+	{vpcDomain.ErrInvalidPublicKey, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{vpcDomain.ErrTooManyRules, http.StatusBadRequest, "FIREWALL_TOO_MANY_RULES", false},
+	{vpcDomain.ErrInvalidRule, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{egressDomain.ErrAddressNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{egressDomain.ErrProjectNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{egressDomain.ErrAddressExists, http.StatusConflict, "ALREADY_EXISTS", false},
