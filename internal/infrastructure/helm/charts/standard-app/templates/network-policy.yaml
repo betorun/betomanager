@@ -75,6 +75,30 @@ spec:
               {{- include "standard-app.projectSelector" . | nindent 14 }}
     {{- end }}
 
+    {{- with .Values.networkPolicy.egress.ingressController }}
+    {{- if .ports }}
+    # Adresses publiques du cluster (« hairpin ») : un conteneur qui appelle
+    # l'adresse publique d'un conteneur web du même cluster (le sien ou celui
+    # d'un autre client) arrive, après traduction de l'IP de l'équilibreur par
+    # le réseau du cluster, sur le contrôleur d'entrée. La règle Internet exclut
+    # les adresses privées : sans celle-ci, l'appel expire. Ports d'entrée du
+    # contrôleur seulement (ni tableau de bord ni métriques) : exactement ce
+    # qu'un client d'Internet peut déjà joindre.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{ $.Values.networkPolicy.ingressNSLabelKey }}: {{ $.Values.networkPolicy.ingressNSLabelValue }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .podLabels | nindent 14 }}
+      ports:
+        {{- range .ports }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+
     {{- if .Values.networkPolicy.egress.projectDatabases }}
     # Bases gérées du projet (CloudNativePG, même espace de noms) : Postgres
     # seulement. La règle Internet ci-dessous exclut les adresses privées.

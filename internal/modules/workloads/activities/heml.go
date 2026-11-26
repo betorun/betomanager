@@ -471,6 +471,8 @@ func buildHelmValues(input InstallWorkloadInput) map[string]any {
 				"enabled":     true,
 				"allowDNS":    true,
 				"publicPorts": defaultEgressPublicPorts,
+				// Appels vers une adresse publique du cluster (hairpin).
+				"ingressController": ingressControllerTarget(fallback(input.IngressClass, defaultIngressClass)),
 			},
 		},
 		// tmpfs uniquement si rootfs read-only : sinon un emptyDir sur /var/run
@@ -596,6 +598,30 @@ func defaultIfEmptyKind(k string) string {
 // (subnets privés exclus par le chart) : ceux de la politique réseau des
 // projets (network/domain.EgressPorts), affichée au client.
 var defaultEgressPublicPorts = netDomain.EgressPorts
+
+// ingressControllerTarget : pods du contrôleur d'entrée et leurs ports
+// d'entrée vus après traduction de l'IP de l'équilibreur (ports des
+// conteneurs, pas ceux du Service). Classe inconnue : aucune règle, rien
+// n'est ouvert au hasard.
+func ingressControllerTarget(class string) map[string]any {
+	switch class {
+	case "traefik":
+		// Chart traefik de k3s : entrées web (8000) et websecure (8443).
+		return map[string]any{
+			"podLabels": map[string]any{"app.kubernetes.io/name": "traefik"},
+			"ports":     []any{8000, 8443},
+		}
+	case "nginx":
+		return map[string]any{
+			"podLabels": map[string]any{
+				"app.kubernetes.io/name":      "ingress-nginx",
+				"app.kubernetes.io/component": "controller",
+			},
+			"ports": []any{80, 443},
+		}
+	}
+	return map[string]any{}
+}
 
 func fallback(s, def string) string {
 	if s == "" {
