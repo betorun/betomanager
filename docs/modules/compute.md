@@ -60,6 +60,8 @@ double authentification récente) :
    DNS, unique dans le projet), clé SSH (ed25519, ecdsa, RSA ≥ 2048 bits ;
    une seule, commentaire retiré), offre vendable à cet emplacement avec ce
    système, prix annoncé = prix du moment (`VPS_PRICE_CHANGED` sinon) ;
+   `private_network: true` : réseau privé du projet possible pour ce VPS
+   (`VPC_UNAVAILABLE`, `VPC_REGION_MISMATCH` sinon ; voir [module vpc](vpc.md)) ;
 2. **une transaction** : VPS `pending`, débit du premier mois sur le solde
    payé (référence `compute:vps:<id>:<date>`, idempotente ; jamais les
    crédits offerts ; postpayé : dans le plafond), demande `vm.create`
@@ -74,7 +76,8 @@ PlaceOrder (une seule tentative : jamais deux commandes payées)
   → paiement par le moyen par défaut du compte
 OrderState toutes les minutes, 6 h au plus → identifiant du VPS (serviceName)
 Ready (existe, aucune opération en cours), 2 h au plus
-Rebuild : système de l'offre, clé du client, doNotSendPassword (aucun mot de passe par e-mail)
+Rebuild : système de l'offre, clé du client, doNotSendPassword (aucun mot de passe par e-mail),
+  script du premier démarrage : port 25 fermé, puis inscription au réseau privé si demandée
 Task jusqu'à « done », 1 h au plus → running, adresses relevées
 ```
 

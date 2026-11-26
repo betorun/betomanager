@@ -46,6 +46,11 @@ rules:
   - apiGroups: [""]
     resources: [pods/log, events]
     verbs: [get, list, watch]
+  # État de la passerelle du réseau privé d'un projet (GET /status du pod,
+  # ADR 0019) : lu par le mandataire de l'API Kubernetes.
+  - apiGroups: [""]
+    resources: [pods/proxy]
+    verbs: [get]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, list, watch, create, update, patch, delete]

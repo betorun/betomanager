@@ -13,6 +13,7 @@ import (
 	billingDomain "github.com/thekrauss/kubemanager/internal/modules/billing/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/compute/domain"
 	legalContract "github.com/thekrauss/kubemanager/internal/modules/legal/contract"
+	vpcDomain "github.com/thekrauss/kubemanager/internal/modules/vpc/domain"
 )
 
 // DefaultProvider : fournisseur des nouveaux VPS.
@@ -29,6 +30,9 @@ type OrderRequest struct {
 	SSHPublicKey   string `json:"ssh_public_key" binding:"required" description:"Clé publique SSH installée sur le VPS (aucun mot de passe n'est créé)"`
 	// MonthlyPrice : prix annoncé au client ; refusé s'il a changé depuis.
 	MonthlyPrice int64 `json:"monthly_price" binding:"required" description:"Prix mensuel affiché au client, dans la monnaie de l'organisation"`
+	// PrivateNetwork : rattacher le VPS au réseau privé de son projet dès
+	// son premier démarrage (case cochée par défaut dans la console).
+	PrivateNetwork bool `json:"private_network" description:"Rattacher le VPS au réseau privé (VPC) de son projet dès son premier démarrage"`
 }
 
 // Order : débite le premier mois et dépose la demande de création, ensemble.
@@ -82,6 +86,14 @@ func (s *Service) Order(ctx context.Context, req OrderRequest, by string) (*doma
 	if err := s.checkOrderAllowed(ctx, org, offer.Code, location); err != nil {
 		return nil, err
 	}
+	if req.PrivateNetwork {
+		if s.VPC == nil {
+			return nil, vpcDomain.ErrUnavailable
+		}
+		if err := s.VPC.CheckOrder(ctx, project, DefaultProvider, location); err != nil {
+			return nil, err
+		}
+	}
 
 	now := s.now()
 	id := uuid.New()
@@ -92,6 +104,7 @@ func (s *Service) Order(ctx context.Context, req OrderRequest, by string) (*doma
 		ID: id, OrganizationID: org, ProjectID: project, Name: name, Offer: offer.Code, Location: location, Image: image,
 		Provider: DefaultProvider, State: domain.StatePending, SSHKeyFingerprint: key.Fingerprint, Version: 1,
 		PaidUntil: &until, MonthlyPrice: price, Currency: currency, CreatedAt: now, UpdatedAt: now,
+		PrivateNetwork: req.PrivateNetwork,
 	}
 	payload, err := json.Marshal(domain.CreatePayload{SSHPublicKey: key.Line, Period: period, AmountMilli: amount})
 	if err != nil {

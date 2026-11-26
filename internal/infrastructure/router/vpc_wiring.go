@@ -3,9 +3,11 @@ package router
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/loopfz/gadgeto/tonic"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/thekrauss/kubemanager/internal/iam"
 	"github.com/thekrauss/kubemanager/internal/middleware/security"
@@ -13,6 +15,7 @@ import (
 	computeDomain "github.com/thekrauss/kubemanager/internal/modules/compute/domain"
 	computeRepo "github.com/thekrauss/kubemanager/internal/modules/compute/repository"
 	"github.com/thekrauss/kubemanager/internal/modules/vpc"
+	"github.com/thekrauss/kubemanager/internal/modules/vpc/backend/tunnel"
 	vpcDomain "github.com/thekrauss/kubemanager/internal/modules/vpc/domain"
 	vpcRepo "github.com/thekrauss/kubemanager/internal/modules/vpc/repository"
 	vpcSvc "github.com/thekrauss/kubemanager/internal/modules/vpc/service"
@@ -40,8 +43,9 @@ func (c vpcClusters) ProjectCluster(ctx context.Context, project uuid.UUID) (vpc
 }
 
 // vpcService : réseau privé des projets étendu à leurs VPS (ADR 0019).
-// Lot 1 : aucune mise en œuvre branchée ; rattacher répond VPC_UNAVAILABLE
-// jusqu'au lot 2 (tunnel) et à Proxmox (réseau natif).
+// Mise en œuvre « tunnel » (lot 2) si l'image de la passerelle et l'URL
+// publique de l'API sont configurées ; sinon rattacher répond
+// VPC_UNAVAILABLE. Le réseau natif (Proxmox) viendra s'ajouter ici.
 func (a *App) vpcService() *vpcSvc.Service {
 	if a.vpc != nil {
 		return a.vpc
@@ -49,14 +53,64 @@ func (a *App) vpcService() *vpcSvc.Service {
 	if a.DB == nil {
 		return nil
 	}
+	store := &vpcRepo.Store{DB: a.DB}
+	registry := &clustersRepo.RegistryStore{DB: a.DB}
 	a.vpc = &vpcSvc.Service{
-		Store:    &vpcRepo.Store{DB: a.DB},
+		Store:    store,
 		Machines: &computeRepo.GormStore{DB: a.DB},
-		Clusters: vpcClusters{store: &clustersRepo.RegistryStore{DB: a.DB}, defaultID: a.clusterRegistry().DefaultID},
+		Clusters: vpcClusters{store: registry, defaultID: a.clusterRegistry().DefaultID},
 		Backends: []vpcDomain.VPCBackend{},
 		RegionOf: func(v *computeDomain.VPS) string { return computeDomain.LocationRegion(v.Location) },
+		APIURL:   a.Config.VPCAPIURL(),
+		Logger:   a.Logger,
+	}
+	if t := a.vpcTunnel(store, registry); t != nil {
+		a.vpc.Backends = append(a.vpc.Backends, t)
 	}
 	return a.vpc
+}
+
+// vpcTunnel : passerelle par projet (nil si non configurée). Les clients
+// des clusters ne sont ouverts qu'au premier besoin (jamais en mode compute,
+// qui ne prépare le réseau qu'en base).
+func (a *App) vpcTunnel(store *vpcRepo.Store, registry *clustersRepo.RegistryStore) *tunnel.Backend {
+	image := strings.TrimSpace(a.Config.VPC.GatewayImage)
+	if image == "" || a.Config.VPCAPIURL() == "" {
+		return nil
+	}
+	var routes []string
+	for _, r := range strings.Split(a.Config.VPC.ClusterRoutes, ",") {
+		if r = strings.TrimSpace(r); r != "" {
+			routes = append(routes, r)
+		}
+	}
+	return &tunnel.Backend{
+		Image:  image,
+		Routes: routes,
+		Kube: func(ctx context.Context, clusterID string) (kubernetes.Interface, error) {
+			p, err := a.kube().ForCluster(ctx, clusterID)
+			if err != nil {
+				return nil, err
+			}
+			return p.Client, nil
+		},
+		Namespace: store.Namespace,
+		Endpoint: func(ctx context.Context, clusterID string) (string, error) {
+			if cl, err := registry.Get(ctx, clusterID); err == nil && cl != nil && cl.IngressTarget != "" {
+				return cl.IngressTarget, nil
+			}
+			return strings.TrimSpace(a.Config.Kubernetes.IngressTarget), nil
+		},
+	}
+}
+
+// startVPCReconcile : réseaux privés alignés sur la base (worker).
+func (a *App) startVPCReconcile(ctx context.Context) {
+	s := a.vpcService()
+	if s == nil || len(s.Backends) == 0 {
+		return
+	}
+	a.goWith(ctx, "vpc-reconcile", func(ctx context.Context) { s.RunReconcile(ctx, vpcSvc.DefaultReconcileEvery) })
 }
 
 func (a *App) newVPCController() *vpc.Controller {
@@ -96,4 +150,9 @@ func addVPCRoutes(app *App) {
 	RootGroup.NewGroup("/vpc/enroll", "Inscription d'un VPS au réseau privé").Internal().
 		AddRoute("", http.MethodPost, "Inscription d'un VPS (jeton d'inscription et clé publique générée sur le VPS)",
 			Public(), tonic.Handler(ctrl.Enroll, http.StatusOK))
+	// Script d'inscription (sans jeton : donné en argument par la commande
+	// rendue au rattachement).
+	RootGroup.NewGroup(vpcSvc.EnrollScriptPath, "Script d'inscription d'un VPS au réseau privé").Internal().
+		AddRoute("", http.MethodGet, "Script d'inscription d'un VPS au réseau privé (à lancer en root, jeton en argument)",
+			Public(), ctrl.Script)
 }

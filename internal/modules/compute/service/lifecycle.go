@@ -101,7 +101,14 @@ func (s *Service) Act(ctx context.Context, org, id uuid.UUID, action string, rei
 			return nil, err
 		}
 	}
-	return s.enqueueOp(ctx, v, spec.kind, spec.op, payload, by, nil, nil)
+	out, err := s.enqueueOp(ctx, v, spec.kind, spec.op, payload, by, nil, nil)
+	if err == nil && action == ActionReinstall && s.VPC != nil {
+		// Réseau privé : la clé du système effacé ne vaut plus, tout de suite.
+		// Un échec ici est rattrapé à l'installation (clé retirée en base)
+		// puis par la réconciliation du réseau.
+		_ = s.VPC.BeforeReinstall(ctx, v.ID)
+	}
+	return out, err
 }
 
 // ready : contrôles communs à toute opération du client sur un VPS livré.

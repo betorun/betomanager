@@ -180,3 +180,47 @@ func parseAddrs(in []string) []netip.Addr {
 	}
 	return out
 }
+
+// Reset : rattachement gardé (même adresse) mais à refaire par le VPS : clé
+// retirée (disque effacé à la réinstallation), en attente d'inscription.
+func (s *Store) Reset(ctx context.Context, vps uuid.UUID) error {
+	return s.DB.WithContext(ctx).Model(&domain.Attachment{}).Where("vps_id = ?", vps).
+		Updates(map[string]any{"state": domain.StatePending, "public_key": "", "attached_at": nil}).Error
+}
+
+// SetWanted : choix du client retenu sur le VPS (réseau privé voulu ou non),
+// relu à chaque installation.
+func (s *Store) SetWanted(ctx context.Context, vps uuid.UUID, wanted bool) error {
+	return s.DB.WithContext(ctx).Table("compute_vps").Where("id = ?", vps).Update("private_network", wanted).Error
+}
+
+// Networks : tous les VPC (réconciliation).
+func (s *Store) Networks(ctx context.Context) ([]domain.Network, error) {
+	var out []domain.Network
+	return out, s.DB.WithContext(ctx).Order("project_id").Find(&out).Error
+}
+
+// Namespace : espace Kubernetes du projet ("" s'il n'existe pas).
+func (s *Store) Namespace(ctx context.Context, project uuid.UUID) (string, error) {
+	var ns string
+	err := s.DB.WithContext(ctx).Table("projects").Where("id = ?", project).Select("namespace").Scan(&ns).Error
+	return ns, err
+}
+
+// IfEmpty : fn exécutée sous le verrou consultatif du projet (celui de
+// Attach), seulement si le projet n'a aucun VPS rattaché.
+func (s *Store) IfEmpty(ctx context.Context, project uuid.UUID, fn func() error) error {
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext('vpc:project:' || ?::text))`, project.String()).Error; err != nil {
+			return err
+		}
+		var n int64
+		if err := tx.Model(&domain.Attachment{}).Where("project_id = ?", project).Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			return nil
+		}
+		return fn()
+	})
+}

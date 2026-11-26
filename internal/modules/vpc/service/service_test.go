@@ -23,6 +23,50 @@ type fakeStore struct {
 	nets  map[uuid.UUID]*domain.Network
 	atts  map[uuid.UUID]*domain.Attachment
 	enrol map[string]*domain.Enrollment
+	vms   fakeMachines
+}
+
+func (f *fakeStore) Reset(_ context.Context, v uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if a := f.atts[v]; a != nil {
+		a.State, a.PublicKey, a.AttachedAt = domain.StatePending, "", nil
+	}
+	return nil
+}
+
+func (f *fakeStore) SetWanted(_ context.Context, v uuid.UUID, wanted bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if m := f.vms[v]; m != nil {
+		m.PrivateNetwork = wanted
+	}
+	return nil
+}
+
+func (f *fakeStore) Networks(context.Context) ([]domain.Network, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []domain.Network{}
+	for _, n := range f.nets {
+		out = append(out, *n)
+	}
+	return out, nil
+}
+
+func (f *fakeStore) IfEmpty(_ context.Context, p uuid.UUID, fn func() error) error {
+	f.mu.Lock()
+	n := 0
+	for _, a := range f.atts {
+		if a.ProjectID == p {
+			n++
+		}
+	}
+	f.mu.Unlock()
+	if n > 0 {
+		return nil
+	}
+	return fn()
 }
 
 func newFakeStore() *fakeStore {
@@ -180,7 +224,9 @@ func newFixture(t *testing.T, enrollment bool) *fixture {
 	t.Helper()
 	f := &fixture{backend: &memory.Backend{Enrollment: enrollment}, org: uuid.New(), project: uuid.New(), vms: fakeMachines{},
 		now: time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC)}
-	f.svc = &Service{Store: newFakeStore(), Machines: f.vms, Clusters: fakeClusters{Cluster{ID: "c1", Provider: "ovh", Region: "eu-west-gra"}},
+	store := newFakeStore()
+	store.vms = f.vms
+	f.svc = &Service{Store: store, Machines: f.vms, Clusters: fakeClusters{Cluster{ID: "c1", Provider: "ovh", Region: "eu-west-gra"}},
 		Backends: []domain.VPCBackend{f.backend},
 		RegionOf: func(v *computeDomain.VPS) string { return "eu-west-" + v.Location },
 		Now:      func() time.Time { return f.now }}

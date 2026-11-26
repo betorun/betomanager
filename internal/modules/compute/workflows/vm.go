@@ -471,7 +471,11 @@ func (a *Activities) Reinstall(ctx context.Context, vpsID, providerID, image, ss
 	if name == "" {
 		return "", nonRetryable("image not sold with this offer", errTypeProvider, nil)
 	}
-	task, err := p.Rebuild(ctx, providerID, name, sshKey, installScript(v))
+	script, err := a.firstBootScript(ctx, v)
+	if err != nil {
+		return "", err
+	}
+	task, err := p.Rebuild(ctx, providerID, name, sshKey, script)
 	if err != nil {
 		return "", nonRetryable(err.Error(), errTypeProvider, err)
 	}
@@ -505,7 +509,11 @@ func (a *Activities) Rebuild(ctx context.Context, vpsID, providerID, sshKey stri
 	if err != nil {
 		return "", err
 	}
-	task, err := p.Rebuild(ctx, providerID, o.ImageMap()[v.Image], sshKey, installScript(v))
+	script, err := a.firstBootScript(ctx, v)
+	if err != nil {
+		return "", err
+	}
+	task, err := p.Rebuild(ctx, providerID, o.ImageMap()[v.Image], sshKey, script)
 	if err != nil {
 		return "", nonRetryable(err.Error(), errTypeProvider, err)
 	}
@@ -691,6 +699,24 @@ func installScript(v *domain.VPS) string {
 		return ""
 	}
 	return domain.SMTPBlockScript
+}
+
+// firstBootScript : script du premier démarrage : port 25 (installScript),
+// puis inscription au réseau privé si le VPS le demande (sous-shell : son
+// échec n'arrête rien d'autre).
+func (a *Activities) firstBootScript(ctx context.Context, v *domain.VPS) (string, error) {
+	base := installScript(v)
+	if a.VPC == nil {
+		return base, nil
+	}
+	vpc, err := a.VPC.PrepareInstall(ctx, v.ID)
+	if err != nil || vpc == "" {
+		return base, err
+	}
+	if base == "" {
+		base = "#!/bin/sh\n"
+	}
+	return base + "\n# Réseau privé du projet\n(\n" + vpc + "\n)\n", nil
 }
 
 // FailCreate : VPS en échec, mois remboursé (idempotent par référence).

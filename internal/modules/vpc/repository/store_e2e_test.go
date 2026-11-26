@@ -191,3 +191,58 @@ func TestE2E_VPCStore_Enrollment(t *testing.T) {
 	assert.Equal(t, "pubkey", after.PublicKey)
 	require.NotNil(t, after.AttachedAt)
 }
+
+func TestE2E_VPCStore_Lifecycle(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	p := e.project(t, 0)
+	v := e.vps(t, p, "web")
+	_, a, err := e.attach(t, p, v)
+	require.NoError(t, err)
+
+	ns, err := e.store.Namespace(ctx, p)
+	require.NoError(t, err)
+	assert.Equal(t, "km-"+e.sfx+"-a", ns)
+
+	at := time.Now().UTC()
+	require.NoError(t, e.store.SetState(ctx, v, domain.StateAttached, "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=", at))
+	require.NoError(t, e.store.Reset(ctx, v))
+	got, err := e.store.Attachment(ctx, v)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatePending, got.State)
+	assert.Empty(t, got.PublicKey)
+	assert.Nil(t, got.AttachedAt)
+	assert.Equal(t, a.Address, got.Address, "adresse gardée")
+
+	wanted := func() bool {
+		var w bool
+		require.NoError(t, e.db.Raw(`SELECT private_network FROM compute_vps WHERE id = ?`, v).Scan(&w).Error)
+		return w
+	}
+	assert.False(t, wanted())
+	require.NoError(t, e.store.SetWanted(ctx, v, true))
+	assert.True(t, wanted())
+	require.NoError(t, e.store.SetWanted(ctx, v, false))
+	assert.False(t, wanted())
+
+	list, err := e.store.Networks(ctx)
+	require.NoError(t, err)
+	found := false
+	for _, n := range list {
+		found = found || n.ProjectID == p
+	}
+	assert.True(t, found)
+}
+
+func TestE2E_VPCStore_IfEmpty(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	p := e.project(t, 0)
+	ran := 0
+	require.NoError(t, e.store.IfEmpty(ctx, p, func() error { ran++; return nil }))
+	assert.Equal(t, 1, ran, "aucun VPS : exécuté")
+	_, _, err := e.attach(t, p, e.vps(t, p, "web"))
+	require.NoError(t, err)
+	require.NoError(t, e.store.IfEmpty(ctx, p, func() error { ran++; return nil }))
+	assert.Equal(t, 1, ran, "un VPS rattaché : rien démonté")
+}

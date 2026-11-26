@@ -126,7 +126,15 @@ type Activities struct {
 	Mailbox  service.RescueMailbox   // e-mails du fournisseur (nil : non configurée)
 	Sealer   service.Sealer          // chiffrement des secrets
 	Events   service.Events          // temps réel (nil : aucun)
-	Now      func() time.Time
+	// VPC : inscription au réseau privé au premier démarrage (nil : aucune).
+	VPC InstallHook
+	Now func() time.Time
+}
+
+// InstallHook : script du réseau privé (module vpc) glissé dans
+// l'installation ; en base seulement, sans accès aux clusters.
+type InstallHook interface {
+	PrepareInstall(ctx context.Context, vps uuid.UUID) (string, error)
 }
 
 func (a *Activities) now() time.Time {

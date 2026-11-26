@@ -558,6 +558,15 @@ par défaut sur le compte du fournisseur, un petit VPS commandé puis résilié)
     # « provider: true » : clé lue ; avertissement « no technical mailbox » si
     # COMPUTE_IMAP_* est vide (seul le mot de passe du mode secours manque).
 
+Réseau privé des VPS (ADR 0019, docs/modules/vpc.md) : VPC_GATEWAY_IMAGE dans
+.env.prod (image thekrauss/vpc-gateway:<sha> de la CI) ; vide, le rattachement
+répond VPC_UNAVAILABLE. Avant de le poser : rôle du cluster à jour
+(kubectl apply -f deploy/k8s/rbac.yaml : droit pods/proxy), ports UDP 30000-32767 (NodePort)
+ouverts vers le serveur 2 (pare-feu de l'hébergeur et de la machine), module
+du tunnel présent dans le noyau du serveur 2 (Ubuntu : oui). Les VPS joignent
+l'API par son URL publique (VPC_PUBLIC_API_URL, sinon déduite de l'émetteur
+STS) ; l'adresse vue par l'API doit être la vraie (proxies de confiance, § 8).
+
 Back-office (API APP_MODE=platform, profil admin) : AUCUN nom public. L'API
 écoute sur 127.0.0.1:8081 du serveur 1 ; la console de l'équipe tourne sur le
 poste de l'opérateur et la joint par un tunnel SSH.

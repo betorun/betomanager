@@ -47,7 +47,17 @@ type Service struct {
 	Sealer Sealer
 	// Events nil : aucun événement temps réel.
 	Events Events
-	Now    func() time.Time
+	// VPC nil : réseau privé des VPS indisponible sur ce déploiement.
+	VPC VPCHooks
+	Now func() time.Time
+}
+
+// VPCHooks : réseau privé (VPC) des VPS (module vpc, ADR 0019).
+type VPCHooks interface {
+	// CheckOrder : réseau privé possible pour ce VPS (avant tout débit).
+	CheckOrder(ctx context.Context, project uuid.UUID, provider, location string) error
+	// BeforeReinstall : accès au réseau privé coupé tout de suite.
+	BeforeReinstall(ctx context.Context, vps uuid.UUID) error
 }
 
 func (s *Service) now() time.Time {
