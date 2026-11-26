@@ -52,6 +52,12 @@ func TestCopilotFeatureMap(t *testing.T) {
 	assert.Contains(t, out, "request_egress_ip")
 	assert.Contains(t, out, "/network")
 
+	// Réseau privé des VPS (ADR 0019) : lecture par outil, rattachement à
+	// l'écran (jeton d'inscription montré une seule fois).
+	out = find("relier mon vps au reseau prive")
+	assert.Contains(t, out, "get_project_vpc")
+	assert.Contains(t, out, "/vps")
+
 	out = find("factures")
 	assert.Contains(t, out, "list_billing_documents")
 
