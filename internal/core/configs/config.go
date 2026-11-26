@@ -714,6 +714,14 @@ type FrontendConfig struct {
 	// e-mails envoyés à l'équipe. Vide : celle du process en mode platform,
 	// aucun e-mail à l'équipe depuis les autres modes.
 	PlatformURL string `mapstructure:"platform_url"`
+	// MobileRedirectURIs : adresses de retour exactes de l'application mobile
+	// du back-office (ADR 0020) : lien d'app vérifié en production
+	// (https://<console plateforme>/mobile/callback), schéma de l'app en
+	// local. Vide : connexion mobile fermée.
+	MobileRedirectURIs []string `mapstructure:"mobile_redirect_uris"`
+	// MobilePasskeyOrigins : origines WebAuthn de l'application mobile, pour
+	// ses passkeys (Android : « android:apk-key-hash:<empreinte> »).
+	MobilePasskeyOrigins []string `mapstructure:"mobile_passkey_origins"`
 }
 
 type RolesConfig struct {

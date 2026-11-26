@@ -207,6 +207,11 @@ services:
       # L'API des clients reste seule à migrer.
       - KUBEMANAGER_DATABASE_SKIP_MIGRATIONS=true
       - KUBEMANAGER_SERVER_ALLOWED_ORIGINS=http://localhost:3001,http://127.0.0.1:3001
+      # Application mobile du back-office (ADR 0020) : consentement sur la
+      # console plateforme ; en local, retour par le schéma de l'app (la
+      # production n'accepte qu'un lien d'app vérifié en HTTPS).
+      - KUBEMANAGER_FRONTEND_PLATFORM_URL=http://localhost:3001
+      - KUBEMANAGER_FRONTEND_MOBILE_REDIRECT_URIS=com.bisocloud.backoffice://callback
     volumes:
       - ./internal/core/configs:/app/internal/core/configs:ro
       - ./k3s-config.yaml:/app/k3s-config.yaml:ro

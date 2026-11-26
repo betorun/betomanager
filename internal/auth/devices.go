@@ -79,6 +79,9 @@ func DescribeDevice(kind, userAgent string) (fingerprint, label string) {
 	if kind == KindCLI || strings.HasPrefix(ua, "betorun-cli") {
 		kind, client = KindCLI, "CLI betorun"
 	}
+	if kind == KindMobile {
+		client = "App back-office"
+	}
 	system := systemOf(ua)
 	label = client
 	if system != "" {

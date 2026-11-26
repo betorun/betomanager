@@ -32,10 +32,17 @@ import (
 // Avec un second facteur actif, la confirmation exige une vérification
 // récente dans la session web (STEP_UP_REQUIRED sinon) : la session CLI
 // ouverte est alors de niveau « second facteur vérifié ».
+//
+// L'application mobile du back-office (ADR 0020 §4) suit le même flux PKCE,
+// avec deux différences : son adresse de retour est une adresse exacte de la
+// configuration (lien d'app vérifié), pas 127.0.0.1, et le second facteur
+// y est obligatoire. Sa page de consentement est sur la console plateforme
+// et sa session est de type « mobile ».
 
 const (
-	pageCLIAuthorize = "/cli/authorize"
-	pageDevice       = "/device"
+	pageCLIAuthorize    = "/cli/authorize"
+	pageMobileAuthorize = "/mobile/authorize"
+	pageDevice          = "/device"
 
 	cliCodeTTL        = 5 * time.Minute
 	deviceTTL         = 10 * time.Minute
@@ -78,6 +85,7 @@ type cliCode struct {
 	MFA         bool      `json:"mfa"`
 	Challenge   string    `json:"challenge"`
 	RedirectURI string    `json:"redirect_uri"`
+	Mobile      bool      `json:"mobile,omitempty"`
 }
 
 type deviceState struct {
@@ -106,14 +114,36 @@ func (s *service) cliReady() error {
 	return nil
 }
 
-func validCLIRedirect(redirectURI, challenge string) error {
-	if !cliRedirectRe.MatchString(strings.TrimSpace(redirectURI)) {
-		return ErrCLIRedirectURI
+func redirectSet(uris []string) map[string]bool {
+	set := map[string]bool{}
+	for _, u := range uris {
+		if u = strings.TrimSpace(u); u != "" {
+			set[u] = true
+		}
+	}
+	return set
+}
+
+// checkRedirect : adresse de retour de la CLI (boucle locale) ou de
+// l'application mobile (adresse exacte de la configuration) ; mobile vaut
+// true pour la seconde.
+func (s *service) checkRedirect(redirectURI, challenge string) (mobile bool, err error) {
+	switch {
+	case cliRedirectRe.MatchString(strings.TrimSpace(redirectURI)):
+	case s.mobileRedirects[redirectURI]:
+		mobile = true
+	default:
+		return false, ErrCLIRedirectURI
 	}
 	if !pkceChallengeRe.MatchString(challenge) {
-		return ErrInvalidPKCE
+		return false, ErrInvalidPKCE
 	}
-	return nil
+	return mobile, nil
+}
+
+// mobileLink : page de la console plateforme (à défaut, de la console).
+func (s *service) mobileLink(page string) string {
+	return strings.TrimRight(firstNonBlank(s.platformURL, s.frontendBaseURL), "/") + page
 }
 
 // CLIAuthorizeURL : page de la console où la personne autorise la CLI.
@@ -121,18 +151,30 @@ func (s *service) CLIAuthorizeURL(ctx context.Context, q identitytypes.CLIAuthor
 	if err := s.cliReady(); err != nil {
 		return nil, err
 	}
-	if err := validCLIRedirect(q.RedirectURI, q.CodeChallenge); err != nil {
+	mobile, err := s.checkRedirect(q.RedirectURI, q.CodeChallenge)
+	if err != nil {
 		return nil, err
 	}
 	v := url.Values{"redirect_uri": {q.RedirectURI}, "code_challenge": {q.CodeChallenge}, "state": {q.State}}
-	return &identitytypes.URLResponse{URL: s.consoleLink(pageCLIAuthorize, "") + "?" + v.Encode()}, nil
+	page := s.consoleLink(pageCLIAuthorize, "")
+	if mobile {
+		page = s.mobileLink(pageMobileAuthorize)
+	}
+	return &identitytypes.URLResponse{URL: page + "?" + v.Encode()}, nil
 }
 
-// requireCLIConsent : avec un second facteur actif, vérification récente exigée.
-func (s *service) requireCLIConsent(ctx context.Context, userID, sessionID uuid.UUID) (bool, error) {
+// requireCLIConsent : avec un second facteur actif, vérification récente
+// exigée ; sans second facteur, refus si mustHaveFactor (application mobile).
+func (s *service) requireCLIConsent(ctx context.Context, userID, sessionID uuid.UUID, mustHaveFactor bool) (bool, error) {
 	hasFactor, err := s.factors.HasFactor(ctx, userID)
-	if err != nil || !hasFactor {
+	if err != nil {
 		return false, err
+	}
+	if !hasFactor {
+		if mustHaveFactor {
+			return false, ErrMobileNeedsMFA
+		}
+		return false, nil
 	}
 	if err := s.requireRecentMFA(ctx, userID, sessionID); err != nil {
 		return false, err
@@ -141,15 +183,17 @@ func (s *service) requireCLIConsent(ctx context.Context, userID, sessionID uuid.
 }
 
 // AuthorizeCLI : la personne connectée autorise la CLI ; renvoie l'adresse
-// de retour (127.0.0.1) avec le code à usage unique.
+// de retour (127.0.0.1, ou celle de l'application mobile) avec le code à
+// usage unique.
 func (s *service) AuthorizeCLI(ctx context.Context, userID, sessionID uuid.UUID, in identitytypes.CLIAuthorizeRequest) (*identitytypes.URLResponse, error) {
 	if err := s.cliReady(); err != nil {
 		return nil, err
 	}
-	if err := validCLIRedirect(in.RedirectURI, in.CodeChallenge); err != nil {
+	mobile, err := s.checkRedirect(in.RedirectURI, in.CodeChallenge)
+	if err != nil {
 		return nil, err
 	}
-	mfa, err := s.requireCLIConsent(ctx, userID, sessionID)
+	mfa, err := s.requireCLIConsent(ctx, userID, sessionID, mobile)
 	if err != nil {
 		return nil, err
 	}
@@ -157,11 +201,15 @@ func (s *service) AuthorizeCLI(ctx context.Context, userID, sessionID uuid.UUID,
 	if err != nil {
 		return nil, err
 	}
-	raw, _ := json.Marshal(cliCode{UserID: userID, MFA: mfa, Challenge: in.CodeChallenge, RedirectURI: in.RedirectURI})
+	raw, _ := json.Marshal(cliCode{UserID: userID, MFA: mfa, Challenge: in.CodeChallenge, RedirectURI: in.RedirectURI, Mobile: mobile})
 	if err := s.stateStore.SetValue(ctx, "auth:cli:code:"+digest(code), string(raw), cliCodeTTL); err != nil {
 		return nil, ErrAuthUnavailable
 	}
-	audit.Annotate(ctx, "cli", "authorized")
+	if mobile {
+		audit.Annotate(ctx, "mobile", "authorized")
+	} else {
+		audit.Annotate(ctx, "cli", "authorized")
+	}
 	v := url.Values{"code": {code}, "state": {in.State}}
 	return &identitytypes.URLResponse{URL: in.RedirectURI + "?" + v.Encode()}, nil
 }
@@ -187,21 +235,29 @@ func (s *service) ExchangeCLICode(ctx context.Context, in identitytypes.CLIToken
 		audit.Annotate(ctx, "cli", "pkce_mismatch")
 		return nil, ErrCLICodeInvalid
 	}
-	return s.openCLISession(ctx, c.UserID, c.MFA, cl)
+	kind := auth.KindCLI
+	if c.Mobile {
+		// La configuration a pu changer depuis l'autorisation.
+		if !s.mobileRedirects[c.RedirectURI] || !c.MFA {
+			return nil, ErrCLICodeInvalid
+		}
+		kind = auth.KindMobile
+	}
+	return s.openCLISession(ctx, c.UserID, c.MFA, kind, cl)
 }
 
-func (s *service) openCLISession(ctx context.Context, userID uuid.UUID, mfa bool, cl Client) (*identitytypes.AuthResponse, error) {
+func (s *service) openCLISession(ctx context.Context, userID uuid.UUID, mfa bool, kind string, cl Client) (*identitytypes.AuthResponse, error) {
 	amr := []string{auth.AMRPassword}
 	if mfa {
 		amr = append(amr, auth.AMROTP)
 	}
-	t, err := s.sessions.Create(ctx, auth.NewSession{UserID: userID, Kind: auth.KindCLI, AMR: amr, MFA: mfa,
+	t, err := s.sessions.Create(ctx, auth.NewSession{UserID: userID, Kind: kind, AMR: amr, MFA: mfa,
 		IP: cl.IP, UserAgent: cl.UserAgent})
 	if err != nil {
 		return nil, err
 	}
 	audit.Annotate(ctx, "user", "user:"+userID.String())
-	audit.Annotate(ctx, "login", "cli")
+	audit.Annotate(ctx, "login", kind)
 	return authResponse(t), nil
 }
 
@@ -316,7 +372,7 @@ func (s *service) ApproveDevice(ctx context.Context, userID, sessionID uuid.UUID
 		audit.Annotate(ctx, "cli", "device_denied")
 		return s.saveDevice(ctx, key, *st)
 	}
-	mfa, err := s.requireCLIConsent(ctx, userID, sessionID)
+	mfa, err := s.requireCLIConsent(ctx, userID, sessionID, false)
 	if err != nil {
 		return err
 	}
@@ -346,7 +402,7 @@ func (s *service) PollDevice(ctx context.Context, deviceCode string, cl Client) 
 		return nil, &DeviceError{Code: DeviceAccessDenied}
 	case deviceStatusApproved:
 		_ = s.stateStore.DeleteValue(ctx, "auth:device:"+key)
-		return s.openCLISession(ctx, st.UserID, st.MFA, cl)
+		return s.openCLISession(ctx, st.UserID, st.MFA, auth.KindCLI, cl)
 	}
 	now := time.Now()
 	tooFast := now.Sub(st.LastPoll) < deviceInterval

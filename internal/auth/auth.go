@@ -17,6 +17,10 @@ const (
 	// WebSessionTTL / CLISessionTTL : durée maximale d'une session, même active.
 	WebSessionTTL = 30 * 24 * time.Hour
 	CLISessionTTL = 90 * 24 * time.Hour
+	// MobileSessionTTL / MobileIdleTTL : application mobile du back-office
+	// (ADR 0020), plus courtes que la CLI : un téléphone se perd.
+	MobileSessionTTL = 30 * 24 * time.Hour
+	MobileIdleTTL    = 14 * 24 * time.Hour
 	// WebIdleTTL / CLIIdleTTL : session abandonnée (jeton de rafraîchissement inutilisé).
 	WebIdleTTL = 7 * 24 * time.Hour
 	CLIIdleTTL = 30 * 24 * time.Hour
@@ -32,6 +36,8 @@ const (
 const (
 	KindWeb = "web"
 	KindCLI = "cli"
+	// KindMobile : application mobile du back-office (ADR 0020).
+	KindMobile = "mobile"
 )
 
 // Méthodes d'authentification (claim amr, RFC 8176).

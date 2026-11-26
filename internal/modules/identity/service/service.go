@@ -39,6 +39,9 @@ var (
 	ErrMFANotConfigured           = errors.New("two-factor authentication is not configured on this platform")
 	ErrDeviceLoginDisabled        = errors.New("CLI login (device flow) is not enabled on this platform")
 	ErrCLIRedirectURI             = errors.New("CLI redirect_uri must be http://127.0.0.1:<port>/callback")
+	// ErrMobileNeedsMFA : l'application mobile du back-office exige un second
+	// facteur actif (ADR 0020 §4).
+	ErrMobileNeedsMFA = errors.New("set up two-factor authentication before connecting the mobile app")
 )
 
 type BootstrapPrincipal struct {
@@ -134,12 +137,18 @@ type StateStore interface {
 }
 
 type Deps struct {
-	Keycloak          keycloakadmin.KeycloakClient
-	Users             authrepos.AuthRepository
-	Projects          projectsSvc.IProjectService
-	ProjectMembers    authrepos.AuthRepository
-	OIDCClientID      string
-	FrontendBaseURL   string
+	Keycloak        keycloakadmin.KeycloakClient
+	Users           authrepos.AuthRepository
+	Projects        projectsSvc.IProjectService
+	ProjectMembers  authrepos.AuthRepository
+	OIDCClientID    string
+	FrontendBaseURL string
+	// PlatformURL : console de l'équipe, qui porte la page d'autorisation de
+	// l'application mobile (vide : FrontendBaseURL).
+	PlatformURL string
+	// MobileRedirects : adresses de retour acceptées de l'application mobile
+	// du back-office (ADR 0020), comparées à l'identique.
+	MobileRedirects   []string
 	SocialRedirectURI string          // redirect URI par défaut pour les flux sociaux
 	Cache             cache.AuthCache // legacy — conservé pour compat (non utilisé pour state)
 	StateStore        StateStore      // store distribué du state CSRF (fix H9 : Redis)
@@ -169,6 +178,8 @@ type service struct {
 	projectMembers    authrepos.AuthRepository
 	oidcClientID      string
 	frontendBaseURL   string
+	platformURL       string
+	mobileRedirects   map[string]bool
 	socialRedirectURI string
 	cache             cache.AuthCache
 	stateStore        StateStore
@@ -193,6 +204,8 @@ func NewService(deps Deps) Service {
 		projectMembers:    deps.ProjectMembers,
 		oidcClientID:      strings.TrimSpace(deps.OIDCClientID),
 		frontendBaseURL:   strings.TrimSpace(deps.FrontendBaseURL),
+		platformURL:       strings.TrimSpace(deps.PlatformURL),
+		mobileRedirects:   redirectSet(deps.MobileRedirects),
 		socialRedirectURI: strings.TrimSpace(deps.SocialRedirectURI),
 		cache:             deps.Cache,
 		stateStore:        deps.StateStore,

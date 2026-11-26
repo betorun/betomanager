@@ -26,7 +26,7 @@ func (a *App) authDeps(deps *identitySvc.Deps) error {
 	deps.Sessions = &auth.Sessions{DB: a.DB, Minter: a.STS}
 	deps.Factors = &auth.Factors{DB: a.DB, Sealer: sealer, Pepper: []byte(a.Config.IAM.APIKeyPepper)}
 	deps.Factors.Passkeys = &auth.Passkeys{DB: a.DB}
-	if wa, err := auth.NewWebAuthn(deps.FrontendBaseURL); err == nil {
+	if wa, err := auth.NewWebAuthn(deps.FrontendBaseURL, a.Config.Frontend.MobilePasskeyOrigins...); err == nil {
 		deps.Factors.Passkeys.WebAuthn = wa
 	} else {
 		a.Logger.Warnw("auth: passkeys disabled (console address missing or invalid)", "error", err)

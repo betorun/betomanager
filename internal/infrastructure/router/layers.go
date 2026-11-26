@@ -96,6 +96,8 @@ func (a *App) initDomainLayers() error {
 			ProjectMembers:    a.Repos.Auth,
 			OIDCClientID:      a.Config.Keycloak.ClientID,
 			FrontendBaseURL:   a.Config.Frontend.BaseURL,
+			PlatformURL:       a.Config.Frontend.PlatformURL,
+			MobileRedirects:   a.Config.Frontend.MobileRedirectURIs,
 			SocialRedirectURI: a.Config.Keycloak.SocialRedirectURI,
 			Cache:             a.AuthCache,
 			StateStore:        a.Cache, // Redis : cross-instance OK (fix H9)

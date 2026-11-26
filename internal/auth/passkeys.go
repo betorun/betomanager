@@ -68,7 +68,10 @@ type Passkeys struct {
 }
 
 // NewWebAuthn : partie de confiance = la console (son domaine et son origine).
-func NewWebAuthn(consoleURL string) (*webauthn.WebAuthn, error) {
+// appOrigins : origines en plus, celles de l'application mobile du
+// back-office (Android : « android:apk-key-hash:<empreinte du certificat> » ;
+// iOS signe avec l'origine HTTPS du domaine, déjà acceptée).
+func NewWebAuthn(consoleURL string, appOrigins ...string) (*webauthn.WebAuthn, error) {
 	consoleURL = strings.TrimRight(strings.TrimSpace(consoleURL), "/")
 	host := consoleURL
 	if i := strings.Index(host, "://"); i >= 0 {
@@ -81,13 +84,23 @@ func NewWebAuthn(consoleURL string) (*webauthn.WebAuthn, error) {
 		return nil, ErrPasskeyUnavailable
 	}
 	return webauthn.New(&webauthn.Config{
-		RPID: host, RPDisplayName: "betorun", RPOrigins: []string{consoleURL},
+		RPID: host, RPDisplayName: "betorun", RPOrigins: passkeyOrigins(consoleURL, appOrigins),
 		AttestationPreference: protocol.PreferNoAttestation,
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
 			ResidentKey: protocol.ResidentKeyRequirementRequired, RequireResidentKey: protocol.ResidentKeyRequired(),
 			UserVerification: protocol.VerificationRequired,
 		},
 	})
+}
+
+func passkeyOrigins(consoleURL string, appOrigins []string) []string {
+	out := []string{consoleURL}
+	for _, o := range appOrigins {
+		if o = strings.TrimSpace(o); o != "" && o != consoleURL {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 func (p *Passkeys) now() time.Time {

@@ -244,6 +244,11 @@ func (c *GlobalConfig) checkServer(v *configCheck) {
 	}
 	checkTrustedProxies(v, c.Server.TrustedProxies)
 	consoleURL("frontend.url", c.Frontend.BaseURL)
+	// Application mobile du back-office : lien d'app vérifié seulement, jamais
+	// un schéma d'app (un autre logiciel du téléphone peut le revendiquer).
+	for _, u := range c.Frontend.MobileRedirectURIs {
+		v.publicURL("frontend.mobile_redirect_uris", u)
+	}
 
 	if !c.RateLimit.Enabled || c.RateLimit.Limit <= 0 {
 		v.fail("rate_limit.enabled", "le rate limit doit rester actif en production (rate_limit.limit > 0)")

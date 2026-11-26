@@ -108,8 +108,11 @@ func (s *Sessions) now() time.Time {
 }
 
 func lifetimes(kind string) (idle, absolute time.Duration) {
-	if kind == KindCLI {
+	switch kind {
+	case KindCLI:
 		return CLIIdleTTL, CLISessionTTL
+	case KindMobile:
+		return MobileIdleTTL, MobileSessionTTL
 	}
 	return WebIdleTTL, WebSessionTTL
 }
@@ -131,7 +134,7 @@ func truncate(s string, n int) string {
 }
 
 func (s *Sessions) Create(ctx context.Context, in NewSession) (*Tokens, error) {
-	if in.Kind != KindCLI {
+	if in.Kind != KindCLI && in.Kind != KindMobile {
 		in.Kind = KindWeb
 	}
 	refresh, hash, err := newRefreshToken()
@@ -178,10 +181,10 @@ func (s *Sessions) Refresh(ctx context.Context, refreshToken string) (*Tokens, e
 	var rows []sessionRow
 	// Rotation atomique : une seule requête concurrente gagne.
 	err = db.Raw(`UPDATE auth_sessions SET previous_hash = refresh_hash, refresh_hash = ?, rotated_at = ?,
-			last_used_at = ?, idle_expires_at = CASE WHEN kind = ? THEN ?::timestamptz ELSE ?::timestamptz END
+			last_used_at = ?, idle_expires_at = CASE kind WHEN ? THEN ?::timestamptz WHEN ? THEN ?::timestamptz ELSE ?::timestamptz END
 		WHERE refresh_hash = ? AND revoked_at IS NULL AND expires_at > ? AND idle_expires_at > ?
 		RETURNING *`,
-		nextHash, now, now, KindCLI, now.Add(CLIIdleTTL), now.Add(WebIdleTTL),
+		nextHash, now, now, KindCLI, now.Add(CLIIdleTTL), KindMobile, now.Add(MobileIdleTTL), now.Add(WebIdleTTL),
 		hash, now, now).Scan(&rows).Error
 	if err != nil {
 		return nil, err

@@ -180,6 +180,7 @@ var sentinelErrors = []sentinelMapping{
 	{identitySvc.ErrIdentityServiceUnavailable, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", false},
 	{identitySvc.ErrMFANotConfigured, http.StatusConflict, "FAILED_PRECONDITION", false},
 	{identitySvc.ErrCLIRedirectURI, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{identitySvc.ErrMobileNeedsMFA, http.StatusConflict, "MFA_NOT_ENROLLED", false},
 	{identitySvc.ErrDeviceLoginDisabled, http.StatusNotImplemented, "UNIMPLEMENTED", false},
 
 	{authSvc.ErrUserAPIKeysRetired, http.StatusGone, "GONE", false},

@@ -127,6 +127,7 @@ Le backend parle **directement** à Google et GitHub (OAuth 2.0 / OIDC, `state` 
 - `betorun login --device` (machine sans navigateur) : codes device gérés par le backend (RFC 8628), page Next.js `/device`.
 - Step-up dans la CLI : code TOTP demandé dans le terminal (plus simple que le navigateur).
 - Les identifiants machine (fichier de clé, OIDC de CI, conteneur) ne changent pas : ils passent déjà par le STS.
+- Application mobile du back-office ([ADR 0020](../adr/0020-application-mobile-back-office.md) §4) : même flux PKCE, mais la page de consentement est `/mobile/authorize` sur la console plateforme (`frontend.platform_url`). L'adresse de retour est une adresse **exacte** de `frontend.mobile_redirect_uris` : un lien d'app vérifié en HTTPS en production, le schéma de l'app en local. Le second facteur est obligatoire (`MFA_NOT_ENROLLED` sinon). La session est de type `kind=mobile`, avec un maximum de 30 jours et 14 jours d'inactivité.
 
 ## 10. Page Sécurité (Next.js)
 
