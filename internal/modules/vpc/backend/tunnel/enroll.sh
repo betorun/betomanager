@@ -17,12 +17,12 @@ case "$TOKEN" in
   *) log "jeton d'inscription manquant"; exit 1 ;;
 esac
 
-if ! command -v wg >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+if ! command -v wg >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v ip >/dev/null 2>&1; then
   command -v apt-get >/dev/null 2>&1 || { log "système non pris en charge (apt-get absent)"; exit 1; }
   export DEBIAN_FRONTEND=noninteractive
   # Au premier démarrage, apt peut être occupé (cloud-init) : on réessaie.
   i=0
-  until apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq wireguard-tools curl >/dev/null 2>&1; do
+  until apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq wireguard-tools curl iproute2 >/dev/null 2>&1; do
     i=$((i + 1))
     [ "$i" -lt 20 ] || { log "installation des outils impossible"; exit 1; }
     sleep 15
@@ -41,7 +41,7 @@ RESP=$(curl -4 -fsS --retry 20 --retry-delay 15 --retry-connrefused --max-time 3
   exit 1
 }
 
-field() { printf '%s' "$RESP" | tr -d '\n' | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
+field() { printf '%s' "$RESP" | tr -d '\n' | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"; }
 ADDR=$(field address)
 ENDPOINT=$(field endpoint)
 PEER=$(field peer_public_key)
