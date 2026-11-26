@@ -106,15 +106,19 @@ func addClusterRoutes(app *App) {
 		cr := RootGroup.NewGroup("/admin/country-regions", "Admin — région suggérée selon le pays du client").Internal()
 		cr.AddRoute("", http.MethodGet, "Table pays → région suggérée, triée par pays",
 			list, tonic.Handler(reg.CountryRegions, http.StatusOK))
-		cr.AddRoute("/:country", http.MethodPut, "Associer une région à un pays (la région doit être celle d'au moins un cluster enregistré)",
+		cr.AddRoute("/:country", http.MethodPut, "Associer une région à un pays (la région doit être au catalogue)",
 			manage, tonic.Handler(reg.SetCountryRegion, http.StatusOK))
 		cr.AddRoute("/:country", http.MethodDelete, "Retirer l'association d'un pays (plus de région suggérée)",
 			manage, tonic.Handler(reg.DeleteCountryRegion, http.StatusNoContent))
-		rg := RootGroup.NewGroup("/admin/regions", "Admin — réglages des régions").Internal()
-		rg.AddRoute("", http.MethodGet, "Régions connues des clusters et leur adresse de mesure du temps de réponse",
+		rg := RootGroup.NewGroup("/admin/regions", "Admin — catalogue des régions").Internal()
+		rg.AddRoute("", http.MethodGet, "Catalogue des régions : zone, pays, ville, adresse de mesure du temps de réponse, nombre de clusters et de pays qui utilisent chacune",
 			list, tonic.Handler(reg.RegionSettings, http.StatusOK))
-		rg.AddRoute("/:code", http.MethodPut, "Adresse https de mesure du temps de réponse de la région, appelée depuis le navigateur ; elle doit répondre vite et sans données (vide : retirée)",
-			manage, tonic.Handler(reg.SetRegionProbe, http.StatusOK))
+		rg.AddRoute("", http.MethodPost, "Ajouter une région au catalogue (code définitif, zone, pays, ville, adresse de mesure facultative)",
+			manage, tonic.Handler(reg.CreateRegion, http.StatusCreated))
+		rg.AddRoute("/:code", http.MethodPut, "Modifier la zone, le pays, la ville ou l'adresse de mesure d'une région (champs absents : inchangés ; adresse vide : retirée)",
+			manage, tonic.Handler(reg.UpdateRegion, http.StatusOK))
+		rg.AddRoute("/:code", http.MethodDelete, "Retirer une région du catalogue (refusé tant qu'un cluster la porte ou qu'un pays la suggère)",
+			manage, tonic.Handler(reg.DeleteRegion, http.StatusNoContent))
 	}
 	adminClusters.AddRoute("", http.MethodGet,
 		"Registre des clusters : fournisseur, distribution, région, état, accès déposé, dernier relevé de santé",

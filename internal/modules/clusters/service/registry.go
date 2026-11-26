@@ -208,6 +208,9 @@ func (r *Registry) Declare(ctx context.Context, in DeclareInput, by string) (*do
 	if err := domain.ValidateRegistry(c.Provider, c.Distribution, c.Region, c.State, c.Name, c.Notes); err != nil {
 		return nil, err
 	}
+	if err := r.checkClusterRegion(ctx, c.Region); err != nil {
+		return nil, err
+	}
 	if err := r.Store.Declare(ctx, c); err != nil {
 		return nil, err
 	}
@@ -222,6 +225,7 @@ func (r *Registry) Update(ctx context.Context, clusterID string, in UpdateInput)
 		return nil, err
 	}
 	fields := map[string]any{}
+	oldRegion := c.Region
 	set := func(dst *string, v *string, col string) {
 		if v != nil {
 			*dst = strings.TrimSpace(*v)
@@ -255,6 +259,13 @@ func (r *Registry) Update(ctx context.Context, clusterID string, in UpdateInput)
 	}
 	if c.IsDefault && c.State == domain.StateDisabled {
 		return nil, domain.ErrDefaultCluster
+	}
+	// Région changée : elle doit être au catalogue (l'ancienne, même hors
+	// catalogue, ne bloque pas les autres modifications).
+	if c.Region != oldRegion {
+		if err := r.checkClusterRegion(ctx, c.Region); err != nil {
+			return nil, err
+		}
 	}
 	if len(fields) > 0 {
 		if err := r.Store.Update(ctx, clusterID, fields); err != nil {

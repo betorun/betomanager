@@ -3238,5 +3238,17 @@
  {
   "fr": "Pays (code ISO 3166-1 à deux lettres, ex. GA), facultatif : porté par l'organisation personnelle, il désigne la région suggérée",
   "en": "Country (two-letter ISO 3166-1 code, e.g. GA), optional: carried by the personal organization, it determines the suggested region"
+ },
+ {
+  "fr": "Zone géographique de la région (ex. af-central)",
+  "en": "Geographic zone of the region (e.g. af-central)"
+ },
+ {
+  "fr": "Pays de la région (ISO 3166-1 à deux lettres)",
+  "en": "Country of the region (ISO 3166-1 two-letter code)"
+ },
+ {
+  "fr": "Ville de la région",
+  "en": "City of the region"
  }
 ]

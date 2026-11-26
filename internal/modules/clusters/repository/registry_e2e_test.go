@@ -148,12 +148,36 @@ func TestE2E_CountryRegions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, r)
 
-	require.NoError(t, s.SetRegionProbe(ctx, &domain.RegionSetting{Code: "e2e-region", ProbeURL: "https://probe.e2e.test/healthz"}))
+	code := "e2e-" + uuid.NewString()[:8]
+	e := &domain.RegionSetting{Code: code, Zone: "af-central", Country: "CG", City: "Brazzaville", ProbeURL: "https://probe.e2e.test/healthz"}
+	require.NoError(t, s.CreateRegion(ctx, e))
+	assert.ErrorIs(t, s.CreateRegion(ctx, &domain.RegionSetting{Code: code, Zone: "af-west", Country: "SN", City: "Dakar"}), domain.ErrRegionExists)
 	probes, err := s.RegionProbes(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "https://probe.e2e.test/healthz", probes["e2e-region"])
-	require.NoError(t, s.SetRegionProbe(ctx, &domain.RegionSetting{Code: "e2e-region"}))
-	probes, err = s.RegionProbes(ctx)
+	assert.Equal(t, "https://probe.e2e.test/healthz", probes[code])
+
+	e.City, e.ProbeURL = "Pointe-Noire", ""
+	require.NoError(t, s.SaveRegion(ctx, e))
+	catalog, err := s.RegionCatalog(ctx)
 	require.NoError(t, err)
-	assert.NotContains(t, probes, "e2e-region", "retirée")
+	var got *domain.RegionSetting
+	for i := range catalog {
+		if catalog[i].Code == code {
+			got = &catalog[i]
+		}
+	}
+	require.NotNil(t, got)
+	assert.Equal(t, "Pointe-Noire", got.City)
+	assert.Empty(t, got.ProbeURL, "retirée")
+	assert.ErrorIs(t, s.SaveRegion(ctx, &domain.RegionSetting{Code: "e2e-absente"}), domain.ErrUnknownRegion)
+
+	// La base refuse une région à moitié remplie.
+	assert.Error(t, s.CreateRegion(ctx, &domain.RegionSetting{Code: code + "-x", Zone: "af-west"}))
+
+	require.NoError(t, s.DeleteRegion(ctx, code))
+	catalog, err = s.RegionCatalog(ctx)
+	require.NoError(t, err)
+	for _, r := range catalog {
+		assert.NotEqual(t, code, r.Code, "retirée du catalogue")
+	}
 }

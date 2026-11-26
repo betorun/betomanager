@@ -4,27 +4,64 @@ import (
 	"errors"
 	"net/netip"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/net/idna"
 )
 
-// Région suggérée selon le pays du client : table pays → région tenue par
-// l'équipe dans le back-office (jamais en dur), adresse de mesure de latence
-// de chaque région.
+// Catalogue des régions (ADR 0018), tenu par l'équipe dans le back-office :
+// code, zone, pays et ville de chaque région (le libellé « Afrique centrale ·
+// Brazzaville (Congo) » se construit dans la console, sans traduction par
+// région), adresse de mesure de latence. Table pays → région suggérée.
 
 var (
-	// ErrUnknownRegion : aucun cluster enregistré ne porte cette région.
-	ErrUnknownRegion = errors.New("unknown region: no registered cluster is in this region")
+	// ErrUnknownRegion : la région n'est pas au catalogue.
+	ErrUnknownRegion = errors.New("unknown region: add it to the region catalog first")
 	// ErrInvalidProbeURL : adresse de mesure qui n'est pas une URL https.
 	ErrInvalidProbeURL = errors.New("invalid probe address: an https URL is required")
+	// ErrRegionExists : code déjà au catalogue.
+	ErrRegionExists = errors.New("a region with this code already exists")
+	// ErrRegionInUse : région portée par un cluster ou associée à un pays.
+	ErrRegionInUse = errors.New("this region is used by a cluster or a country: change them first")
+	// ErrInvalidRegionZone : zone hors de la liste RegionZones.
+	ErrInvalidRegionZone = errors.New("invalid region zone")
+	// ErrInvalidRegionCity : ville vide, trop longue ou avec des caractères refusés.
+	ErrInvalidRegionCity = errors.New("invalid city: 1 to 64 letters, spaces, dots, dashes or apostrophes")
 )
 
 // maxProbeURL : longueur maximale d'une adresse de mesure.
 const maxProbeURL = 512
+
+// maxCity : longueur maximale d'un nom de ville (en caractères).
+const maxCity = 64
+
+// RegionZones : zones géographiques d'une région. La console traduit chaque
+// zone ; en ajouter une demande aussi son libellé dans la console.
+var RegionZones = []string{"af-west", "af-central", "af-east", "af-north", "af-south", "eu-west", "eu-central", "eu-south"}
+
+// ValidRegionZone : zone connue.
+func ValidRegionZone(z string) bool { return slices.Contains(RegionZones, z) }
+
+// NormalizeCity : nom de ville sans espaces superflus ; "" si refusé.
+// Lettres (accents compris), espaces, points, tirets et apostrophes.
+func NormalizeCity(raw string) string {
+	c := strings.Join(strings.Fields(raw), " ")
+	if c == "" || utf8.RuneCountInString(c) > maxCity {
+		return ""
+	}
+	for _, r := range c {
+		if !unicode.IsLetter(r) && r != ' ' && r != '.' && r != '-' && r != '\'' && r != '’' {
+			return ""
+		}
+	}
+	return c
+}
 
 // CountryRegion : région suggérée aux clients d'un pays.
 type CountryRegion struct {
@@ -36,10 +73,19 @@ type CountryRegion struct {
 
 func (CountryRegion) TableName() string { return "country_regions" }
 
-// RegionSetting : réglages d'une région (code des clusters).
+// RegionSetting : une région du catalogue. Zone, pays et ville sont vides
+// pour une région reprise d'un cluster avant le catalogue (à compléter).
 type RegionSetting struct {
-	Code      string    `gorm:"column:region;primaryKey;type:varchar(32)" json:"code" description:"Code de la région"`
-	ProbeURL  string    `gorm:"not null;default:''" json:"probe_url" description:"Adresse https de mesure du temps de réponse ; vide si non réglée"`
+	Code     string `gorm:"column:region;primaryKey;type:varchar(32)" json:"code" description:"Code de la région"`
+	Zone     string `gorm:"not null;default:''" json:"zone" description:"Zone géographique (af-west, af-central, af-east, af-north, af-south, eu-west, eu-central, eu-south) ; vide : à compléter"`
+	Country  string `gorm:"type:varchar(2);not null;default:''" json:"country" description:"Pays de la région (ISO 3166-1 à deux lettres) ; vide : à compléter"`
+	City     string `gorm:"not null;default:''" json:"city" description:"Ville de la région ; vide : à compléter"`
+	ProbeURL string `gorm:"not null;default:''" json:"probe_url" description:"Adresse https de mesure du temps de réponse ; vide si non réglée"`
+	// Clusters, Countries : clusters de la région et pays qui la suggèrent
+	// (calculés ; une région utilisée ne se supprime pas).
+	Clusters  int       `gorm:"-" json:"clusters" description:"Clusters enregistrés dans cette région"`
+	Countries int       `gorm:"-" json:"countries" description:"Pays pour lesquels cette région est suggérée"`
+	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`
 	UpdatedBy string    `gorm:"not null;default:''" json:"-"`
 }
@@ -195,12 +241,14 @@ func ldhLabel(l string) bool {
 	return true
 }
 
-// Suggest : région suggérée (suggested, "" : aucune) et adresses de mesure
-// posées sur les régions ; la suggérée passe en tête, l'ordre reste sinon.
-func Suggest(rs []Region, suggested string, probes map[string]string) []Region {
+// Suggest : région suggérée (suggested, "" : aucune), puis zone, pays, ville
+// et adresse de mesure prises au catalogue ; la suggérée passe en tête,
+// l'ordre reste sinon.
+func Suggest(rs []Region, suggested string, catalog map[string]RegionSetting) []Region {
 	for i := range rs {
 		rs[i].Suggested = suggested != "" && rs[i].Code == suggested
-		rs[i].ProbeURL = probes[rs[i].Code]
+		e := catalog[rs[i].Code]
+		rs[i].Zone, rs[i].Country, rs[i].City, rs[i].ProbeURL = e.Zone, e.Country, e.City, e.ProbeURL
 	}
 	sort.SliceStable(rs, func(i, j int) bool { return rs[i].Suggested && !rs[j].Suggested })
 	return rs

@@ -53,11 +53,45 @@ func (s *RegionStore) RegionProbes(ctx context.Context) (map[string]string, erro
 	return out, nil
 }
 
-// SetRegionProbe : adresse de mesure de la région ("" : retirée).
-func (s *RegionStore) SetRegionProbe(ctx context.Context, e *domain.RegionSetting) error {
+// RegionCatalog : toutes les régions du catalogue, triées par code.
+func (s *RegionStore) RegionCatalog(ctx context.Context) ([]domain.RegionSetting, error) {
+	out := []domain.RegionSetting{}
+	return out, s.DB.WithContext(ctx).Order("region").Find(&out).Error
+}
+
+// CreateRegion : nouvelle région ; code déjà pris : ErrRegionExists.
+func (s *RegionStore) CreateRegion(ctx context.Context, e *domain.RegionSetting) error {
+	now := time.Now().UTC()
+	e.CreatedAt, e.UpdatedAt = now, now
+	res := s.DB.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(e)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return domain.ErrRegionExists
+	}
+	return nil
+}
+
+// SaveRegion : zone, pays, ville et adresse de mesure d'une région du
+// catalogue ; absente : ErrUnknownRegion.
+func (s *RegionStore) SaveRegion(ctx context.Context, e *domain.RegionSetting) error {
 	e.UpdatedAt = time.Now().UTC()
-	return s.DB.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "region"}},
-		DoUpdates: clause.AssignmentColumns([]string{"probe_url", "updated_at", "updated_by"}),
-	}).Create(e).Error
+	res := s.DB.WithContext(ctx).Model(&domain.RegionSetting{}).Where("region = ?", e.Code).Updates(map[string]any{
+		"zone": e.Zone, "country": e.Country, "city": e.City, "probe_url": e.ProbeURL,
+		"updated_at": e.UpdatedAt, "updated_by": e.UpdatedBy,
+	})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return domain.ErrUnknownRegion
+	}
+	return nil
+}
+
+// DeleteRegion : retire la région du catalogue (absente : rien). Le service
+// vérifie avant qu'aucun cluster ni aucun pays ne l'utilise.
+func (s *RegionStore) DeleteRegion(ctx context.Context, code string) error {
+	return s.DB.WithContext(ctx).Where("region = ?", code).Delete(&domain.RegionSetting{}).Error
 }

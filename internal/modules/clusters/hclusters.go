@@ -243,7 +243,7 @@ type CountryPath struct {
 // SetCountryRegionInput : région suggérée aux clients du pays.
 type SetCountryRegionInput struct {
 	Country string `path:"country" binding:"required" description:"Pays (code ISO 3166-1 à deux lettres, ex. GA)"`
-	Region  string `json:"region" binding:"required" description:"Code d'une région portée par au moins un cluster enregistré"`
+	Region  string `json:"region" binding:"required" description:"Code d'une région du catalogue (même sans cluster encore)"`
 }
 
 // RegionCodePath : région visée.
@@ -251,10 +251,22 @@ type RegionCodePath struct {
 	Code string `path:"code" binding:"required" description:"Code de la région"`
 }
 
-// SetRegionProbeInput : adresse de mesure de la région.
-type SetRegionProbeInput struct {
-	Code     string `path:"code" binding:"required" description:"Code de la région"`
-	ProbeURL string `json:"probe_url" description:"Adresse https qui répond vite et sans données (ex. route /healthz publique d'un point d'entrée de la région) : hôte nom DNS ou IP, port 1 à 65535, ni identifiants ni fragment ; gardée normalisée (hôte en minuscules, nom internationalisé en punycode) ; vide : retirée"`
+// CreateRegionInput : nouvelle région du catalogue.
+type CreateRegionInput struct {
+	Code     string `json:"code" binding:"required" description:"Code de la région, définitif (jusqu'à 32 minuscules, chiffres ou tirets ; ex. af-central-bzv)"`
+	Zone     string `json:"zone" binding:"required" description:"Zone géographique : af-west, af-central, af-east, af-north, af-south, eu-west, eu-central ou eu-south"`
+	Country  string `json:"country" binding:"required" description:"Pays de la région (ISO 3166-1 à deux lettres, ex. CG)"`
+	City     string `json:"city" binding:"required" description:"Ville de la région (ex. Brazzaville)"`
+	ProbeURL string `json:"probe_url" description:"Adresse https de mesure du temps de réponse, facultative : elle doit répondre vite et sans données (ex. /healthz public de la région) ; ni identifiants ni fragment"`
+}
+
+// UpdateRegionInput : champs modifiés d'une région (absents : inchangés).
+type UpdateRegionInput struct {
+	Code     string  `path:"code" binding:"required" description:"Code de la région"`
+	Zone     *string `json:"zone,omitempty" description:"Zone géographique"`
+	Country  *string `json:"country,omitempty" description:"Pays de la région (ISO 3166-1 à deux lettres)"`
+	City     *string `json:"city,omitempty" description:"Ville de la région"`
+	ProbeURL *string `json:"probe_url,omitempty" description:"Adresse de mesure du temps de réponse ; vide : retirée"`
 }
 
 func (ctrl *Controller) CountryRegions(c *gin.Context) ([]domain.CountryRegion, error) {
@@ -284,11 +296,37 @@ func (ctrl *Controller) RegionSettings(c *gin.Context) ([]domain.RegionSetting, 
 	return ctrl.Registry.RegionSettings(c.Request.Context())
 }
 
-func (ctrl *Controller) SetRegionProbe(c *gin.Context, in *SetRegionProbeInput) (*domain.RegionSetting, error) {
-	e, err := ctrl.Registry.SetRegionProbe(c.Request.Context(), in.Code, in.ProbeURL, principal(c))
+func (ctrl *Controller) CreateRegion(c *gin.Context, in *CreateRegionInput) (*domain.RegionSetting, error) {
+	e, err := ctrl.Registry.CreateRegion(c.Request.Context(), service.RegionInput{Code: in.Code, Zone: in.Zone,
+		Country: in.Country, City: in.City, ProbeURL: in.ProbeURL}, principal(c))
 	if err == nil {
-		audit.Annotate(c.Request.Context(), "region", e.Code)
-		audit.Annotate(c.Request.Context(), "probe_url", e.ProbeURL)
+		annotateRegion(c, e)
 	}
 	return e, err
+}
+
+func (ctrl *Controller) UpdateRegion(c *gin.Context, in *UpdateRegionInput) (*domain.RegionSetting, error) {
+	e, err := ctrl.Registry.UpdateRegion(c.Request.Context(), in.Code, service.RegionPatch{Zone: in.Zone,
+		Country: in.Country, City: in.City, ProbeURL: in.ProbeURL}, principal(c))
+	if err == nil {
+		annotateRegion(c, e)
+	}
+	return e, err
+}
+
+func (ctrl *Controller) DeleteRegion(c *gin.Context, in *RegionCodePath) error {
+	err := ctrl.Registry.DeleteRegion(c.Request.Context(), in.Code)
+	if err == nil {
+		audit.Annotate(c.Request.Context(), "region", strings.TrimSpace(in.Code))
+	}
+	return err
+}
+
+func annotateRegion(c *gin.Context, e *domain.RegionSetting) {
+	ctx := c.Request.Context()
+	audit.Annotate(ctx, "region", e.Code)
+	audit.Annotate(ctx, "zone", e.Zone)
+	audit.Annotate(ctx, "country", e.Country)
+	audit.Annotate(ctx, "city", e.City)
+	audit.Annotate(ctx, "probe_url", e.ProbeURL)
 }

@@ -135,6 +135,10 @@ type Region struct {
 	Default bool `json:"default" description:"Région proposée par défaut"`
 	// Suggested : région associée au pays de l'organisation demandée.
 	Suggested bool `json:"suggested" description:"Région suggérée pour le pays de l'organisation demandée (organization_id)"`
+	// Zone, Country, City : du catalogue (libellé construit par la console).
+	Zone    string `json:"zone,omitempty" description:"Zone géographique de la région (ex. af-central)"`
+	Country string `json:"country,omitempty" description:"Pays de la région (ISO 3166-1 à deux lettres)"`
+	City    string `json:"city,omitempty" description:"Ville de la région"`
 	// ProbeURL : adresse https à appeler depuis le navigateur pour mesurer
 	// le temps de réponse ("" : non réglée).
 	ProbeURL string `json:"probe_url" description:"Adresse https à appeler depuis le navigateur pour mesurer le temps de réponse de la région ; vide si non réglée"`

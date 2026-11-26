@@ -208,7 +208,23 @@
   "en": "region settings unavailable"
  },
  {
-  "fr": "Région inconnue : aucun cluster enregistré n'est dans cette région",
-  "en": "unknown region: no registered cluster is in this region"
+  "fr": "Région inconnue : ajoutez-la d'abord au catalogue des régions",
+  "en": "unknown region: add it to the region catalog first"
+ },
+ {
+  "fr": "Une région porte déjà ce code",
+  "en": "a region with this code already exists"
+ },
+ {
+  "fr": "Cette région est utilisée par un cluster ou un pays : changez-les d'abord",
+  "en": "this region is used by a cluster or a country: change them first"
+ },
+ {
+  "fr": "Zone de région invalide",
+  "en": "invalid region zone"
+ },
+ {
+  "fr": "Ville invalide : 1 à 64 lettres, espaces, points, tirets ou apostrophes",
+  "en": "invalid city: 1 to 64 letters, spaces, dots, dashes or apostrophes"
  }
 ]
