@@ -380,7 +380,7 @@ var catalog = map[Permission]PermissionInfo{
 	VPSRestore:   {Title: "Restaurer un VPS depuis une sauvegarde ou son snapshot", CustomRoles: true, Sensitive: true},
 	VPSSnapshot:  {Title: "Créer ou supprimer le snapshot d'un VPS", CustomRoles: true},
 	VPSRescue:    {Title: "Mode secours d'un VPS et son mot de passe", CustomRoles: true, Sensitive: true},
-	VPSNetwork:   {Title: "Régler le DNS inverse d'un VPS", CustomRoles: true},
+	VPSNetwork:   {Title: "Réseau d'un VPS : DNS inverse, réseau privé du projet", CustomRoles: true},
 	VPSDelete:    {Title: "Résilier un VPS", CustomRoles: true, Sensitive: true},
 
 	SupportTicketsList:   {Title: "Lister les tickets de support", CustomRoles: true},

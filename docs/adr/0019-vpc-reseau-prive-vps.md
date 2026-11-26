@@ -1,6 +1,6 @@
 # ADR 0019 — VPC : réseau privé du projet étendu à ses VPS
 
-Statut : proposé (2026-11-26). Rien n'est codé.
+Statut : accepté (2026-11-26). Lot 1 réalisé (modèle, API, interfaces et suites de contrat, mise en œuvre de test) : voir [module vpc](../modules/vpc.md).
 
 ## Contexte
 
@@ -105,8 +105,10 @@ type FirewallProvider interface {
 
 ### 3. Adresses et noms (communs à toutes les implémentations)
 
-- **Plage** : un /24 par VPC dans `10.250.0.0/16` (hors des plages des pods
-  `10.42.0.0/16` et services `10.43.0.0/16` des clusters) ; chaque VPS une
+- **Plage** : un /24 par VPC dans `10.248.0.0/13` (2 048 VPC par cluster,
+  unique dans le cluster du projet ; hors des plages des pods `10.42.0.0/16`
+  et services `10.43.0.0/16` des clusters) ; `.1` réservée à la plateforme,
+  `.255` jamais donnée ; chaque VPS une
   adresse fixe gardée tant qu'il est rattaché. Choix de la plage par le client :
   plus tard.
 - **Noms** : suffixe `.internal` : `db-main-rw.internal` → la base du
@@ -120,7 +122,7 @@ type FirewallProvider interface {
 
 ```
 VPS du client ──WireGuard (UDP)──▶ passerelle du VPC ──▶ conteneurs, services, bases
- 10.250.x.y/32                    pod dans l'espace       (NetworkPolicy du projet)
+ 10.248.x.y/32                    pod dans l'espace       (NetworkPolicy du projet)
                                   du projet
 ```
 

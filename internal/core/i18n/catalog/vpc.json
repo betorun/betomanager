@@ -1,0 +1,46 @@
+[
+ {
+  "fr": "Réseau privé indisponible pour ce VPS",
+  "en": "private network not available for this VPS"
+ },
+ {
+  "fr": "Le VPS et le projet ne sont pas dans la même région",
+  "en": "VPS and project are not in the same region"
+ },
+ {
+  "fr": "Plus aucune plage privée disponible pour ce projet",
+  "en": "no private range left for this project"
+ },
+ {
+  "fr": "Ce VPS n'est pas rattaché au réseau privé",
+  "en": "VPS is not attached to the private network"
+ },
+ {
+  "fr": "VPS déjà rattaché",
+  "en": "VPS already attached"
+ },
+ {
+  "fr": "Ce VPS n'est pas prêt pour le réseau privé",
+  "en": "VPS is not ready for the private network"
+ },
+ {
+  "fr": "Jeton d'inscription invalide ou expiré",
+  "en": "invalid or expired enrollment token"
+ },
+ {
+  "fr": "Ce VPS n'a pas besoin de s'inscrire",
+  "en": "this VPS does not need to enroll"
+ },
+ {
+  "fr": "Clé publique invalide",
+  "en": "invalid public key"
+ },
+ {
+  "fr": "Trop de règles de pare-feu",
+  "en": "too many firewall rules"
+ },
+ {
+  "fr": "Règle de pare-feu invalide",
+  "en": "invalid firewall rule"
+ }
+]

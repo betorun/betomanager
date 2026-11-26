@@ -14,6 +14,8 @@ const (
 	KindCron     = "cron"
 	KindService  = "service"
 	KindDatabase = "database"
+	// KindVPS : VPS rattaché au réseau privé du projet (ADR 0019).
+	KindVPS = "vps"
 )
 
 // Côtés d'une règle.

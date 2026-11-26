@@ -3250,5 +3250,57 @@
  {
   "fr": "Ville de la région",
   "en": "City of the region"
+ },
+ {
+  "fr": "Réseau privé (VPC)",
+  "en": "Private network (VPC)"
+ },
+ {
+  "fr": "Le réseau privé du projet étendu à ses VPS : adresses privées fixes, noms en .internal.",
+  "en": "The project's private network extended to its VPS: fixed private addresses, .internal names."
+ },
+ {
+  "fr": "Réseau privé (VPC) du projet : plage, VPS rattachés, leur adresse privée, leur nom et l'état du lien",
+  "en": "Project private network (VPC): range, attached VPS, their private address, their name and link status"
+ },
+ {
+  "fr": "Réseau privé d'un VPS",
+  "en": "VPS private network"
+ },
+ {
+  "fr": "Rattacher un VPS au réseau privé de son projet, ou l'en détacher.",
+  "en": "Attach a VPS to its project's private network, or detach it."
+ },
+ {
+  "fr": "Rattacher un VPS au réseau privé de son projet (un jeton d'inscription est rendu une seule fois s'il doit s'inscrire)",
+  "en": "Attach a VPS to its project's private network (an enrollment token is returned once if the VPS must enroll)"
+ },
+ {
+  "fr": "Détacher un VPS du réseau privé : effet immédiat, même VPS injoignable",
+  "en": "Detach a VPS from the private network: immediate, even if the VPS is unreachable"
+ },
+ {
+  "fr": "ID du VPS",
+  "en": "VPS ID"
+ },
+ {
+  "fr": "ID de l'organisation",
+  "en": "Organization ID"
+ },
+ {
+  "fr": "Inscription d'un VPS au réseau privé",
+  "en": "VPS private network enrollment"
+ },
+ {
+  "fr": "Inscription d'un VPS (jeton d'inscription et clé publique générée sur le VPS)",
+  "en": "VPS enrollment (enrollment token and public key generated on the VPS)"
+ },
+ {
+  "fr": "Jeton d'inscription (usage unique, 30 min)",
+  "en": "Enrollment token (single use, 30 min)"
+ },
+ {
+  "fr": "Clé publique générée sur le VPS",
+  "en": "Public key generated on the VPS"
  }
 ]

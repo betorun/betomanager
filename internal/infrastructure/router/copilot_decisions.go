@@ -157,6 +157,8 @@ var copilotDecisions = map[string]copilotDecision{
 	"POST /organizations/:id/compute/vps/:vpsID/reboot":               asTool(CopilotTool{Name: "reboot_vps", Write: true, Risk: tools.RiskMedium}),
 	"POST /organizations/:id/compute/vps/:vpsID/snapshot":             asTool(CopilotTool{Name: "create_vps_snapshot", Write: true, Risk: tools.RiskLow}),
 	"PUT /organizations/:id/compute/vps/:vpsID/reverse":               asTool(CopilotTool{Name: "set_vps_reverse_dns", Write: true, Risk: tools.RiskLow}),
+	"POST /organizations/:id/compute/vps/:vpsID/vpc":                  asGuide("/vps", "jeton d'inscription montré une seule fois"),
+	"DELETE /organizations/:id/compute/vps/:vpsID/vpc":                asGuide("/vps", "coupe le VPS du réseau privé"),
 	"DELETE /organizations/:id/compute/vps/:vpsID/snapshot":           asStrong("delete_vps_snapshot", "get_vps", false),
 	"POST /organizations/:id/compute/vps":                             asGuide("/vps/new", "commande payée par le solde"),
 	"POST /organizations/:id/compute/vps/:vpsID/backups/restore":      asStrong("restore_vps_backup", "get_vps", true),

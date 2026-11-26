@@ -99,6 +99,16 @@ const (
 	ImageDebian = "debian-12"
 )
 
+// LocationRegion : région du catalogue (ADR 0018) d'un emplacement de VPS ;
+// "" : inconnue. Sert à refuser un réseau privé entre régions (ADR 0019).
+func LocationRegion(location string) string {
+	switch location {
+	case LocationGRA, LocationRBX, LocationSBG:
+		return "eu-west-" + location
+	}
+	return ""
+}
+
 // Offer : une offre vendue (VPS-1, VPS-2). Le prix de vente se calcule depuis
 // ce que la plateforme paie au fournisseur : rien n'est fixé dans le code.
 type Offer struct {

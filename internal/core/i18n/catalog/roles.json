@@ -556,8 +556,8 @@
   "en": "VPS rescue mode and its password"
  },
  {
-  "fr": "Régler le DNS inverse d'un VPS",
-  "en": "Set a VPS reverse DNS"
+  "fr": "Réseau d'un VPS : DNS inverse, réseau privé du projet",
+  "en": "VPS networking: reverse DNS, project private network"
  },
  {
   "fr": "Résilier un VPS",

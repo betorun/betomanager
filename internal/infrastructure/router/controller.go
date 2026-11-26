@@ -39,6 +39,7 @@ import (
 	"github.com/thekrauss/kubemanager/internal/modules/status"
 	"github.com/thekrauss/kubemanager/internal/modules/storages3"
 	"github.com/thekrauss/kubemanager/internal/modules/support"
+	"github.com/thekrauss/kubemanager/internal/modules/vpc"
 	workload "github.com/thekrauss/kubemanager/internal/modules/workloads"
 	workloadsRepo "github.com/thekrauss/kubemanager/internal/modules/workloads/repository"
 	workloadsSvc "github.com/thekrauss/kubemanager/internal/modules/workloads/service"
@@ -85,6 +86,8 @@ type ControllerContainer struct {
 	StorageS3 *storages3.Controller
 	Network   *network.Controller
 	Egress    *egress.Controller
+	// VPC : réseau privé du projet étendu à ses VPS (ADR 0019).
+	VPC *vpc.Controller
 	// Addons : services additionnels (Redis via Valkey…).
 	Addons *addons.Controller
 	// DiskUsage : usage réel des disques des projets.
@@ -133,6 +136,7 @@ func AddAllRoutes(a *App) {
 	addStorageS3Routes(a)
 	addNetworkRoutes(a)
 	addEgressRoutes(a)
+	addVPCRoutes(a)
 	addAddonRoutes(a)
 	addDiskResizeRoutes(a)
 	addAlertPreferenceRoutes(a)

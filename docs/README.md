@@ -41,6 +41,7 @@ Chaque page décrit un module avec la même structure : rôle, endpoints, DB, ac
 - [storages3](modules/storages3.md) — stockage objet S3 : buckets, clés par usage, quota, lecture publique, liens signés, explorateur
 - [databases](modules/databases.md) — Postgres gérées (CloudNativePG) : branchement, import, contenu, remise à zéro
 - [network](modules/network.md) — réseau privé d'un projet : membres, liens, règles (modèle indépendant de Kubernetes)
+- [vpc](modules/vpc.md) — réseau privé (VPC) du projet étendu à ses VPS (ADR 0019) : rattachement, inscription, mises en œuvre interchangeables
 - [addons](modules/addons.md) — services additionnels (Redis via Valkey) : catalogue, branchement, mise à jour, « Me prévenir »
 - [diskusage](modules/diskusage.md) — usage réel des disques : mesure horaire, alertes 80/100 %, arrêt à 120 %
 - [insights](modules/insights.md) — « L'assistant a remarqué » : constats d'un projet (échecs, builds, budget, disques, domaines, bases, services), cache 60 s par droits
