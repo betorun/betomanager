@@ -110,7 +110,11 @@ rattachements du projet (un VPS rattaché entre-temps garde sa passerelle) :
 - **Deployment** (1 réplique, `Recreate`) : root dans le conteneur mais
   seulement `NET_ADMIN` (tout le reste retiré), système de fichiers en
   lecture seule, seccomp par défaut, pas de jeton de compte de service ;
-  10m/32Mi demandés, 200m/64Mi au plus (comptés dans le quota du projet).
+  10m/32Mi demandés, 200m/64Mi au plus. Jamais pris sur la limite du
+  client : la limite de l'API ne compte que ses conteneurs, et le quota
+  Kubernetes de l'espace du projet ajoute une réserve égale (constantes
+  `vpcgateway.Limit*`, appliquée à chaque mise à jour des limites du
+  projet).
   Étiquettes de membre du projet (`app.kubernetes.io/part-of`,
   `km-project-id`) : les NetworkPolicy du projet la laissent joindre les
   conteneurs et les bases. L'agent applique la configuration (`wg
@@ -130,6 +134,15 @@ Réponse de l'inscription (`config`) : `endpoint` (point d'entrée du cluster
 `ingress_target` et port), `peer_public_key`, `allowed_ips` (plage du VPC et
 plages du cluster), `keepalive`. État d'un membre (`connected`) : poignée de
 main de moins de 3 minutes.
+
+Trafic : à chaque synchronisation (au moins toutes les 2 min), les
+compteurs de chaque lien (octets envoyés et reçus par le VPS, lus avec
+l'état) sont comparés au relevé précédent ; l'écart s'ajoute au mois en
+cours du projet. Un compteur plus bas qu'avant (lien refait, passerelle
+redémarrée) compte depuis zéro. Mesure pour l'équipe seulement : **rien
+n'est facturé** (prix : décision du propriétaire). Le trafic d'un lien
+refait puis déjà plus haut que l'ancien relevé dans le même intervalle est
+sous-compté : négligeable à 2 min.
 
 Prérequis d'exploitation :
 
@@ -161,6 +174,7 @@ Configuration :
 | `GET` | `/projects/:id/network/vpc` | `compute.vps.get` | Plage, VPS rattachés (adresse, nom `.internal`, état, `connected` vu par le réseau, dernier contact). Outil Copilot `get_project_vpc`. |
 | `POST` | `/organizations/:id/compute/vps/:vpsID/vpc` | `compute.vps.network` (sur le projet du VPS) | Rattacher ; `enrollment` (`token`, `expires_at`, `command` à lancer en root) seulement si le VPS doit s'inscrire. Copilot : renvoi vers l'écran (jeton montré une fois). |
 | `DELETE` | `/organizations/:id/compute/vps/:vpsID/vpc` | `compute.vps.network` | Détacher (`204`). |
+| `GET` | `/admin/vpc/traffic?month=AAAA-MM` | `platform.compute.get` | Trafic du réseau privé par projet sur un mois (mois en cours par défaut) : projet, organisation, `from_vps_bytes`, `to_vps_bytes`, totaux. Mesure seulement. Outil de l'Opérateur `get_private_network_traffic`. |
 | `POST` | `/vpc/enroll` | publique (jeton d'inscription) | Inscription par le VPS ; route interne, hors de la doc publique. |
 | `GET` | `/vpc/enroll.sh` | publique | Script d'inscription, sans jeton (donné en argument) ; `404` sans mise en œuvre qui en a besoin. Route interne. |
 
@@ -200,7 +214,7 @@ Réponse de `GET /projects/:id/network/vpc` :
 | `INVALID_INPUT` | 400 | clé publique ou règle de pare-feu invalide |
 | `FIREWALL_TOO_MANY_RULES` | 400 | plus de règles que la mise en œuvre n'en permet |
 
-## Stockage (migrations 000083, 000084)
+## Stockage (migrations 000083 à 000085)
 
 - `vpc_networks` : `project_id` (clé), `cluster_id`, `cidr` (/24 dans `10.248.0.0/13`).
 - `vpc_attachments` : `vps_id` (clé), `project_id`, `address` (unique par
@@ -209,6 +223,8 @@ Réponse de `GET /projects/:id/network/vpc` :
 
 - `compute_vps.private_network` (000084) : réseau privé voulu par le client,
   relu à chaque installation.
+- `vpc_traffic_peers` (000085) : derniers compteurs lus par VPS ;
+  `vpc_traffic_monthly` : cumul par projet et par mois (premier jour, UTC).
 
 Suppression en cascade avec le projet, le VPS ou le rattachement.
 

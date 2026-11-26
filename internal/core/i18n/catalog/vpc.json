@@ -42,5 +42,9 @@
  {
   "fr": "Règle de pare-feu invalide",
   "en": "invalid firewall rule"
+ },
+ {
+  "fr": "Mois invalide (attendu : AAAA-MM)",
+  "en": "invalid month (expected YYYY-MM)"
  }
 ]

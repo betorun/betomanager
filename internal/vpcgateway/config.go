@@ -40,6 +40,15 @@ const (
 	RuntimeDir = "/run/vpc"
 )
 
+// Ressources du pod de la passerelle. Elles ne sont pas prises sur la limite
+// du client : le quota Kubernetes du projet les ajoute en réserve.
+const (
+	RequestCPU    = "10m"
+	RequestMemory = "32Mi"
+	LimitCPU      = "200m"
+	LimitMemory   = "64Mi"
+)
+
 // Config : ce que la passerelle applique (aucun secret : la clé privée est
 // dans le Secret à part).
 type Config struct {

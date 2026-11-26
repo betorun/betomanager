@@ -24,6 +24,8 @@ type fakeStore struct {
 	atts  map[uuid.UUID]*domain.Attachment
 	enrol map[string]*domain.Enrollment
 	vms   fakeMachines
+	// traffic : derniers compteurs reçus, par projet.
+	traffic map[uuid.UUID]map[uuid.UUID]domain.Traffic
 }
 
 func (f *fakeStore) Reset(_ context.Context, v uuid.UUID) error {
@@ -52,6 +54,22 @@ func (f *fakeStore) Networks(context.Context) ([]domain.Network, error) {
 		out = append(out, *n)
 	}
 	return out, nil
+}
+
+func (f *fakeStore) RecordTraffic(_ context.Context, p uuid.UUID, _ time.Time, c map[uuid.UUID]domain.Traffic) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.traffic == nil {
+		f.traffic = map[uuid.UUID]map[uuid.UUID]domain.Traffic{}
+	}
+	if len(c) > 0 {
+		f.traffic[p] = c
+	}
+	return nil
+}
+
+func (f *fakeStore) Traffic(context.Context, time.Time) ([]domain.ProjectTraffic, error) {
+	return []domain.ProjectTraffic{}, nil
 }
 
 func (f *fakeStore) IfEmpty(_ context.Context, p uuid.UUID, fn func() error) error {

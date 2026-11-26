@@ -7,6 +7,8 @@ const (
 	k8sProcessingTTL = 2 * time.Minute
 	// quotaRollingMargin : quota Kubernetes = limite du projet × cette valeur.
 	quotaRollingMargin = 2
+	// quotaSpecVersion : forme du quota (2 : réserve de la plateforme).
+	quotaSpecVersion = 2
 
 	// projectQuotaName : ResourceQuota de l'espace de noms d'un projet.
 	projectQuotaName = "project-quota"

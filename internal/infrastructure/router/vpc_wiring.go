@@ -133,6 +133,11 @@ func addVPCRoutes(app *App) {
 			g.Perm(iam.VPSGet, security.ProjectParam("id")), tonic.Handler(ctrl.Get, http.StatusOK)).
 		ForCopilot(CopilotTool{Name: "get_project_vpc"})
 
+	// Trafic par projet : mesuré pour l'équipe, rien n'est facturé.
+	RootGroup.NewGroup("/admin/vpc", "Admin — réseau privé des VPS").Internal().
+		AddRoute("/traffic", http.MethodGet, "Trafic du réseau privé par projet sur un mois (mesure seulement, rien n'est facturé)",
+			g.Perm(iam.PlatformComputeGet, security.PlatformResource), tonic.Handler(ctrl.AdminTraffic, http.StatusOK))
+
 	// Rattacher et détacher : droit réseau du VPS, vérifié sur son projet
 	// (seulement si les VPS sont vendus sur ce déploiement).
 	if app.Controllers.Compute == nil {

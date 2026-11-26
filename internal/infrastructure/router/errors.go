@@ -324,6 +324,7 @@ var sentinelErrors = []sentinelMapping{
 	{vpcDomain.ErrInvalidPublicKey, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{vpcDomain.ErrTooManyRules, http.StatusBadRequest, "FIREWALL_TOO_MANY_RULES", false},
 	{vpcDomain.ErrInvalidRule, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
+	{vpcDomain.ErrInvalidMonth, http.StatusBadRequest, betoerrors.CodeInvalidInput, false},
 	{egressDomain.ErrAddressNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{egressDomain.ErrProjectNotFound, http.StatusNotFound, betoerrors.CodeNotFound, false},
 	{egressDomain.ErrAddressExists, http.StatusConflict, "ALREADY_EXISTS", false},

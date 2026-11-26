@@ -137,6 +137,28 @@ type MemberStatus struct {
 	VPSID       uuid.UUID
 	Connected   bool
 	LastContact *time.Time
+	// Traffic : compteurs du lien depuis sa mise en place côté réseau (nil :
+	// non mesuré). Ils repartent de zéro quand le lien est refait.
+	Traffic *Traffic
+}
+
+// Traffic : octets passés par le lien d'un VPS (FromVPS : envoyés par le VPS
+// vers le projet ; ToVPS : reçus par le VPS).
+type Traffic struct {
+	FromVPS int64
+	ToVPS   int64
+}
+
+// ProjectTraffic : trafic du réseau privé d'un projet sur un mois (relevé
+// pour l'équipe ; rien n'est facturé).
+type ProjectTraffic struct {
+	ProjectID        uuid.UUID `json:"project_id"`
+	ProjectName      string    `json:"project_name"`
+	OrganizationID   uuid.UUID `json:"organization_id"`
+	OrganizationName string    `json:"organization_name"`
+	FromVPSBytes     int64     `json:"from_vps_bytes"`
+	ToVPSBytes       int64     `json:"to_vps_bytes"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // VPCBackend : relie les VPS d'un projet à son réseau privé. Chaque mise en
@@ -233,4 +255,5 @@ var (
 	ErrInvalidPublicKey  = errors.New("invalid public key")
 	ErrTooManyRules      = errors.New("too many firewall rules")
 	ErrInvalidRule       = errors.New("invalid firewall rule")
+	ErrInvalidMonth      = errors.New("invalid month (expected YYYY-MM)")
 )

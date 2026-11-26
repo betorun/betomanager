@@ -102,7 +102,7 @@ Un tour : 30 appels au modèle, 80 appels d'outils, 10 minutes au plus. Chaque a
 
 ## Outils du back-office (chemin normal, lecture)
 
-[operator_decisions.go](../../internal/infrastructure/router/operator_decisions.go) tranche **chaque route `/admin`** : outil de lecture, carte (lot 3, « sensible » ou non) ou hors Opérateur. `TestOperatorCoverage` refuse une route `/admin` sans décision, une décision sans route, et un outil qui ne serait pas un `GET` sur une permission de lecture. Aujourd'hui sur `/admin` : 23 outils (support, accès d'assistance, comptes et recettes, VPS, clusters enregistrés, page de statut), 32 cartes, 33 routes hors Opérateur (tarifs, conditions de vente, clés des watchers, pièces jointes, bris de glace…). S'y ajoutent 20 lectures et 10 cartes sur les ressources d'un client, ouvertes pendant un accès d'assistance (voir plus bas).
+[operator_decisions.go](../../internal/infrastructure/router/operator_decisions.go) tranche **chaque route `/admin`** : outil de lecture, carte (lot 3, « sensible » ou non) ou hors Opérateur. `TestOperatorCoverage` refuse une route `/admin` sans décision, une décision sans route, et un outil qui ne serait pas un `GET` sur une permission de lecture. Aujourd'hui sur `/admin` : 24 outils (support, accès d'assistance, comptes et recettes, VPS, trafic du réseau privé, clusters enregistrés, page de statut), 32 cartes, 33 routes hors Opérateur (tarifs, conditions de vente, clés des watchers, pièces jointes, bris de glace…). S'y ajoutent 20 lectures et 10 cartes sur les ressources d'un client, ouvertes pendant un accès d'assistance (voir plus bas).
 
 L'Opérateur ne fabrique aucune URL de l'API :
 

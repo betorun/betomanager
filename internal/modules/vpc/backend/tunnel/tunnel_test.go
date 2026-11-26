@@ -192,7 +192,7 @@ func TestStatus(t *testing.T) {
 	other := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 	b := newBackend(&fakeClusters{}, func(context.Context, kubernetes.Interface, string) ([]vpcgateway.PeerStatus, error) {
 		return []vpcgateway.PeerStatus{
-			{PublicKey: vpsKey, LatestHandshake: now.Add(-time.Minute).Unix()},
+			{PublicKey: vpsKey, LatestHandshake: now.Add(-time.Minute).Unix(), RxBytes: 300, TxBytes: 4000},
 			{PublicKey: other, LatestHandshake: now.Add(-time.Hour).Unix()},
 		}, nil
 	})
@@ -209,6 +209,8 @@ func TestStatus(t *testing.T) {
 		got[s.VPSID] = s
 	}
 	assert.True(t, got[fresh.VPSID].Connected)
+	assert.Equal(t, &domain.Traffic{FromVPS: 300, ToVPS: 4000}, got[fresh.VPSID].Traffic, "reçu par la passerelle = envoyé par le VPS")
+	assert.Nil(t, got[pending.VPSID].Traffic, "non inscrit : non mesuré")
 	assert.False(t, got[stale.VPSID].Connected)
 	assert.NotNil(t, got[stale.VPSID].LastContact)
 	assert.False(t, got[pending.VPSID].Connected)

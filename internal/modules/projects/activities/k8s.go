@@ -17,6 +17,7 @@ import (
 	authSvc "github.com/thekrauss/kubemanager/internal/modules/auth/service"
 	domain "github.com/thekrauss/kubemanager/internal/modules/projects/domain"
 	"github.com/thekrauss/kubemanager/internal/modules/utils"
+	"github.com/thekrauss/kubemanager/internal/vpcgateway"
 )
 
 // ProjectK8sActivities : activities Temporal manipulant des ressources Kubernetes.
@@ -99,7 +100,12 @@ func (a *ProjectK8sActivities) DeleteNamespace(ctx context.Context, nsName strin
 }
 
 func (a *ProjectK8sActivities) ReconcileProjectResources(ctx context.Context, nsName, cpu, mem string) error {
-	payload := struct{ NS, CPU, Mem string }{nsName, cpu, mem}
+	// Spec : forme du quota ; la changer rejoue l'activité pour des
+	// limites inchangées (clé d'idempotence).
+	payload := struct {
+		NS, CPU, Mem string
+		Spec         int
+	}{nsName, cpu, mem, quotaSpecVersion}
 
 	_, _, err := idempotency.ExecuteActivity(ctx, a.Idempotency, payload,
 		idempotency.ActivityOptions{ProcessingTTL: k8sProcessingTTL},
@@ -126,6 +132,9 @@ func (a *ProjectK8sActivities) ReconcileProjectResources(ctx context.Context, ns
 			// mise à jour progressive était refusé et le déploiement restait
 			// bloqué, sans erreur, pour tout projet proche de son quota.
 			cpuQ, memQ = withRollingMargin(cpuQ), withRollingMargin(memQ)
+			// Composants de la plateforme dans l'espace du projet (passerelle
+			// du réseau privé) : en plus, jamais pris sur la limite du client.
+			cpuQ, memQ = withPlatformReserve(cpuQ, memQ)
 			quotaName := projectQuotaName
 			newQuotas := &corev1.ResourceQuota{
 				ObjectMeta: metav1.ObjectMeta{Name: quotaName, Namespace: nsName},
@@ -189,6 +198,14 @@ func (a *ProjectK8sActivities) GetNamespaceMetrics(ctx context.Context, nsName s
 		CPUUsage:    fmt.Sprintf("%dm", totalCPU),
 		MemoryUsage: fmt.Sprintf("%dMi", totalMem/utils.BytesPerMi),
 	}, nil
+}
+
+// withPlatformReserve : quota augmenté des ressources que la plateforme pose
+// dans l'espace du projet (passerelle du réseau privé, ADR 0019).
+func withPlatformReserve(cpu, mem resource.Quantity) (resource.Quantity, resource.Quantity) {
+	cpu.Add(resource.MustParse(vpcgateway.LimitCPU))
+	mem.Add(resource.MustParse(vpcgateway.LimitMemory))
+	return cpu, mem
 }
 
 // withRollingMargin : quota Kubernetes pour une limite de projet.

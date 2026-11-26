@@ -265,12 +265,21 @@ func (s *Service) Sync(ctx context.Context, project uuid.UUID) error {
 				}
 			}
 		}
-		// Membres que la base ne connaît plus (retrait interrompu).
+		// Membres que la base ne connaît plus (retrait interrompu) ; trafic
+		// relevé au passage.
 		if list, err := b.Status(ctx, vpc); err == nil {
+			counters := map[uuid.UUID]domain.Traffic{}
 			for _, st := range list {
 				if !known[st.VPSID] {
 					keep(b.Detach(ctx, vpc, st.VPSID))
+					continue
 				}
+				if st.Traffic != nil {
+					counters[st.VPSID] = *st.Traffic
+				}
+			}
+			if err := s.Store.RecordTraffic(ctx, project, s.now(), counters); err != nil {
+				s.logWarn("private network traffic", "project", project, "error", err)
 			}
 		}
 	}
@@ -334,4 +343,42 @@ func publicSource(ip string) (netip.Addr, bool) {
 func sameAddr(a netip.Addr, s string) bool {
 	b, err := netip.ParseAddr(strings.TrimSpace(s))
 	return err == nil && a == b.Unmap()
+}
+
+// ── Trafic (équipe) ────────────────────────────────────────────────────
+
+// TrafficView : trafic du réseau privé de chaque projet sur un mois.
+type TrafficView struct {
+	// Month : mois relevé (AAAA-MM, UTC).
+	Month    string                  `json:"month"`
+	Projects []domain.ProjectTraffic `json:"projects"`
+	// Totaux du mois, tous projets.
+	FromVPSBytes int64 `json:"from_vps_bytes"`
+	ToVPSBytes   int64 `json:"to_vps_bytes"`
+	// Every : intervalle du relevé (au plus).
+	EverySeconds int `json:"every_seconds"`
+}
+
+// Traffic : relevé d'un mois ("" : mois en cours). Mesure seulement : rien
+// n'est facturé (prix : décision du propriétaire, ADR 0019).
+func (s *Service) Traffic(ctx context.Context, month string) (*TrafficView, error) {
+	at := s.now()
+	m := time.Date(at.Year(), at.Month(), 1, 0, 0, 0, 0, time.UTC)
+	if month = strings.TrimSpace(month); month != "" {
+		t, err := time.Parse("2006-01", month)
+		if err != nil {
+			return nil, domain.ErrInvalidMonth
+		}
+		m = t
+	}
+	list, err := s.Store.Traffic(ctx, m)
+	if err != nil {
+		return nil, err
+	}
+	v := &TrafficView{Month: m.Format("2006-01"), Projects: list, EverySeconds: int(DefaultReconcileEvery / time.Second)}
+	for _, p := range list {
+		v.FromVPSBytes += p.FromVPSBytes
+		v.ToVPSBytes += p.ToVPSBytes
+	}
+	return v, nil
 }

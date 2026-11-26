@@ -1,6 +1,6 @@
 # ADR 0016 — Opérateur : l'agent d'exploitation du back-office
 
-Statut : proposé (2026-11-24) ; révisé le même jour (plan de gestion séparé). Rien n'est écrit.
+Statut : accepté (2026-11-24) ; révisé le même jour (plan de gestion séparé). Lots 1 à 3 b écrits ([doc du module](../modules/operator.md)) ; pas déployé en V1.
 
 ## Contexte
 

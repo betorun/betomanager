@@ -128,6 +128,7 @@ var operatorDecisions = map[string]operatorDecision{
 	"POST /admin/compute/provider-mails/:mailID/handled": opStrong("mark_provider_mail_handled", ""),
 	"POST /admin/compute/mailbox-check":                  opStrong("check_provider_mailbox", ""),
 	"POST /admin/compute/ping":                           opStrong("ping_vps_provider", ""),
+	"GET /admin/vpc/traffic":                             opTool("get_private_network_traffic", "Private network traffic per project for a month (measured only, never billed)."),
 
 	// ── Clusters ───────────────────────────────────────────────────────
 	"GET /admin/clusters":                                           opTool("list_platform_clusters", "Enrolled clusters and when their watcher last reported."),
