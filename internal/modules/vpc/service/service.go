@@ -38,6 +38,9 @@ type Store interface {
 	// IfEmpty : fn sous le verrou des rattachements du projet, s'il n'en a
 	// aucun.
 	IfEmpty(ctx context.Context, project uuid.UUID, fn func() error) error
+	// RecordTraffic : compteurs relevés par VPS (cumul mensuel du projet).
+	RecordTraffic(ctx context.Context, project uuid.UUID, at time.Time, counters map[uuid.UUID]domain.Traffic) error
+	Traffic(ctx context.Context, month time.Time) ([]domain.ProjectTraffic, error)
 }
 
 // Machines : VPS de la plateforme (module compute).

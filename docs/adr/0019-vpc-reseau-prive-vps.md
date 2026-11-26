@@ -228,6 +228,10 @@ trafic du VPC suit la politique du projet, pas ce pare-feu.
 - Avec `tunnel`, le trafic VPC traverse la passerelle et la bande passante du
   nœud passerelle : à mesurer (compteur par projet) avant d'en fixer le prix.
   **Prix et facturation : décision du propriétaire**, rien n'est proposé ici.
+  *Réalisé* : compteur par projet et par mois (`GET /admin/vpc/traffic`,
+  back-office) ; décision du 2026-11-26 : réseau privé inclus, non facturé
+  en V1. La passerelle n'est pas prise sur la limite du client (réserve
+  ajoutée au quota Kubernetes du projet).
 - Avec `tunnel`, la passerelle est un point unique par projet : redémarrée par
   le cluster, sans état (clés publiques et adresses en base, rechargées au
   démarrage). Haute disponibilité : plus tard, ou native avec Proxmox.

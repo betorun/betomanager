@@ -152,7 +152,7 @@ grille, pas dans le code.
 | Phase | Contenu | État |
 |---|---|---|
 | 0 | Ce document | fait |
-| 1 | Plusieurs projets par organisation, compte de facturation par organisation | en cours (hors de ce module) |
+| 1 | Plusieurs projets par organisation, compte de facturation par organisation | fait (migration 000043, hors de ce module) |
 | 2 | Mesure, valorisation, coût estimé dans la console, rien n'est débité | **implémentée** |
 | 3 | Wallet, grand livre, recharge XYKPay, débits, alertes, crédit d'essai ; administration (organisations, crédits, ajustements, activation, recettes) | **implémentée** |
 | 4 | Grâce et suspension, reprise, factures et reçus PDF (TVA), budgets par projet, crédit d'essai par numéro ; page neutre des sites suspendus, suppression des données après la suspension | **implémentée** |

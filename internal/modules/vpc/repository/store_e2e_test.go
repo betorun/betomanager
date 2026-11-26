@@ -29,10 +29,14 @@ type e2e struct {
 
 func setup(t *testing.T) *e2e {
 	t.Helper()
-	if os.Getenv("IAM_E2E") == "" || os.Getenv("IAM_E2E_DSN") == "" {
-		t.Skip("IAM_E2E / IAM_E2E_DSN not set")
+	if os.Getenv("IAM_E2E") == "" {
+		t.Skip("IAM_E2E not set (bash scripts/iam_e2e_db.sh)")
 	}
-	db, err := gorm.Open(postgres.Open(os.Getenv("IAM_E2E_DSN")), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	dsn := "postgres://postgres:pw@127.0.0.1:55433/postgres?sslmode=disable"
+	if v := os.Getenv("IAM_E2E_DSN"); v != "" {
+		dsn = v
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	e := &e2e{db: db, store: &Store{DB: db}, sfx: uuid.NewString()[:8]}
 	e.cluster = "vpc-" + e.sfx
@@ -245,4 +249,42 @@ func TestE2E_VPCStore_IfEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, e.store.IfEmpty(ctx, p, func() error { ran++; return nil }))
 	assert.Equal(t, 1, ran, "un VPS rattaché : rien démonté")
+}
+
+func TestE2E_VPCStore_Traffic(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	p := e.project(t, 0)
+	a, b := e.vps(t, p, "web"), e.vps(t, p, "db")
+	nov := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	dec := time.Date(2026, 12, 1, 0, 1, 0, 0, time.UTC)
+
+	// Premier relevé : tout compte ; deuxième : l'écart seulement.
+	require.NoError(t, e.store.RecordTraffic(ctx, p, nov, map[uuid.UUID]domain.Traffic{a: {FromVPS: 100, ToVPS: 1000}, b: {FromVPS: 5}}))
+	require.NoError(t, e.store.RecordTraffic(ctx, p, nov.Add(2*time.Minute), map[uuid.UUID]domain.Traffic{a: {FromVPS: 150, ToVPS: 1200}, b: {FromVPS: 5}}))
+	// Lien refait (compteur plus bas) : compte depuis zéro.
+	require.NoError(t, e.store.RecordTraffic(ctx, p, nov.Add(4*time.Minute), map[uuid.UUID]domain.Traffic{a: {FromVPS: 30, ToVPS: 40}}))
+	// Mois suivant : cumul à part.
+	require.NoError(t, e.store.RecordTraffic(ctx, p, dec, map[uuid.UUID]domain.Traffic{a: {FromVPS: 31, ToVPS: 50}}))
+
+	find := func(month time.Time) *domain.ProjectTraffic {
+		list, err := e.store.Traffic(ctx, month)
+		require.NoError(t, err)
+		for i := range list {
+			if list[i].ProjectID == p {
+				return &list[i]
+			}
+		}
+		return nil
+	}
+	got := find(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
+	require.NotNil(t, got)
+	assert.Equal(t, int64(100+50+5+30), got.FromVPSBytes)
+	assert.Equal(t, int64(1000+200+40), got.ToVPSBytes)
+	assert.Equal(t, e.org, got.OrganizationID)
+	assert.Equal(t, "vpc-"+e.sfx, got.OrganizationName)
+	got = find(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC))
+	require.NotNil(t, got)
+	assert.Equal(t, int64(1), got.FromVPSBytes)
+	assert.Equal(t, int64(10), got.ToVPSBytes)
 }

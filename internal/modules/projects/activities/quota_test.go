@@ -14,3 +14,10 @@ func TestWithRollingMargin(t *testing.T) {
 		assert.Zero(t, got.Cmp(resource.MustParse(want)), "%s → %s", in, got.String())
 	}
 }
+
+// La passerelle du réseau privé est en plus de la limite du client.
+func TestWithPlatformReserve(t *testing.T) {
+	cpu, mem := withPlatformReserve(resource.MustParse("1"), resource.MustParse("1Gi"))
+	assert.Zero(t, cpu.Cmp(resource.MustParse("1200m")), cpu.String())
+	assert.Zero(t, mem.Cmp(resource.MustParse("1088Mi")), mem.String())
+}

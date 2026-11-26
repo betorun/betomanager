@@ -393,6 +393,10 @@ func (b *Backend) Status(ctx context.Context, v domain.VPC) ([]domain.MemberStat
 			st.LastContact = &at
 			st.Connected = now.Sub(at) < ConnectedWithin
 		}
+		if s, ok := live[p.PublicKey]; ok && p.PublicKey != "" {
+			// Vu depuis la passerelle : reçu = envoyé par le VPS.
+			st.Traffic = &domain.Traffic{FromVPS: s.RxBytes, ToVPS: s.TxBytes}
+		}
 		out = append(out, st)
 	}
 	return out, nil
@@ -551,8 +555,8 @@ func (b *Backend) deployment(ns string, v domain.VPC) *appsv1.Deployment {
 							Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"NET_ADMIN"}},
 						},
 						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("10m"), corev1.ResourceMemory: resource.MustParse("32Mi")},
-							Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("200m"), corev1.ResourceMemory: resource.MustParse("64Mi")},
+							Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(vpcgateway.RequestCPU), corev1.ResourceMemory: resource.MustParse(vpcgateway.RequestMemory)},
+							Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(vpcgateway.LimitCPU), corev1.ResourceMemory: resource.MustParse(vpcgateway.LimitMemory)},
 						},
 						ReadinessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{
 							Path: "/healthz", Port: intstr.FromInt32(vpcgateway.StatusPort)}}, PeriodSeconds: 10, TimeoutSeconds: 3},

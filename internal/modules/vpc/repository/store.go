@@ -224,3 +224,78 @@ func (s *Store) IfEmpty(ctx context.Context, project uuid.UUID, fn func() error)
 		return fn()
 	})
 }
+
+// RecordTraffic : compteurs relevés sur le réseau d'un projet ; l'écart avec
+// le relevé précédent s'ajoute au mois en cours. Un compteur plus bas
+// qu'avant (lien refait, passerelle redémarrée) compte depuis zéro.
+func (s *Store) RecordTraffic(ctx context.Context, project uuid.UUID, at time.Time, counters map[uuid.UUID]domain.Traffic) error {
+	if len(counters) == 0 {
+		return nil
+	}
+	at = at.UTC()
+	month := time.Date(at.Year(), at.Month(), 1, 0, 0, 0, 0, time.UTC)
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext('vpc:traffic:' || ?::text))`, project.String()).Error; err != nil {
+			return err
+		}
+		var from, to int64
+		for vps, c := range counters {
+			var last struct{ FromVPSBytes, ToVPSBytes int64 }
+			found := tx.Table("vpc_traffic_peers").Select("from_vps_bytes, to_vps_bytes").Where("vps_id = ?", vps).Limit(1).Scan(&last)
+			if found.Error != nil {
+				return found.Error
+			}
+			if found.RowsAffected == 0 {
+				last.FromVPSBytes, last.ToVPSBytes = 0, 0
+			}
+			from += delta(c.FromVPS, last.FromVPSBytes)
+			to += delta(c.ToVPS, last.ToVPSBytes)
+			if err := tx.Exec(`INSERT INTO vpc_traffic_peers (vps_id, project_id, from_vps_bytes, to_vps_bytes, updated_at)
+				VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT (vps_id) DO UPDATE SET project_id = EXCLUDED.project_id,
+					from_vps_bytes = EXCLUDED.from_vps_bytes, to_vps_bytes = EXCLUDED.to_vps_bytes, updated_at = EXCLUDED.updated_at`,
+				vps, project, c.FromVPS, c.ToVPS, at).Error; err != nil {
+				return err
+			}
+		}
+		if from == 0 && to == 0 {
+			return nil
+		}
+		return tx.Exec(`INSERT INTO vpc_traffic_monthly (project_id, month, from_vps_bytes, to_vps_bytes, updated_at)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (project_id, month) DO UPDATE SET
+				from_vps_bytes = vpc_traffic_monthly.from_vps_bytes + EXCLUDED.from_vps_bytes,
+				to_vps_bytes = vpc_traffic_monthly.to_vps_bytes + EXCLUDED.to_vps_bytes,
+				updated_at = EXCLUDED.updated_at`,
+			project, month, from, to, at).Error
+	})
+}
+
+// delta : octets depuis le relevé précédent (compteur remis à zéro : tout
+// ce qu'il porte).
+func delta(cur, last int64) int64 {
+	if cur < 0 {
+		return 0
+	}
+	if cur < last {
+		return cur
+	}
+	return cur - last
+}
+
+// Traffic : trafic de chaque projet pour un mois (premier jour, UTC), le
+// plus gros d'abord.
+func (s *Store) Traffic(ctx context.Context, month time.Time) ([]domain.ProjectTraffic, error) {
+	out := []domain.ProjectTraffic{}
+	err := s.DB.WithContext(ctx).Raw(`
+		SELECT t.project_id, COALESCE(p.name, '') AS project_name,
+		       COALESCE(p.organization_id, '00000000-0000-0000-0000-000000000000') AS organization_id,
+		       COALESCE(o.display_name, '') AS organization_name,
+		       t.from_vps_bytes, t.to_vps_bytes, t.updated_at
+		  FROM vpc_traffic_monthly t
+		  JOIN projects p ON p.id = t.project_id
+		  LEFT JOIN organizations o ON o.id = p.organization_id
+		 WHERE t.month = ?
+		 ORDER BY t.from_vps_bytes + t.to_vps_bytes DESC, t.project_id`, month.Format("2006-01-02")).Scan(&out).Error
+	return out, err
+}

@@ -68,6 +68,16 @@ func (h *Controller) Detach(c *gin.Context, in *VPSPath) error {
 	return h.Service.Detach(c.Request.Context(), org, id)
 }
 
+// TrafficQuery : mois du relevé.
+type TrafficQuery struct {
+	Month string `query:"month" description:"Mois relevé (AAAA-MM, UTC) ; mois en cours par défaut"`
+}
+
+// AdminTraffic : trafic du réseau privé par projet (équipe).
+func (h *Controller) AdminTraffic(c *gin.Context, in *TrafficQuery) (*service.TrafficView, error) {
+	return h.Service.Traffic(c.Request.Context(), in.Month)
+}
+
 // Enroll : inscription envoyée par le VPS lui-même (jeton à usage unique).
 func (h *Controller) Enroll(c *gin.Context, in *service.EnrollInput) (*service.EnrollOutput, error) {
 	in.SourceIP = c.ClientIP()
