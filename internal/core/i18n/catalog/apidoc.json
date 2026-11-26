@@ -3302,5 +3302,9 @@
  {
   "fr": "Clé publique générée sur le VPS",
   "en": "Public key generated on the VPS"
+ },
+ {
+  "fr": "Rattacher le VPS au réseau privé (VPC) de son projet dès son premier démarrage",
+  "en": "Attach the VPS to its project's private network (VPC) from its first boot"
  }
 ]

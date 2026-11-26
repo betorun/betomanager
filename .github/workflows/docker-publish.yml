@@ -69,6 +69,14 @@ jobs:
           push: true
           tags: thekrauss/egress-agent:${{ github.sha }}
 
+      - name: Build and push vpc-gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/vpc-gateway.Dockerfile
+          push: true
+          tags: thekrauss/vpc-gateway:${{ github.sha }}
+
   # Inactif tant que la variable de dépôt DEPLOY_ENABLED ne vaut pas "true"
   # (voir deploy/README.txt). L'image de la console se construit à part.
   deploy:

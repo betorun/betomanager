@@ -162,6 +162,11 @@ x-app-env: &app-env
   KUBEMANAGER_KUBERNETES_AGENT_IMAGE: ${WATCHER_IMAGE:-}
   # Agent réseau des IP de sortie dédiées (ADR 0014) ; vide : montage à la main.
   KUBEMANAGER_KUBERNETES_EGRESS_AGENT_IMAGE: ${EGRESS_AGENT_IMAGE:-}
+  # Réseau privé des VPS (ADR 0019) : image de la passerelle ; vide :
+  # rattachement indisponible. URL publique de l'API vue des VPS ; vide :
+  # déduite de l'émetteur STS.
+  KUBEMANAGER_VPC_GATEWAY_IMAGE: ${VPC_GATEWAY_IMAGE:-}
+  KUBEMANAGER_VPC_PUBLIC_API_URL: ${VPC_PUBLIC_API_URL:-}
   KUBEMANAGER_VPS_VPS_IP: ${SERVER2_IP:?}
   # Application GitHub (builds depuis un dépôt) : tout vide, désactivée ;
   # sinon complète, clé privée dans <secrets>/github (deploy/README.txt, 5 bis).

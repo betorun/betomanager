@@ -1,6 +1,6 @@
 # ADR 0019 — VPC : réseau privé du projet étendu à ses VPS
 
-Statut : accepté (2026-11-26). Lot 1 réalisé (modèle, API, interfaces et suites de contrat, mise en œuvre de test) : voir [module vpc](../modules/vpc.md).
+Statut : accepté (2026-11-26). Lots 1 et 2 réalisés (modèle, API, interfaces et suites de contrat ; mise en œuvre `tunnel`, inscription, cycle de vie du VPS) : voir [module vpc](../modules/vpc.md). Écarts du lot 2 avec la première version de ce texte : signalés « Réalisé » ci-dessous.
 
 ## Contexte
 
@@ -126,16 +126,25 @@ VPS du client ──WireGuard (UDP)──▶ passerelle du VPC ──▶ contene
                                   du projet
 ```
 
-- **Passerelle** : un conteneur `service` géré par betorun dans l'espace du
-  projet (chart `standard-app`, non root, seccomp), créé au premier VPS
-  rattaché (`Ensure`), supprimé au dernier (`Teardown`). Elle porte
-  l'étiquette de membre du projet : les NetworkPolicy existantes la laissent
-  joindre les membres ; elle ne relaie jamais vers un autre espace.
-- **Entrée UDP** : un port par VPC, pris dans une plage réservée du nœud
-  passerelle (`VPC_UDP_PORT_RANGE`), exposé par le LoadBalancer du cluster ;
-  seules les IP publiques des VPS rattachés y sont admises.
-- **DNS** : la passerelle répond pour `.internal`.
-- **VPS ↔ VPS** : par la passerelle (étoile).
+- **Passerelle** : un conteneur géré par betorun dans l'espace du
+  projet, créé au premier VPS rattaché (`Ensure`), supprimé au dernier
+  (`Teardown`). Elle porte l'étiquette de membre du projet : les
+  NetworkPolicy existantes la laissent joindre les membres ; elle ne relaie
+  jamais vers un autre espace.
+  *Réalisé* : ressources posées directement par l'API (pas le chart
+  `standard-app`, pour ne pas en faire un conteneur du client) ; root dans
+  le conteneur avec la seule capacité `NET_ADMIN`, dans l'espace réseau du
+  pod (un tunnel noyau ne se monte pas sans elle), lecture seule, seccomp
+  par défaut ; sortie limitée par sa propre NetworkPolicy.
+- **Entrée UDP** : un port par VPC ; seules les IP publiques des VPS
+  rattachés y sont admises.
+  *Réalisé* : Service `NodePort` (port unique alloué par le cluster, pas de
+  plage à gérer ni de pod d'équilibreur par projet), `externalTrafficPolicy:
+  Local` pour que la NetworkPolicy filtre sur l'IP du VPS.
+- **DNS** : la passerelle répond pour `.internal` (lot 3).
+- **VPS ↔ VPS** : par la passerelle (étoile) (lot 3 ; refusé au lot 2).
+- **Sens** : au lot 2, le VPS ouvre les connexions (VPS → conteneurs,
+  services, bases) ; conteneurs → VPS au lot 3.
 - **La clé privée ne quitte jamais le VPS** : le script de premier démarrage
   installe le client, génère la clé sur le VPS, puis envoie la clé publique
   à l'API avec un **jeton d'inscription** à usage unique, valable 30 min,
@@ -156,6 +165,16 @@ VPS du client ──WireGuard (UDP)──▶ passerelle du VPC ──▶ contene
 - **Réinstallation, résiliation, suspension** : rattachement retiré dans la
   même transaction que l'effet métier (outbox du module compute), refait à la
   réinstallation si la case est cochée.
+  *Réalisé* : la base est la source de vérité et le réseau la suit (événement
+  de chaque changement de VPS, réconciliation toutes les 2 minutes), sans
+  écriture du module vpc dans les transactions du compute. Réinstallation :
+  accès coupé dès la demande, adresse gardée, inscription au premier
+  démarrage. Suspension : accès coupé mais rattachement gardé, rendu à la
+  reprise sans rien faire sur le VPS. Résiliation : rattachement retiré. Le
+  mode compute (clés du fournisseur) prépare le rattachement en base
+  seulement, sans accès aux clusters. Le jeton du premier démarrage vaut
+  2 h ; l'API refuse un jeton présenté depuis une autre adresse publique que
+  celle du VPS.
 - **État** : la console montre l'état vu par le réseau (`Status` : relié,
   dernier contact), car le client, root sur son VPS, peut couper le lien.
 

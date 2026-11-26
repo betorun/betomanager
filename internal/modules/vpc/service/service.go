@@ -32,6 +32,12 @@ type Store interface {
 	Detach(ctx context.Context, vps, project uuid.UUID) (int64, error)
 	NewEnrollment(ctx context.Context, e *domain.Enrollment) error
 	ConsumeEnrollment(ctx context.Context, hash []byte, now time.Time) (*domain.Enrollment, error)
+	Reset(ctx context.Context, vps uuid.UUID) error
+	SetWanted(ctx context.Context, vps uuid.UUID, wanted bool) error
+	Networks(ctx context.Context) ([]domain.Network, error)
+	// IfEmpty : fn sous le verrou des rattachements du projet, s'il n'en a
+	// aucun.
+	IfEmpty(ctx context.Context, project uuid.UUID, fn func() error) error
 }
 
 // Machines : VPS de la plateforme (module compute).
@@ -61,7 +67,14 @@ type Service struct {
 	Backends []domain.VPCBackend
 	// RegionOf : région d'un VPS d'après son emplacement ("" : inconnue).
 	RegionOf func(v *computeDomain.VPS) string
-	Now      func() time.Time
+	// APIURL : URL publique de l'API (…/kmanager/v1), appelée par les VPS
+	// pour s'inscrire.
+	APIURL string
+	// Logger : erreurs des synchronisations en tâche de fond (nil : muettes).
+	Logger interface {
+		Warnw(msg string, kv ...any)
+	}
+	Now func() time.Time
 }
 
 func (s *Service) now() time.Time {
@@ -189,6 +202,8 @@ func (s *Service) NetworkMembers(ctx context.Context, project uuid.UUID) ([]netD
 type Enrollment struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// Command : à lancer en root sur le VPS (contient le jeton).
+	Command string `json:"command"`
 }
 
 // AttachResult : rattachement d'un VPS ; Enrollment présent si le VPS doit
@@ -214,10 +229,25 @@ func (s *Service) Attach(ctx context.Context, org, vpsID uuid.UUID, by string) (
 	if !attachable(v) {
 		return nil, domain.ErrVPSNotReady
 	}
+	out, err := s.attach(ctx, v, by, domain.EnrollmentTTL, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Store.SetWanted(ctx, v.ID, true); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// attach : rattachement (client, ou installation d'un VPS qui le demande) ;
+// ttl : durée du jeton d'inscription éventuel. network faux : en base
+// seulement (mode compute, sans accès aux clusters) ; le réseau suit à
+// l'inscription ou à la synchronisation suivante.
+func (s *Service) attach(ctx context.Context, v *computeDomain.VPS, by string, ttl time.Duration, network bool) (*AttachResult, error) {
 	if existing, err := s.Store.Attachment(ctx, v.ID); err != nil {
 		return nil, err
 	} else if existing != nil {
-		return s.again(ctx, v, existing, by)
+		return s.again(ctx, v, existing, by, ttl)
 	}
 	cl, err := s.Clusters.ProjectCluster(ctx, v.ProjectID)
 	if err != nil {
@@ -239,10 +269,13 @@ func (s *Service) Attach(ctx context.Context, org, vpsID uuid.UUID, by string) (
 		if gerr != nil || existing == nil {
 			return nil, err
 		}
-		return s.again(ctx, v, existing, by)
+		return s.again(ctx, v, existing, by, ttl)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if !network {
+		return s.finish(ctx, v, a, b.Capabilities().NeedsEnrollment, by, ttl)
 	}
 	vpc, m, err := s.member(n, a, v)
 	if err == nil {
@@ -258,23 +291,23 @@ func (s *Service) Attach(ctx context.Context, org, vpsID uuid.UUID, by string) (
 		_, _ = s.Store.Detach(context.WithoutCancel(ctx), v.ID, v.ProjectID)
 		return nil, err
 	}
-	return s.finish(ctx, v, a, plan.NeedsEnrollment, by)
+	return s.finish(ctx, v, a, plan.NeedsEnrollment, by, ttl)
 }
 
 // again : VPS déjà rattaché (requête répétée).
-func (s *Service) again(ctx context.Context, v *computeDomain.VPS, a *domain.Attachment, by string) (*AttachResult, error) {
+func (s *Service) again(ctx context.Context, v *computeDomain.VPS, a *domain.Attachment, by string, ttl time.Duration) (*AttachResult, error) {
 	b := s.backendNamed(a.Backend)
 	if b == nil {
 		return nil, domain.ErrUnavailable
 	}
 	needs := a.State == domain.StatePending && b.Capabilities().NeedsEnrollment
-	return s.finish(ctx, v, a, needs, by)
+	return s.finish(ctx, v, a, needs, by, ttl)
 }
 
-func (s *Service) finish(ctx context.Context, v *computeDomain.VPS, a *domain.Attachment, needsEnrollment bool, by string) (*AttachResult, error) {
+func (s *Service) finish(ctx context.Context, v *computeDomain.VPS, a *domain.Attachment, needsEnrollment bool, by string, ttl time.Duration) (*AttachResult, error) {
 	out := &AttachResult{}
 	if needsEnrollment {
-		e, err := s.newEnrollment(ctx, v.ID, by)
+		e, err := s.newEnrollment(ctx, v.ID, by, ttl)
 		if err != nil {
 			return nil, err
 		}
@@ -292,7 +325,7 @@ func (s *Service) finish(ctx context.Context, v *computeDomain.VPS, a *domain.At
 }
 
 // newEnrollment : 32 octets aléatoires ; seule l'empreinte SHA-256 est gardée.
-func (s *Service) newEnrollment(ctx context.Context, vps uuid.UUID, by string) (*Enrollment, error) {
+func (s *Service) newEnrollment(ctx context.Context, vps uuid.UUID, by string, ttl time.Duration) (*Enrollment, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return nil, err
@@ -300,11 +333,11 @@ func (s *Service) newEnrollment(ctx context.Context, vps uuid.UUID, by string) (
 	token := tokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(token))
 	now := s.now()
-	e := &domain.Enrollment{ID: uuid.New(), VPSID: vps, TokenHash: sum[:], ExpiresAt: now.Add(domain.EnrollmentTTL), CreatedBy: by, CreatedAt: now}
+	e := &domain.Enrollment{ID: uuid.New(), VPSID: vps, TokenHash: sum[:], ExpiresAt: now.Add(ttl), CreatedBy: by, CreatedAt: now}
 	if err := s.Store.NewEnrollment(ctx, e); err != nil {
 		return nil, err
 	}
-	return &Enrollment{Token: token, ExpiresAt: e.ExpiresAt}, nil
+	return &Enrollment{Token: token, ExpiresAt: e.ExpiresAt, Command: s.command(token)}, nil
 }
 
 // tokenPrefix : reconnaissable par les détecteurs de secrets.
@@ -327,9 +360,21 @@ func (s *Service) Detach(ctx context.Context, org, vpsID uuid.UUID) error {
 	if a == nil {
 		return domain.ErrNotAttached
 	}
+	if err := s.release(ctx, a); err != nil {
+		return err
+	}
+	return s.Store.SetWanted(ctx, v.ID, false)
+}
+
+// release : rattachement retiré, côté réseau d'abord (accès coupé), puis en
+// base ; le dernier VPS parti, le réseau est démonté.
+func (s *Service) release(ctx context.Context, a *domain.Attachment) error {
 	n, err := s.Store.Network(ctx, a.ProjectID)
 	if err != nil {
 		return err
+	}
+	if n == nil {
+		return nil
 	}
 	b := s.backendNamed(a.Backend)
 	if b == nil {
@@ -339,17 +384,31 @@ func (s *Service) Detach(ctx context.Context, org, vpsID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if err := b.Detach(ctx, vpc, v.ID); err != nil {
+	if err := b.Detach(ctx, vpc, a.VPSID); err != nil {
 		return err
 	}
-	left, err := s.Store.Detach(ctx, v.ID, a.ProjectID)
+	left, err := s.Store.Detach(ctx, a.VPSID, a.ProjectID)
 	if err != nil {
 		return err
 	}
 	if left == 0 {
-		return b.Teardown(ctx, vpc)
+		return s.teardown(ctx, a.ProjectID, vpc, b)
 	}
 	return nil
+}
+
+// teardown : réseau démonté seulement s'il n'a toujours aucun VPS, sous le
+// verrou du rattachement (un VPS rattaché entre-temps garde sa passerelle).
+func (s *Service) teardown(ctx context.Context, project uuid.UUID, vpc domain.VPC, backends ...domain.VPCBackend) error {
+	return s.Store.IfEmpty(ctx, project, func() error {
+		var first error
+		for _, b := range backends {
+			if err := b.Teardown(ctx, vpc); err != nil && first == nil {
+				first = err
+			}
+		}
+		return first
+	})
 }
 
 // ── Inscrire ───────────────────────────────────────────────────────────
@@ -358,6 +417,8 @@ func (s *Service) Detach(ctx context.Context, org, vpsID uuid.UUID) error {
 type EnrollInput struct {
 	Token     string `json:"token" binding:"required" description:"Jeton d'inscription (usage unique, 30 min)"`
 	PublicKey string `json:"public_key" binding:"required" description:"Clé publique générée sur le VPS"`
+	// SourceIP : adresse d'où vient la requête (posée par le contrôleur).
+	SourceIP string `json:"-"`
 }
 
 // EnrollOutput : configuration à appliquer sur le VPS.
@@ -395,8 +456,15 @@ func (s *Service) Enroll(ctx context.Context, in EnrollInput) (*EnrollOutput, er
 		return nil, domain.ErrInvalidEnrollment
 	}
 	v, err := s.Machines.VPS(ctx, e.VPSID)
-	if err != nil {
+	if err != nil || gone(v) {
 		return nil, domain.ErrInvalidEnrollment
+	}
+	if !active(v) {
+		return nil, domain.ErrVPSNotReady // suspendu : pas d'accès avant la reprise
+	}
+	src, public := publicSource(in.SourceIP)
+	if public && v.IPv4 != "" && !sameAddr(src, v.IPv4) && !sameAddr(src, v.IPv6) {
+		return nil, domain.ErrInvalidEnrollment // jeton présenté par une autre machine
 	}
 	n, err := s.Store.Network(ctx, a.ProjectID)
 	if err != nil {
@@ -408,6 +476,13 @@ func (s *Service) Enroll(ctx context.Context, in EnrollInput) (*EnrollOutput, er
 	}
 	vpc, m, err := s.member(n, a, v)
 	if err != nil {
+		return nil, err
+	}
+	if m.PublicIPv4 == "" && public && src.Is4() {
+		m.PublicIPv4 = src.String() // IP pas encore relevée chez le fournisseur
+	}
+	// Le réseau connaît le VPS (rattaché en base seulement à sa création).
+	if err := b.Ensure(ctx, vpc, []domain.Member{m}); err != nil {
 		return nil, err
 	}
 	res, err := b.Enroll(ctx, domain.EnrollRequest{VPC: vpc, Member: m, PublicKey: key})

@@ -63,11 +63,38 @@ type GlobalConfig struct {
 	Domains DomainsConfig `mapstructure:"domains"`
 	// Compute : VPS revendus (docs/modules/compute.md).
 	Compute ComputeConfig `mapstructure:"compute"`
+	// VPC : réseau privé des projets étendu à leurs VPS (ADR 0019).
+	VPC VPCConfig `mapstructure:"vpc"`
 }
 
 // ComputeConfig : VPS. Les clés du fournisseur ne sont posées que sur le
 // process APP_MODE=compute (seul à les charger) ; l'API et le worker n'en ont
 // pas besoin : ils écrivent des demandes, le mode compute les exécute.
+// VPCConfig : mise en œuvre « tunnel » du réseau privé (ADR 0019, lot 2).
+type VPCConfig struct {
+	// GatewayImage : image de la passerelle (thekrauss/vpc-gateway:<sha>) ;
+	// vide : rattachement indisponible (VPC_UNAVAILABLE).
+	GatewayImage string `mapstructure:"gateway_image"`
+	// PublicAPIURL : URL publique de l'API (…/kmanager/v1) appelée par les
+	// VPS pour s'inscrire ; vide : déduite de iam.sts_issuer.
+	PublicAPIURL string `mapstructure:"public_api_url"`
+	// ClusterRoutes : plages joignables depuis les VPS, séparées par des
+	// virgules (défaut : pods et services k3s, 10.42.0.0/16,10.43.0.0/16).
+	ClusterRoutes string `mapstructure:"cluster_routes"`
+}
+
+// VPCAPIURL : URL publique de l'API pour les VPS ("" si inconnue).
+func (c *GlobalConfig) VPCAPIURL() string {
+	if u := strings.TrimRight(strings.TrimSpace(c.VPC.PublicAPIURL), "/"); u != "" {
+		return u
+	}
+	iss := strings.TrimRight(strings.TrimSpace(c.IAM.STSIssuer), "/")
+	if strings.HasSuffix(iss, "/iam") {
+		return strings.TrimSuffix(iss, "/iam")
+	}
+	return ""
+}
+
 type ComputeConfig struct {
 	// Enabled : relais de l'outbox actif (worker) et routes des offres.
 	Enabled bool `mapstructure:"enabled"`

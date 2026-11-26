@@ -70,6 +70,9 @@ type VPS struct {
 	ReverseV6     string     `gorm:"column:reverse_v6;not null;default:''" json:"reverse_v6"`
 	SpamBlockedAt *time.Time `json:"spam_blocked_at,omitempty"`
 	SMTPAllowed   bool       `gorm:"column:smtp_allowed;not null;default:false" json:"smtp_allowed"`
+	// PrivateNetwork : le VPS doit être sur le réseau privé (VPC) de son
+	// projet ; relu à chaque installation pour l'y inscrire (ADR 0019).
+	PrivateNetwork bool `gorm:"column:private_network;not null;default:false" json:"private_network"`
 	// AbuseNote : motif d'une suspension par l'équipe (vu par le client).
 	AbuseNote string `gorm:"not null;default:''" json:"abuse_note,omitempty"`
 	// TerminatedAt : résiliation (VPS coupé tout de suite, plus renouvelé).

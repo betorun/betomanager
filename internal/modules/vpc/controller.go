@@ -2,6 +2,8 @@
 package vpc
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
@@ -68,5 +70,18 @@ func (h *Controller) Detach(c *gin.Context, in *VPSPath) error {
 
 // Enroll : inscription envoyée par le VPS lui-même (jeton à usage unique).
 func (h *Controller) Enroll(c *gin.Context, in *service.EnrollInput) (*service.EnrollOutput, error) {
+	in.SourceIP = c.ClientIP()
 	return h.Service.Enroll(c.Request.Context(), *in)
+}
+
+// Script : script d'inscription (texte, sans jeton) ; 404 si aucune mise en
+// œuvre n'en a besoin.
+func (h *Controller) Script(c *gin.Context) {
+	s := h.Service.EnrollScript()
+	if s == "" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "text/x-shellscript; charset=utf-8", []byte(s))
 }

@@ -49,8 +49,11 @@ func (a *App) computeService() *computeSvc.Service {
 		return nil
 	}
 	s := &computeSvc.Service{Store: &computeRepo.GormStore{DB: a.DB}, Ordering: a.Config.Compute.OrderingEnabled}
-	if e := a.computeEvents(); e != nil {
+	if e := a.computeEvents(true); e != nil {
 		s.Events = e
+	}
+	if v := a.vpcService(); v != nil {
+		s.VPC = v
 	}
 	if sealer, err := auth.NewSealer(a.Config.IAM.STSKeyEncryptionKey); err == nil {
 		s.Sealer = sealer
@@ -92,20 +95,35 @@ func (a *App) startComputeRenewals(ctx context.Context) {
 	})
 }
 
-// computeEvents : changements de VPS publiés sur Centrifugo (nil sans temps réel).
-func (a *App) computeEvents() *vpsEvents {
-	if a.Publisher == nil {
+// computeEvents : changements de VPS publiés sur Centrifugo et suivis par
+// le réseau privé (withVPC : API et worker ; jamais le mode compute, qui
+// n'a pas accès aux clusters). nil si rien n'écoute.
+func (a *App) computeEvents(withVPC bool) *vpsEvents {
+	e := &vpsEvents{pub: a.Publisher, log: a.Logger}
+	if withVPC {
+		if v := a.vpcService(); v != nil && len(v.Backends) > 0 {
+			e.vpc = v
+		}
+	}
+	if e.pub == nil && e.vpc == nil {
 		return nil
 	}
-	return &vpsEvents{pub: a.Publisher, log: a.Logger}
+	return e
 }
 
 type vpsEvents struct {
-	pub realtime.Publisher
+	pub realtime.Publisher // nil : pas de temps réel
+	vpc interface {
+		OnVPSChanged(ctx context.Context, v *computeDomain.VPS)
+	}
 	log interface {
 		Warnw(msg string, kv ...any)
 	}
 }
+
+// vpcSyncTimeout : durée maximale d'une mise à jour du réseau privé après
+// un changement de VPS (en tâche de fond : la requête n'attend pas).
+const vpcSyncTimeout = 30 * time.Second
 
 // VPSEvent : publié à chaque changement d'un VPS.
 type VPSEvent struct {
@@ -115,6 +133,9 @@ type VPSEvent struct {
 
 // BackupsChanged : la console relit GET …/backups.
 func (e *vpsEvents) BackupsChanged(ctx context.Context, v *computeDomain.VPS) {
+	if e.pub == nil {
+		return
+	}
 	ev := map[string]string{"type": "vps.backups.updated", "vps_id": v.ID.String()}
 	if err := e.pub.Publish(ctx, realtime.VPSChannel(v.ProjectID.String(), v.ID.String()), ev); err != nil {
 		e.log.Warnw("compute: backups event not published", "vps", v.ID, "error", err)
@@ -125,6 +146,17 @@ func (e *vpsEvents) BackupsChanged(ctx context.Context, v *computeDomain.VPS) {
 // ouvert à tout membre du projet, un simple avis (la console relit le VPS
 // avec ses propres droits) : ni adresse, ni motif d'abus, ni état du secours.
 func (e *vpsEvents) VPSChanged(ctx context.Context, v *computeDomain.VPS) {
+	if e.vpc != nil {
+		cp := *v
+		go func() {
+			sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), vpcSyncTimeout)
+			defer cancel()
+			e.vpc.OnVPSChanged(sctx, &cp)
+		}()
+	}
+	if e.pub == nil {
+		return
+	}
 	full := VPSEvent{Type: "vps.updated", VPS: v}
 	notice := map[string]any{"type": "vps.updated", "vps_id": v.ID.String(), "version": v.Version}
 	for ch, ev := range map[string]any{
@@ -144,7 +176,7 @@ func (a *App) computeSuspender() *computeSvc.Service {
 		return nil
 	}
 	s := &computeSvc.Service{Store: &computeRepo.GormStore{DB: a.DB}}
-	if e := a.computeEvents(); e != nil {
+	if e := a.computeEvents(true); e != nil {
 		s.Events = e
 	}
 	return s
@@ -268,8 +300,13 @@ func (a *App) RunCompute(ctx context.Context) error {
 	if billing := a.billingService(); billing != nil {
 		activities.Wallet = billing
 	}
-	if e := a.computeEvents(); e != nil {
+	if e := a.computeEvents(false); e != nil {
 		activities.Events = e
+	}
+	// Réseau privé : préparé en base au premier démarrage (aucun accès aux
+	// clusters depuis ce process).
+	if v := a.vpcService(); v != nil {
+		activities.VPC = v
 	}
 	if sealer, err := auth.NewSealer(a.Config.IAM.STSKeyEncryptionKey); err == nil {
 		activities.Sealer = sealer

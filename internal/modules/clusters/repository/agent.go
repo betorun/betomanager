@@ -65,6 +65,8 @@ func PlatformRules() []rbacv1.PolicyRule {
 		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch", "delete"}},
 		{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: read},
 		{APIGroups: []string{""}, Resources: []string{"pods/log", "events"}, Verbs: read},
+		// État de la passerelle du réseau privé d'un projet (ADR 0019).
+		{APIGroups: []string{""}, Resources: []string{"pods/proxy"}, Verbs: []string{"get"}},
 		{APIGroups: []string{"apps"}, Resources: []string{"deployments"}, Verbs: crud},
 		{APIGroups: []string{"apps"}, Resources: []string{"daemonsets"}, Verbs: crud},
 		{APIGroups: []string{"apps"}, Resources: []string{"deployments/scale"}, Verbs: []string{"get", "update", "patch"}},

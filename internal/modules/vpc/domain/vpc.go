@@ -161,6 +161,17 @@ type VPCBackend interface {
 	Teardown(ctx context.Context, vpc VPC) error
 }
 
+// Scripter : mise en œuvre dont le VPS s'inscrit lui-même par un script
+// lancé en root (au premier démarrage ou à la main). apiURL : URL publique
+// de l'API (…/kmanager/v1) ; token vide : lu en premier argument du script.
+type Scripter interface {
+	EnrollScript(apiURL, token string) string
+}
+
+// InstallEnrollmentTTL : jeton glissé dans le script de premier démarrage
+// (l'installation par le fournisseur peut prendre du temps).
+const InstallEnrollmentTTL = 2 * time.Hour
+
 // ── Pare-feu (lot 4 ; interface posée au lot 1) ─────────────────────────
 
 // Actions et protocoles d'une règle de pare-feu.
