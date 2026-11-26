@@ -29,6 +29,10 @@ type Workload struct {
 
 	// Networking
 	ExternalURL string `gorm:"type:text"` // ( https://app.vps-ip.sslip.io)
+	// PrimaryURL : adresse à montrer au client, calculée à la lecture : le
+	// premier domaine personnalisé vérifié (la racine d'abord), sinon
+	// ExternalURL. Jamais stockée.
+	PrimaryURL string `gorm:"-"`
 
 	Values string `gorm:"type:text"` // the final JSON sent to Helm
 

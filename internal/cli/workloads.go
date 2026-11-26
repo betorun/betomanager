@@ -94,8 +94,8 @@ func newWorkloadsList() *cobra.Command {
 			t := p.Table(i18n.T("wl.col.name"), i18n.T("wl.col.status"), i18n.T("wl.col.replicas"), i18n.T("wl.col.image"), i18n.T("wl.col.url"))
 			for _, w := range list {
 				url := ""
-				if w.ExternalURL != "" {
-					url = p.Link(w.ExternalURL)
+				if u := shownURL(&w); u != "" {
+					url = p.Link(u)
 				}
 				t.Row(p.Bold(w.Name)+kindTag(p, &w), workloadStatus(p, w.Status), fmt.Sprint(w.Replicas), w.Image, url)
 			}
@@ -213,8 +213,8 @@ func waitWorkload(cmd *cobra.Command, cl *api.Client, id, name string) error {
 		switch {
 		case workloadReady[w.Status]:
 			steps.Done()
-			if w.ExternalURL != "" {
-				p.Success(i18n.T("wl.deploy.ok_url", p.Link(w.ExternalURL)))
+			if u := shownURL(w); u != "" {
+				p.Success(i18n.T("wl.deploy.ok_url", p.Link(u)))
 			} else {
 				p.Success(i18n.T("wl.deploy.ok"))
 			}
@@ -376,8 +376,8 @@ func newWorkloadsStatus() *cobra.Command {
 			if w.ServiceAccountID != nil {
 				identity = "serviceAccount:" + w.ServiceAccountID.String()
 			}
-			if w.ExternalURL != "" {
-				url = p.Link(w.ExternalURL)
+			if u := shownURL(w); u != "" {
+				url = p.Link(u)
 			}
 			p.Fields(
 				[2]string{i18n.T("wl.col.name"), p.Bold(w.Name)},
@@ -469,3 +469,7 @@ func pullFailureText(f *api.PullFailure) string {
 	}
 	return i18n.T("pull.unknown", f.Registry)
 }
+
+// shownURL : adresse à montrer, le domaine personnalisé vérifié d'abord
+// (PrimaryURL, calculée par l'API), sinon l'adresse de la plateforme.
+func shownURL(w *api.Workload) string { return api.PublicURL(w) }

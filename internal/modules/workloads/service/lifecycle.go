@@ -34,11 +34,23 @@ import (
 //  CRUD read-side
 
 func (s *WorkloadService) Get(ctx context.Context, id uuid.UUID) (*domain.Workload, error) {
-	return s.Repo.GetByID(ctx, id)
+	w, err := s.Repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.fillPrimaryURL(ctx, w)
+	return w, nil
 }
 
 func (s *WorkloadService) List(ctx context.Context, projectID uuid.UUID) ([]domain.Workload, error) {
-	return s.Repo.ListByProject(ctx, projectID)
+	list, err := s.Repo.ListByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		s.fillPrimaryURL(ctx, &list[i])
+	}
+	return list, nil
 }
 
 //  Delete : passe par Temporal (Saga : Helm uninstall + DB soft-delete)
@@ -310,6 +322,8 @@ func (s *WorkloadService) LiveStatus(ctx context.Context, id uuid.UUID) (*domain
 		Kind:        kindOf(w),
 		ManagedBy:   w.ManagedBy,
 	}
+	s.fillPrimaryURL(ctx, w)
+	status.PrimaryURL = w.PrimaryURL
 	status.ExtraPorts = domain.SpecExtraPorts(w.Spec)
 	status.InternalAddresses = domain.InternalAddresses(w.Name, status.ExtraPorts)
 	if spec, err := s.specFor(w); err == nil {

@@ -422,7 +422,7 @@ func (e mcpEnv) diagnose(ctx context.Context, call mcp.Call) (mcp.Result, error)
 	_ = m.cl.Do(ctx, http.MethodGet, "/workloads/"+url.PathEscape(id)+"/status", nil, &status)
 	_ = m.cl.Do(ctx, http.MethodGet, "/workloads/"+url.PathEscape(id)+"/events", nil, &events)
 	var b strings.Builder
-	fmt.Fprintf(&b, "## container\nname: %s\nstatus: %s\nphase: %s\nimage: %s\nurl: %s\n\n", w.Name, w.Status, w.CurrentPhase, w.Image, w.ExternalURL)
+	fmt.Fprintf(&b, "## container\nname: %s\nstatus: %s\nphase: %s\nimage: %s\nurl: %s\n\n", w.Name, w.Status, w.CurrentPhase, w.Image, shownURL(w))
 	fmt.Fprintf(&b, "## live state\n%s\n\n## recent events\n%s\n\n## logs (end)\n%s\n", clipText(string(status), 4<<10), clipText(string(events), 4<<10),
 		tailText(e.logs(ctx, m.cl, id, 120, false), 6<<10))
 	if prev := e.logs(ctx, m.cl, id, 60, true); strings.TrimSpace(prev) != "" {
@@ -666,7 +666,7 @@ func (e mcpEnv) deploy(ctx context.Context, call mcp.Call) (mcp.Result, error) {
 		if err != nil {
 			return mcp.Result{}, err
 		}
-		res.URL = w.ExternalURL
+		res.URL = shownURL(w)
 		switch {
 		case workloadReady[w.Status]:
 			res.Status = "running"

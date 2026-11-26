@@ -164,6 +164,9 @@ type LiveStatus struct {
 	Status      string `json:"status"` // DB-side : STARTING/RUNNING/FAILED...
 	Phase       string `json:"phase"`  // DB-side : HELM_PREPARING/DEPLOYED/...
 	ExternalURL string `json:"external_url,omitempty"`
+	// PrimaryURL : adresse à montrer, le domaine personnalisé vérifié
+	// d'abord, sinon ExternalURL.
+	PrimaryURL string `json:"primary_url,omitempty"`
 	// InternalURL : adresse dans le réseau privé du projet (conteneur web) :
 	// les autres conteneurs du projet le joignent par elle, sans passer par
 	// Internet.

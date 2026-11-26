@@ -557,3 +557,40 @@ func (s *WorkloadService) pointsToPlatform(ctx context.Context, host, target str
 	}
 	return true
 }
+
+// fillPrimaryURL : adresse à montrer au client. Un domaine personnalisé
+// vérifié passe avant l'adresse de la plateforme (sslip.io…) ; à défaut, ou
+// si les domaines sont illisibles, ExternalURL.
+func (s *WorkloadService) fillPrimaryURL(ctx context.Context, w *domain.Workload) {
+	w.PrimaryURL = w.ExternalURL
+	if s.Domains == nil {
+		return
+	}
+	routes, err := s.Domains.VerifiedRoutes(ctx, w.ID)
+	if err != nil || len(routes) == 0 {
+		return
+	}
+	w.PrimaryURL = primaryURL(w.ExternalURL, routes)
+}
+
+// primaryURL : la racine d'un domaine d'abord, puis le premier nom (ordre
+// alphabétique, stable) ; schéma de l'adresse de la plateforme (http si le
+// conteneur est servi sans certificat), https par défaut.
+func primaryURL(external string, routes []domain.Route) string {
+	best := routes[0]
+	for _, r := range routes[1:] {
+		rootR, rootB := r.Path == "" || r.Path == "/", best.Path == "" || best.Path == "/"
+		if (rootR && !rootB) || (rootR == rootB && r.Host < best.Host) {
+			best = r
+		}
+	}
+	scheme := "https://"
+	if strings.HasPrefix(external, "http://") {
+		scheme = "http://"
+	}
+	path := ""
+	if best.Path != "" && best.Path != "/" {
+		path = best.Path
+	}
+	return scheme + best.Host + path
+}

@@ -190,7 +190,7 @@ type WorkloadJSON struct {
 func ToJSON(w Workload) WorkloadJSON {
 	out := WorkloadJSON{
 		ID: w.ID.String(), ProjectID: w.ProjectID.String(), Name: w.Name, Kind: w.Kind, Image: w.Image,
-		Status: w.Status, Phase: w.CurrentPhase, Replicas: w.Replicas, URL: w.ExternalURL, Port: w.TargetPort,
+		Status: w.Status, Phase: w.CurrentPhase, Replicas: w.Replicas, URL: PublicURL(&w), Port: w.TargetPort,
 		CPULimit: w.CPULimit, MemoryLimit: w.MemoryLimit, CreatedAt: w.CreatedAt, UpdatedAt: w.UpdatedAt,
 		ExtraPorts: w.ExtraPorts, InternalAddresses: w.InternalAddresses,
 	}
@@ -205,4 +205,13 @@ func ToJSON(w Workload) WorkloadJSON {
 		out.ServiceAccount = w.ServiceAccountID.String()
 	}
 	return out
+}
+
+// PublicURL : domaine personnalisé vérifié d'abord (PrimaryURL,
+// calculée par l'API), sinon l'adresse de la plateforme.
+func PublicURL(w *Workload) string {
+	if w.PrimaryURL != "" {
+		return w.PrimaryURL
+	}
+	return w.ExternalURL
 }
